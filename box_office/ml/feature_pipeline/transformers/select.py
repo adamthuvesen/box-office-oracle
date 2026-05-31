@@ -6,7 +6,10 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from box_office.ml.feature_pipeline.constants import RAW_INPUT_COLUMNS_TO_DROP
+from box_office.ml.feature_pipeline.constants import (
+    RAW_INPUT_COLUMNS_TO_DROP,
+    SELECTED_FEATURES,
+)
 
 
 class _DropPreEngineered(BaseEstimator, TransformerMixin):
@@ -59,3 +62,36 @@ class _SelectEngineered(BaseEstimator, TransformerMixin):
                 "scaler will raise on the first non-coercible value."
             )
         return out
+
+
+class FeatureSelector(BaseEstimator, TransformerMixin):
+    """Project onto the canonical ``SELECTED_FEATURES`` contract (names + order).
+
+    The upstream transformers compute every engineered feature; this final step
+    keeps only the curated, decorrelated subset and fixes its order, so the
+    feature contract lives in exactly one place (``SELECTED_FEATURES``) rather
+    than being smeared across the transformers. Computing-then-projecting also
+    keeps intermediate dependencies intact (e.g. ``AD_TO_PROD_RATIO`` needs
+    ``AD_BUDGET``, which is not itself selected).
+    """
+
+    def __init__(self, selected=SELECTED_FEATURES) -> None:
+        self.selected = tuple(selected)
+
+    def fit(self, X: pd.DataFrame, y=None) -> "FeatureSelector":
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        # Degenerate input: some transformers emit no rows-derived columns on an
+        # empty frame. There are no values to be wrong, so project to the
+        # contract shape rather than failing the missing-column guard.
+        if len(X) == 0:
+            return X.reindex(columns=list(self.selected))
+        missing = [c for c in self.selected if c not in X.columns]
+        if missing:
+            raise ValueError(
+                f"FeatureSelector: pipeline did not produce {missing}. Either a "
+                "transformer that emits them was removed, or SELECTED_FEATURES is "
+                "out of sync with the transformers."
+            )
+        return X.loc[:, list(self.selected)]

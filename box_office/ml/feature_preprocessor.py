@@ -15,6 +15,7 @@ import pandas as pd
 
 from box_office.ml.data_prep import DataSplitter, TargetTransformer
 from box_office.ml.feature_pipeline import build_feature_pipeline
+from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 from box_office.utils.feature_flags import (
     strict_features_enabled as _strict_features_enabled,
 )
@@ -93,6 +94,11 @@ class FeaturePreprocessorHigh:
         """
         if self._feature_names is None:
             self.fit(_SCHEMA_FIXTURE)
+        if self._feature_names != list(SELECTED_FEATURES):
+            raise FeatureNameCollisionError(
+                "Pipeline feature names drifted from the SELECTED_FEATURES contract. "
+                f"Got {self._feature_names}; expected {list(SELECTED_FEATURES)}."
+            )
         return list(self._feature_names)
 
 

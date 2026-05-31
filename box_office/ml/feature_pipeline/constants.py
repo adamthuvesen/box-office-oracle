@@ -40,6 +40,33 @@ CORE_NUMERICAL_FEATURES: tuple[str, ...] = (
     "RUNTIME",
 )
 
+# Canonical feature contract enforced by ``FeatureSelector`` (the final pipeline
+# step) and asserted training↔serving. A compact, decorrelated (max |Spearman|
+# = 0.57), axis-balanced subset chosen by analysis/feature_selection_study.py:
+# 13 features match the full ~55-feature model on cross-validation (within ~1%
+# CV R²) without the multicollinearity. Changing this list is a feature-contract
+# change — bump CURRENT_FEATURE_SCHEMA_VERSION and retrain. Names must match what
+# the transformers emit exactly (note ``GENRE_<name>`` keeps a lowercase suffix).
+SELECTED_FEATURES: tuple[str, ...] = (
+    # Demand, budget, marketing, IP, time
+    "VOTES",
+    "PRODUCTION_BUDGET",
+    "AD_TO_PROD_RATIO",
+    "FRANCHISE_RATING",
+    "RELEASE_YEAR",
+    # Content rating + studio track record
+    "MPAA_ENCODED",
+    "COMPANY_FREQ",
+    # Genre
+    "GENRE_action",
+    "GENRE_comedy",
+    "SUPER_GENRE_ENCODED",
+    # Era shock + release-window seasonality
+    "IS_COVID_ERA",
+    "IS_JULY_4TH_WEEKEND",
+    "IS_WEEKEND_RELEASE",
+)
+
 GENRE_VOCABULARY: tuple[str, ...] = (
     "action",
     "comedy",
@@ -57,23 +84,3 @@ GENRE_VOCABULARY: tuple[str, ...] = (
     "war",
     "western",
 )
-
-# Multiplicative interactions: missing input means "no interaction" → fill 0.
-# Ratios: missing denominator must surface, not silently become 0.
-_INTERACTION_FILL_ZERO = {
-    "BUDGET_SEASONAL_BOOST",
-    "SUMMER_BUDGET_INTERACTION",
-    "HOLIDAY_BUDGET_INTERACTION",
-    "WEEKEND_RATING_BOOST",
-    "COVID_BUDGET_IMPACT",
-    "COVID_RATING_IMPACT",
-    "COVID_VOTES_IMPACT",
-    "FRANCHISE_STRENGTH",
-    "FRANCHISE_BUDGET_CONFIDENCE",
-    "BLOCKBUSTER_BUDGET_MULTIPLIER",
-    "ACTION_BUDGET_INTERACTION",
-    "COMEDY_BUDGET_EFFICIENCY",
-    "DIRECTOR_BUDGET_CONFIDENCE",
-    "STAR_POWER_PREMIUM",
-}
-_INTERACTION_KEEP_NAN = {"HORROR_LOW_BUDGET_ADVANTAGE"}

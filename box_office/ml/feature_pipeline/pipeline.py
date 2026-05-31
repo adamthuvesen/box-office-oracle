@@ -6,10 +6,8 @@ from box_office.ml.feature_pipeline.transformers.core import CoreNumericalTransf
 from box_office.ml.feature_pipeline.transformers.financial import FinancialTransformer
 from box_office.ml.feature_pipeline.transformers.genre import GenreTransformer
 from box_office.ml.feature_pipeline.transformers.industry import IndustryTransformer
-from box_office.ml.feature_pipeline.transformers.interactions import (
-    InteractionTransformer,
-)
 from box_office.ml.feature_pipeline.transformers.select import (
+    FeatureSelector,
     _DropPreEngineered,
     _SelectEngineered,
 )
@@ -17,10 +15,11 @@ from box_office.ml.feature_pipeline.transformers.temporal import TemporalTransfo
 
 
 def build_feature_pipeline() -> Pipeline:
-    """Compose the full feature-engineering pipeline.
+    """Compose the feature-engineering pipeline.
 
     Step order matters: financial reads ``YEARS_SINCE_2000`` from temporal +
-    ``AVG_ACTOR_FREQ`` from industry; interactions reads everything upstream.
+    ``AVG_ACTOR_FREQ`` from industry. The trailing ``FeatureSelector`` projects
+    the full engineered frame onto the canonical ``SELECTED_FEATURES`` contract.
     """
     return Pipeline(
         steps=[
@@ -30,7 +29,7 @@ def build_feature_pipeline() -> Pipeline:
             ("genre", GenreTransformer()),
             ("industry", IndustryTransformer()),
             ("financial", FinancialTransformer()),
-            ("interactions", InteractionTransformer()),
             ("select", _SelectEngineered()),
+            ("feature_selector", FeatureSelector()),
         ]
     )
