@@ -115,7 +115,7 @@ class TestFeatureEngineering:
         from box_office.ml.feature_pipeline import IndustryTransformer
         from box_office.ml.feature_pipeline import FinancialTransformer
         from box_office.ml.feature_pipeline import (
-            InteractionTransformer,
+            FeatureSelector,
         )
 
         assert CoreNumericalTransformer is not None
@@ -123,7 +123,7 @@ class TestFeatureEngineering:
         assert GenreTransformer is not None
         assert IndustryTransformer is not None
         assert FinancialTransformer is not None
-        assert InteractionTransformer is not None
+        assert FeatureSelector is not None
 
     def test_feature_preprocessor_instantiation(self):
         from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
@@ -131,7 +131,8 @@ class TestFeatureEngineering:
         preprocessor = FeaturePreprocessorHigh()
 
         assert preprocessor is not None
-        # Pre-engineered drop + six engineered transformers + raw-column strip.
+        # Pre-engineered drop + five engineered transformers + raw-column strip
+        # + the SELECTED_FEATURES projection.
         assert list(preprocessor.pipeline.named_steps) == [
             "drop_pre_engineered",
             "core",
@@ -139,8 +140,8 @@ class TestFeatureEngineering:
             "genre",
             "industry",
             "financial",
-            "interactions",
             "select",
+            "feature_selector",
         ]
 
 

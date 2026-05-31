@@ -3,6 +3,8 @@
 import pandas as pd
 import unittest
 
+from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
+
 
 class TestCoreNumericalTransformer(unittest.TestCase):
     def test_transform_works(self):
@@ -105,8 +107,8 @@ class TestFeaturePipeline(unittest.TestCase):
                 "genre",
                 "industry",
                 "financial",
-                "interactions",
                 "select",
+                "feature_selector",
             ],
         )
 
@@ -138,7 +140,9 @@ class TestFeaturePipeline(unittest.TestCase):
         pre = FeaturePreprocessorHigh().fit(data)
         names = pre.get_feature_names()
         self.assertIsInstance(names, list)
-        self.assertGreater(len(names), 50)
+        # Contract lock: the fitted pipeline must emit exactly SELECTED_FEATURES,
+        # in order. This is the single guard that training and serving agree.
+        self.assertEqual(names, list(SELECTED_FEATURES))
 
     def test_pipeline_strips_pre_engineered_columns_from_input(self):
         """Source data carries legacy ``MPAA_ENCODED`` etc.; the pipeline must

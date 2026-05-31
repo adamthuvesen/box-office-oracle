@@ -123,7 +123,7 @@ class TestModelLoader:
             "CustomerMetadataProperties": {
                 "sha256": "placeholder-overridden-by-tests-that-actually-download",
                 "size_bytes": "0",
-                "feature_schema_version": "2",
+                "feature_schema_version": "3",
             },
         }
 
@@ -258,7 +258,7 @@ class TestModelLoader:
             details["CustomerMetadataProperties"] = {
                 "sha256": digest,
                 "size_bytes": str(Path(tar_path).stat().st_size),
-                "feature_schema_version": "2",
+                "feature_schema_version": "3",
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -302,7 +302,7 @@ class TestModelLoader:
             details["CustomerMetadataProperties"] = {
                 "sha256": "0" * 64,
                 "size_bytes": "0",
-                "feature_schema_version": "2",
+                "feature_schema_version": "3",
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -733,7 +733,7 @@ class TestModelLoaderIntegration:
             "CustomerMetadataProperties": {
                 "sha256": digest,
                 "size_bytes": str(tar_file.stat().st_size),
-                "feature_schema_version": "2",
+                "feature_schema_version": "3",
             },
         }
 

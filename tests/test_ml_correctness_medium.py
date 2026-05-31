@@ -85,48 +85,6 @@ class TestNaNPropagation:
             for rec in caplog.records
         ), "Expected at least one WARNING naming a NaN column"
 
-    def test_interaction_transformer_logs_explicit_imputation(self, caplog):
-        """Spec scenario: Interaction transformer logs explicit imputation."""
-        from box_office.ml.feature_pipeline import (
-            InteractionTransformer,
-        )
-
-        # Construct an input where TOTAL_BUDGET is NaN so a multiplicative
-        # interaction column ends up NaN and triggers the fill-0 + warning path.
-        df = pd.DataFrame(
-            {
-                "TOTAL_BUDGET": [np.nan, 100.0],
-                "IS_BLOCKBUSTER_SEASON": [1, 0],
-                "IS_SUMMER_RELEASE": [1, 0],
-                "IS_HOLIDAY_RELEASE": [0, 1],
-                "IS_WEEKEND_RELEASE": [1, 0],
-                "IS_COVID_ERA": [0, 0],
-                "IS_MEMORIAL_DAY_WEEKEND": [0, 0],
-                "IS_JULY_4TH_WEEKEND": [0, 0],
-                "IS_THANKSGIVING_WEEK": [0, 0],
-                "IS_CHRISTMAS_WEEK": [0, 0],
-                "RATING": [7.5, 8.0],
-                "VOTES": [1000, 2000],
-                "FRANCHISE_RATING": [7.0, 8.0],
-                "AD_BUDGET": [1000, 2000],
-                "SOCIAL_MEDIA_BUZZ": [100, 200],
-                "PRODUCTION_BUDGET": [50_000_000, 70_000_000],
-                "AD_TO_PROD_RATIO": [0.1, 0.2],
-            }
-        )
-
-        transformer = InteractionTransformer()
-        with caplog.at_level(logging.WARNING):
-            out = transformer.transform(df)
-
-        # The multiplicative BUDGET_SEASONAL_BOOST receives the per-policy 0
-        # fill (no real "interaction" possible without a budget).
-        assert out.loc[0, "BUDGET_SEASONAL_BOOST"] == 0
-        assert any(
-            "BUDGET_SEASONAL_BOOST" in rec.message and "NaN" in rec.message
-            for rec in caplog.records
-        ), "Expected WARNING naming the imputed column"
-
     def test_strict_mode_raises_on_unexpected_nan(self):
         """Spec scenario: Unexpected NaN counts raise in strict mode."""
         from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh

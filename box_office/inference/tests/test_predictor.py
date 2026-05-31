@@ -21,6 +21,9 @@ from box_office.inference.app.predictor import (
     PredictionResponse,
     ModelInfo,
 )
+from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
+
+_BUDGET_IDX = list(SELECTED_FEATURES).index("PRODUCTION_BUDGET")
 
 
 class MockModel:
@@ -28,6 +31,7 @@ class MockModel:
 
     def __init__(self, prediction_value=12.5):  # Log-transformed value
         self.prediction_value = prediction_value
+        self.n_features_in_ = len(SELECTED_FEATURES)
 
     def predict(self, X):
         """Mock predict method that returns log-transformed values."""
@@ -39,19 +43,21 @@ class MockModel:
 class MockPreprocessor:
     """Mock feature preprocessor for testing."""
 
+    def get_feature_names(self):
+        return list(SELECTED_FEATURES)
+
     def transform(self, df):
-        """Mock transform method that returns processed features."""
-        # Deterministic output: real preprocessors don't have random behavior,
-        # so using a fixed array keeps tests stable across repeated runs.
-        return np.ones((len(df), 50))  # 50 features
+        """Mock transform: a deterministic frame keyed by the feature contract."""
+        cols = list(SELECTED_FEATURES)
+        return pd.DataFrame(np.ones((len(df), len(cols))), columns=cols)
 
 
 class MockScaler:
     """Mock feature scaler for testing."""
 
     def transform(self, features):
-        """Mock transform method that returns scaled features."""
-        return features * 0.5  # Simple scaling
+        """Mock transform that returns scaled features as an ndarray."""
+        return np.asarray(features, dtype=float) * 0.5
 
 
 class TestPredictionRequest:
@@ -517,7 +523,25 @@ class TestPredictionEngine:
 
         assert isinstance(features, np.ndarray)
         assert features.shape[0] == 1
-        assert features.shape[1] == 50
+        assert features.shape[1] == len(SELECTED_FEATURES)
+
+    def test_preprocess_features_contract_mismatch_raises(
+        self, prediction_engine, mock_model, mock_scaler, sample_request
+    ):
+        """A preprocessor output off-contract fails loudly, not as a shape error."""
+        from box_office.ml.feature_schema import FeatureContractMismatch
+
+        off_contract = MockPreprocessor()
+        off_contract.transform = lambda df: pd.DataFrame(
+            np.ones((len(df), 3)), columns=["A", "B", "C"]
+        )
+        prediction_engine.model = mock_model
+        prediction_engine.preprocessor = off_contract
+        prediction_engine.scaler = mock_scaler
+        prediction_engine._is_loaded = True
+
+        with pytest.raises(FeatureContractMismatch):
+            prediction_engine.preprocess_features(sample_request)
 
     def test_preprocess_features_not_loaded(self, prediction_engine, sample_request):
         """Test feature preprocessing failure when model not loaded."""
@@ -686,8 +710,10 @@ class TestRuntimeEngine:
 class RealisticModel:
     """Realistic model for integration testing."""
 
+    n_features_in_ = len(SELECTED_FEATURES)
+
     def predict(self, X):
-        budget_feature = X[0, 0] if X.shape[1] > 0 else 50000000
+        budget_feature = X[0, _BUDGET_IDX] if X.shape[1] > _BUDGET_IDX else 50000000
         log_prediction = np.log1p(budget_feature * 2.5)
         return np.array([log_prediction])
 
@@ -695,23 +721,24 @@ class RealisticModel:
 class RealisticPreprocessor:
     """Realistic preprocessor for integration testing."""
 
+    def get_feature_names(self):
+        return list(SELECTED_FEATURES)
+
     def transform(self, df):
-        features = [
-            df["PRODUCTION_BUDGET"].iloc[0],
-            df["AD_BUDGET"].iloc[0],
-            df["RUNTIME"].iloc[0],
-            df["RATING"].iloc[0],
-            df["VOTES"].iloc[0],
-        ]
-        features.extend([0.0] * 45)  # Pad to 50 features
-        return np.array([features])
+        # Emit the full SELECTED_FEATURES contract; populate the columns this
+        # mock knows, zero-fill the rest. Order matches the contract.
+        row = {c: 0.0 for c in SELECTED_FEATURES}
+        for col in ("PRODUCTION_BUDGET", "VOTES"):
+            if col in df.columns:
+                row[col] = df[col].iloc[0]
+        return pd.DataFrame([row], columns=list(SELECTED_FEATURES))
 
 
 class RealisticScaler:
-    """Realistic scaler for integration testing."""
+    """Realistic scaler for integration testing (identity-preserving)."""
 
     def transform(self, features):
-        return features * 0.001
+        return np.asarray(features, dtype=float)
 
 
 class TestPredictionEngineIntegration:

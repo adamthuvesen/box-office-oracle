@@ -135,25 +135,25 @@ class TestFeatureNameCollision:
 
         preprocessor = FeaturePreprocessorHigh()
 
-        # Inject a step that re-emits a column already produced by the
-        # TemporalTransformer ('IS_SUMMER_RELEASE'). Insert before the final
-        # 'select' step so the duplicate survives to fit_transform output.
+        # Inject a step that re-emits a SELECTED feature ('VOTES'). Insert before
+        # the final 'feature_selector' projection so the duplicate survives into
+        # fit_transform output and trips the collision guard.
         class CollidingTransformer(BaseEstimator, TransformerMixin):
             def fit(self, X, y=None):
                 return self
 
             def transform(self, X):
                 # Concat-with-duplicate-name forces a true duplicate column.
-                dup = pd.DataFrame({"IS_SUMMER_RELEASE": [0] * len(X)}, index=X.index)
+                dup = pd.DataFrame({"VOTES": [0] * len(X)}, index=X.index)
                 return pd.concat([X, dup], axis=1)
 
-        select_idx = next(
+        selector_idx = next(
             i
             for i, (name, _) in enumerate(preprocessor.pipeline.steps)
-            if name == "select"
+            if name == "feature_selector"
         )
         preprocessor.pipeline.steps.insert(
-            select_idx, ("collider", CollidingTransformer())
+            selector_idx, ("collider", CollidingTransformer())
         )
 
         df = pd.DataFrame(
@@ -178,7 +178,7 @@ class TestFeatureNameCollision:
         with pytest.raises(FeatureNameCollisionError) as exc:
             preprocessor.fit_transform(df)
 
-        assert "IS_SUMMER_RELEASE" in str(exc.value)
+        assert "VOTES" in str(exc.value)
 
     def test_normal_pipeline_columns_are_unique(self, sample_movie_data):
         from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
