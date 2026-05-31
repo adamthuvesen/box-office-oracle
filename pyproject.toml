@@ -44,7 +44,7 @@ dependencies = [
     # Machine Learning & Optimization
     "optuna==4.4.0",
     "optuna-integration==4.4.0",
-    "xgboost==3.0.2",
+    "xgboost==3.2.0",
 
     # SageMaker
     "sagemaker==2.248.0",
