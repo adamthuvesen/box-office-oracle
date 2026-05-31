@@ -196,6 +196,12 @@ def test_private_key_fallback_only_on_missing_file(tmp_path, monkeypatch):
     real_key = tmp_path / "key.p8"
     real_key.write_text("ignored")  # path exists; loader is mocked
 
+    # The connection helper resolves the key path from SNOWFLAKE_PRIVATE_KEY_PATH
+    # (env), not the kwarg. Set it explicitly so the key-load branch runs
+    # deterministically — otherwise the test only passes on hosts that happen to
+    # have the env/.env configured (it skips key loading entirely without it).
+    monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", str(real_key))
+
     captured = {}
 
     def fake_connect(**kwargs):
