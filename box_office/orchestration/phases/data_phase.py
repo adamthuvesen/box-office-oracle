@@ -1,0 +1,162 @@
+"""Data preparation phase: dbt, features, Snowflake persistence."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple
+
+import pandas as pd
+
+from box_office.config import config
+from box_office.orchestration.persistence import (
+    TableSaveSpec,
+    log_table_operations_summary,
+    save_tables,
+)
+from box_office.orchestration.tasks.data_tasks import (
+    apply_feature_engineering,
+    create_feature_metadata,
+    load_staging_box_office_from_snowflake,
+    run_raw_to_staging_dbt_transformations,
+    save_artifacts,
+    save_dataset_to_snowflake_impl,
+    scale_features,
+    split_data,
+    transform_targets,
+    validate_snowflake_tables,
+)
+from box_office.orchestration.tasks.metrics_tasks import (
+    log_data_processing_metrics,
+    log_feature_engineering_metrics,
+)
+
+TARGET_COLUMN = "WORLDWIDE_GROSS"
+
+
+@dataclass
+class DataPhaseResult:
+    target_column: str
+    X_train_processed: pd.DataFrame
+    X_train_scaled: pd.DataFrame
+    y_train_log: pd.Series
+    X_train_shape: Tuple[int, int]
+    X_val_shape: Tuple[int, int]
+    processor_path: str
+    scaler_path: str
+    save_results: Dict[str, bool]
+    validation_results: Dict[str, Any]
+    feature_metrics: Dict[str, Any]
+    data_metrics: Dict[str, Any]
+    feature_names: List[str]
+
+
+def run_data_phase(logger) -> DataPhaseResult:
+    """Run dbt through Snowflake validation; return in-memory frames for training."""
+    run_raw_to_staging_dbt_transformations()
+
+    staging_data = load_staging_box_office_from_snowflake()
+    X_train, X_val, y_train, y_val = split_data(staging_data, TARGET_COLUMN)
+
+    X_train_processed, X_val_processed, processor = apply_feature_engineering(
+        X_train, X_val
+    )
+    feature_metrics = log_feature_engineering_metrics(
+        processor, X_train_processed.columns.tolist()
+    )
+
+    X_train_scaled, X_val_scaled, scaler = scale_features(
+        X_train_processed, X_val_processed
+    )
+    y_train_log, y_val_log = transform_targets(y_train, y_val)
+
+    processor_path, scaler_path = save_artifacts(
+        processor, scaler, artifact_dir=config.model.artifacts_dir
+    )
+    feature_metadata = create_feature_metadata(
+        X_train_processed.columns.tolist(), processor_path, scaler_path
+    )
+
+    logger.info("Saving ML tables to Snowflake")
+    ml_schema = config.snowflake.schemas.ml_training
+    fs_schema = config.snowflake.schemas.feature_store
+
+    specs = [
+        TableSaveSpec(X_train_processed, "X_TRAIN", ml_schema),
+        TableSaveSpec(X_train_scaled, "X_TRAIN_SCALED", ml_schema),
+        TableSaveSpec(y_train.to_frame("WORLDWIDE_GROSS"), "Y_TRAIN", ml_schema),
+        TableSaveSpec(y_train_log.to_frame("GROSS_LOG"), "Y_TRAIN_LOG", ml_schema),
+        TableSaveSpec(X_val_processed, "X_VAL", ml_schema),
+        TableSaveSpec(X_val_scaled, "X_VAL_SCALED", ml_schema),
+        TableSaveSpec(y_val.to_frame("WORLDWIDE_GROSS"), "Y_VAL", ml_schema),
+        TableSaveSpec(y_val_log.to_frame("GROSS_LOG"), "Y_VAL_LOG", ml_schema),
+        TableSaveSpec(feature_metadata, "FEATURE_METADATA", fs_schema),
+    ]
+    report = save_tables(specs, save_dataset_to_snowflake_impl)
+    log_table_operations_summary(report.operations, logger)
+
+    expected_tables = [s.table_name for s in specs if s.schema == ml_schema]
+    validation_results = validate_snowflake_tables(expected_tables, schema=ml_schema)
+
+    feature_store_validation = validate_snowflake_tables(
+        ["FEATURE_METADATA"], schema=fs_schema
+    )
+    if "error" in feature_store_validation:
+        logger.warning(
+            "FEATURE_STORE validation failed (non-fatal): %s",
+            feature_store_validation["error"],
+        )
+
+    if "error" in validation_results:
+        raise RuntimeError(
+            f"Snowflake validation failed: {validation_results['error']}"
+        )
+
+    validation_errors = [
+        k for k, v in validation_results.items() if isinstance(v, str) and "Error" in v
+    ]
+    if validation_errors:
+        raise RuntimeError(
+            f"Snowflake validation failed for tables: {validation_errors}"
+        )
+
+    data_metrics = log_data_processing_metrics(
+        X_train.shape, X_val.shape, X_train_processed.shape[1], TARGET_COLUMN
+    )
+
+    successful_saves = sum(1 for success in report.results.values() if success)
+    logger.info(
+        "Data phase complete: %d features, Snowflake saves %d/%d",
+        X_train_processed.shape[1],
+        successful_saves,
+        len(report.results),
+    )
+
+    return DataPhaseResult(
+        target_column=TARGET_COLUMN,
+        X_train_processed=X_train_processed,
+        X_train_scaled=X_train_scaled,
+        y_train_log=y_train_log,
+        X_train_shape=X_train.shape,
+        X_val_shape=X_val.shape,
+        processor_path=processor_path,
+        scaler_path=scaler_path,
+        save_results=report.results,
+        validation_results=validation_results,
+        feature_metrics=feature_metrics,
+        data_metrics=data_metrics,
+        feature_names=X_train_processed.columns.tolist(),
+    )
+
+
+def sagemaker_training_frames(
+    data: DataPhaseResult,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Build in-memory training frames matching the former Snowflake reload query."""
+    X = data.X_train_scaled.copy()
+    if "RELEASE_YEAR" not in data.X_train_processed.columns:
+        raise ValueError("RELEASE_YEAR is required for SageMaker time-series CV")
+    # The scaler transforms RELEASE_YEAR like any other numeric feature, but the
+    # training script uses this column as the chronological CV key.
+    X["RELEASE_YEAR"] = data.X_train_processed["RELEASE_YEAR"].values
+    y = data.y_train_log.to_frame("GROSS_LOG")
+    return X, y
