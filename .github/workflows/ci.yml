@@ -1,0 +1,193 @@
+name: CI - Test and Validate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+# Least privilege by default; jobs opt into exactly what they need.
+permissions: {}
+
+env:
+  PYTHON_VERSION: "3.12"
+  AWS_REGION: "eu-north-1"
+
+jobs:
+  test:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v8.1.0
+      with:
+        version: "0.5.13"
+
+    - name: Cache uv dependencies
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-uv-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+
+    - name: Install dependencies
+      run: |
+        uv sync --extra test --extra inference --frozen
+
+    - name: Setup Snowflake Private Key for Tests
+      # Materialize via printf %s to ${RUNNER_TEMP}: keeps the key out of the
+      # workspace, off `set -x` output, and preserves PEM literal-\n payloads.
+      env:
+        SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      run: |
+        if [ -z "$SNOWFLAKE_PRIVATE_KEY" ]; then
+          echo "❌ SNOWFLAKE_PRIVATE_KEY secret is not set"
+          exit 1
+        fi
+        KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
+        printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
+        chmod 600 "$KEY_PATH"
+        echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+        echo "✅ Snowflake private key materialized at \$RUNNER_TEMP"
+
+    - name: Run tests with coverage
+      env:
+        # AWS Configuration
+        SAGEMAKER_ROLE_ARN: ${{ secrets.SAGEMAKER_ROLE_ARN }}
+        AWS_REGION: ${{ env.AWS_REGION }}
+        AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET || secrets.SAGEMAKER_BUCKET || secrets.S3_BUCKET_NAME }}
+
+        # Snowflake Configuration
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
+        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
+        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
+        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
+        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the previous step via $GITHUB_ENV.
+        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+      run: |
+        # Unit tests + inference tests (match pyproject testpaths; exclude integration/slow)
+        uv run pytest tests/ box_office/inference/tests/ -m "not integration and not slow" --cov=box_office --cov-report=xml --cov-report=term-missing
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v6
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  dbt-test:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    name: dbt Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v8.1.0
+      with:
+        version: "0.5.13"
+
+    - name: Cache uv dependencies
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-uv-dbt-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-dbt-
+          ${{ runner.os }}-uv-
+
+    - name: Install dependencies
+      run: |
+        uv sync --frozen
+
+    - name: Setup Snowflake Private Key for dbt
+      env:
+        SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      run: |
+        if [ -z "$SNOWFLAKE_PRIVATE_KEY" ]; then
+          echo "❌ SNOWFLAKE_PRIVATE_KEY secret is not set"
+          exit 1
+        fi
+        KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
+        printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
+        chmod 600 "$KEY_PATH"
+        echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+        echo "✅ Snowflake private key materialized at \$RUNNER_TEMP for dbt"
+
+    - name: dbt deps
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
+        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
+        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
+        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
+        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the previous step via $GITHUB_ENV.
+        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+      run: |
+        cd transformations
+        uv run dbt deps --profiles-dir=.
+
+    - name: dbt parse (validate models)
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
+        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
+        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
+        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
+        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the setup step via $GITHUB_ENV.
+        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+      run: |
+        cd transformations
+        uv run dbt parse --profiles-dir=.
+
+    - name: dbt compile (catch jinja and ref errors)
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
+        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
+        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
+        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
+        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+      run: |
+        cd transformations
+        uv run dbt compile --profiles-dir=.
