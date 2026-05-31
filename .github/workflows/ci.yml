@@ -51,18 +51,20 @@ jobs:
     - name: Setup Snowflake Private Key for Tests
       # Materialize via printf %s to ${RUNNER_TEMP}: keeps the key out of the
       # workspace, off `set -x` output, and preserves PEM literal-\n payloads.
+      # Absent secret is not fatal: the unit/inference suite is hermetic and
+      # runs without Snowflake credentials (only integration/slow tests need them).
       env:
         SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
       run: |
         if [ -z "$SNOWFLAKE_PRIVATE_KEY" ]; then
-          echo "❌ SNOWFLAKE_PRIVATE_KEY secret is not set"
-          exit 1
+          echo "::notice::SNOWFLAKE_PRIVATE_KEY not set; running hermetic tests without Snowflake credentials."
+          exit 0
         fi
         KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
         printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
         chmod 600 "$KEY_PATH"
         echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-        echo "✅ Snowflake private key materialized at \$RUNNER_TEMP"
+        echo "Snowflake private key materialized at \$RUNNER_TEMP"
 
     - name: Run tests with coverage
       env:
@@ -128,21 +130,31 @@ jobs:
       run: |
         uv sync --frozen
 
-    - name: Setup Snowflake Private Key for dbt
+    - name: Check Snowflake credentials
+      id: creds
       env:
         SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
       run: |
-        if [ -z "$SNOWFLAKE_PRIVATE_KEY" ]; then
-          echo "❌ SNOWFLAKE_PRIVATE_KEY secret is not set"
-          exit 1
+        if [ -n "$SNOWFLAKE_PRIVATE_KEY" ]; then
+          echo "has_creds=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_creds=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::Snowflake credentials absent; skipping dbt validation."
         fi
+
+    - name: Setup Snowflake Private Key for dbt
+      if: steps.creds.outputs.has_creds == 'true'
+      env:
+        SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      run: |
         KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
         printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
         chmod 600 "$KEY_PATH"
         echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-        echo "✅ Snowflake private key materialized at \$RUNNER_TEMP for dbt"
+        echo "Snowflake private key materialized for dbt"
 
     - name: dbt deps
+      if: steps.creds.outputs.has_creds == 'true'
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -160,6 +172,7 @@ jobs:
         uv run dbt deps --profiles-dir=.
 
     - name: dbt parse (validate models)
+      if: steps.creds.outputs.has_creds == 'true'
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -177,6 +190,7 @@ jobs:
         uv run dbt parse --profiles-dir=.
 
     - name: dbt compile (catch jinja and ref errors)
+      if: steps.creds.outputs.has_creds == 'true'
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
