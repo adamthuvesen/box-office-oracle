@@ -56,7 +56,7 @@ dependencies = [
     "snowflake-connector-python[pandas]==3.16.0",
 
     # Utilities
-    "joblib==1.5.1",
+    "joblib==1.5.3",
 
     # Workflow Orchestration
     "prefect==3.4.8",
