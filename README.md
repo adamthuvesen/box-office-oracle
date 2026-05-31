@@ -10,7 +10,7 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 | --- | --- |
 | **Warehouse** | Snowflake (`RAW` → `STAGING` → `ML_TRAINING`) |
 | **Transform** | dbt-core + dbt-snowflake |
-| **Features** | scikit-learn `Pipeline` (69 features from 12 raw columns) |
+| **Features** | scikit-learn `Pipeline` → 13 curated, decorrelated features (max \|r\|=0.57) from 12 raw columns |
 | **Training** | XGBoost on SageMaker `ml.m5.large` |
 | **Registry** | SageMaker Model Registry (SHA256-verified) |
 | **Serving** | AWS Lambda (FastAPI + Mangum) |
@@ -56,7 +56,7 @@ python -m box_office.ml.backtest_report \
 
 - **What works:** Established franchises, summer tentpoles, and films with massive pre-release hype. The model interpolates well in data-rich regions.
 - **What fails:** Low-budget breakout hits (*Get Out*, *Everything Everywhere All at Once*), foreign-language crossovers, and post-2020 COVID anomalies. The baseline often beats the model here.
-- **No causal claims:** Features like `RATING_VOTES_INTERACTION` correlate with revenue but don't cause it. This is an estimation tool, not a causal inference engine.
+- **No causal claims:** Features like `FRANCHISE_RATING` and `COMPANY_FREQ` correlate with revenue but don't cause it. This is an estimation tool, not a causal inference engine.
 
 ## Configuration
 
@@ -75,7 +75,7 @@ TMDB_API_TOKEN
 
 ## Schema Versioning
 
-Artifacts carry a `feature_schema_version`. The current runtime requires `v2` (which drops leaky social-buzz features and uses real CPI for inflation adjustment). **`v1` artifacts will not load**—the inference container will throw a `FeatureSchemaVersionMismatch` on cold start. To serve a `v1` model, you must retrain.
+Artifacts carry a `feature_schema_version`. The current runtime requires `v3` (the curated, decorrelated 13-feature contract; `v2` dropped leaky social-buzz features and uses real CPI for inflation adjustment). **Older artifacts will not load**—the inference container throws a `FeatureSchemaVersionMismatch` on cold start. To serve an older model, you must retrain.
 
 ## Local Data
 
