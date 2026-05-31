@@ -1,0 +1,23 @@
+# Bug-hunt M10: keep developer-only artifacts and secrets out of the build
+# context that gets shipped to the Docker daemon. Build context = repo root.
+
+# Local virtualenvs and Python caches
+.venv/
+**/__pycache__
+*.pyc
+*.pyo
+
+# Local credentials and key material
+keys/
+
+# VCS and CI metadata
+.git/
+.github/
+
+# Tests and openspec (not needed in the inference image)
+tests/
+openspec/
+
+# Dataset checkouts and dbt build artifacts
+data/
+transformations/target/
