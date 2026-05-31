@@ -20,6 +20,8 @@ from pydantic import (
 )
 import json
 
+from box_office.ml.feature_schema import FeatureContractMismatch
+
 logger = logging.getLogger(__name__)
 
 
@@ -245,6 +247,33 @@ class PredictionEngine:
         logger.debug(f"Prepared DataFrame with shape {df.shape}")
         return df
 
+    def _assert_feature_contract(self, features: pd.DataFrame) -> None:
+        """Fail loudly when preprocessor output and the model disagree.
+
+        Guards the training↔serving contract at predict time: the schema-version
+        check at load handles wrong-vintage artifacts, this catches a v3 artifact
+        whose components were assembled inconsistently — before XGBoost raises a
+        cryptic shape error deep in ``predict``.
+        """
+        expected = self.preprocessor.get_feature_names()
+        actual = list(features.columns)
+        if actual != expected:
+            divergence = next(
+                (f"{a!r}!={e!r}" for a, e in zip(actual, expected) if a != e),
+                "<length>",
+            )
+            raise FeatureContractMismatch(
+                f"Preprocessor produced {len(actual)} features but the artifact "
+                f"contract declares {len(expected)} (first divergence: {divergence}). "
+                "Retrain and re-register so training and serving agree."
+            )
+        n_model = getattr(self.model, "n_features_in_", None)
+        if n_model is not None and n_model != len(actual):
+            raise FeatureContractMismatch(
+                f"Model expects {n_model} features but the preprocessor produced "
+                f"{len(actual)}. Artifact components disagree; retrain and re-register."
+            )
+
     def preprocess_features(self, request: PredictionRequest) -> np.ndarray:
         """Preprocess features for prediction."""
         if not self.is_loaded():
@@ -255,6 +284,7 @@ class PredictionEngine:
 
             logger.debug("Applying feature preprocessing")
             features_processed = self.preprocessor.transform(df)
+            self._assert_feature_contract(features_processed)
 
             logger.debug("Applying feature scaling")
             features_scaled = self.scaler.transform(features_processed)
@@ -262,6 +292,8 @@ class PredictionEngine:
             logger.debug(f"Preprocessed features shape: {features_scaled.shape}")
             return features_scaled
 
+        except FeatureContractMismatch:
+            raise
         except Exception as e:
             logger.error(f"Feature preprocessing failed: {str(e)}", exc_info=True)
             raise RuntimeError(f"Feature preprocessing failed: {str(e)}")

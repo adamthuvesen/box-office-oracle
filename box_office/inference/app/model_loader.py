@@ -305,9 +305,9 @@ class ModelLoader:
                 raise FeatureSchemaVersionMismatch(
                     f"Model package {model_package_arn} has feature_schema_version="
                     f"{artifact_schema_version!r}; runtime requires "
-                    f"{CURRENT_FEATURE_SCHEMA_VERSION!r}. Pre-v2 artifacts contain "
-                    f"target-leaked features (social_media_buzz, budget-from-target) "
-                    f"and are not loadable. Retrain and re-register."
+                    f"{CURRENT_FEATURE_SCHEMA_VERSION!r}. Older artifacts use an "
+                    f"incompatible feature set (v1 also contains target-leaked "
+                    f"features) and are not loadable. Retrain and re-register."
                 )
 
             with tempfile.NamedTemporaryFile(
