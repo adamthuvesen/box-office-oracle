@@ -1,0 +1,392 @@
+"""
+Unified movie data ingestion CLI.
+
+Orchestrates the full pipeline: TMDB Discovery → Enrichment → Snowflake Load.
+
+Usage:
+    # Full pipeline
+    box-office-ingest --start-year 2024 --load-to-snowflake
+
+    # Discovery only
+    box-office-ingest --discover-only --output movies_2024.csv
+
+    # Enrich existing CSV
+    box-office-ingest --enrich-only --input discovered.csv --output enriched.csv
+"""
+
+import argparse
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+
+from box_office.ingestion import tmdb_discovery
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+def run_discovery(
+    start_year: int,
+    end_year: int,
+    min_revenue: int,
+    page_limit: int,
+    existing_csv: Optional[str] = None,
+    output_path: Optional[str] = None,
+) -> pd.DataFrame:
+    """Run TMDB discovery to find new movies."""
+    get_existing_ids = tmdb_discovery.get_existing_ids
+    discover_movies = tmdb_discovery.discover_movies
+    filter_new_movies = tmdb_discovery.filter_new_movies
+
+    logger.info(f"Starting TMDB discovery: {start_year}-{end_year}")
+    logger.info(f"Min revenue filter: ${min_revenue:,}")
+
+    if existing_csv and Path(existing_csv).exists():
+        existing_ids, existing_titles = get_existing_ids(existing_csv)
+        logger.info(f"Loaded {len(existing_ids)} existing movies to skip")
+    else:
+        existing_ids, existing_titles = set(), set()
+        logger.info("No existing dataset - will fetch all movies")
+
+    candidates = discover_movies(
+        existing_ids=existing_ids,
+        start_year=start_year,
+        end_year=end_year,
+        page_limit=page_limit,
+        min_revenue=min_revenue,
+    )
+    logger.info(f"Discovered {len(candidates)} movies from TMDB")
+
+    new_movies = filter_new_movies(existing_ids, existing_titles, candidates)
+    logger.info(f"Found {len(new_movies)} unique new movies")
+
+    df = pd.DataFrame(new_movies)
+
+    if output_path:
+        df.to_csv(output_path, index=False)
+        logger.info(f"Saved discovery results to: {output_path}")
+
+    return df
+
+
+def run_enrichment(df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
+    """Run heuristic enrichment on discovered movies."""
+    from box_office.ingestion.data_enrichment import HeuristicEnricher
+
+    logger.info(f"Enriching {len(df)} movies with heuristics...")
+
+    enricher = HeuristicEnricher(seed=seed)
+    df_enriched = enricher.enrich(df)
+
+    logger.info("Enrichment complete")
+    return df_enriched
+
+
+def run_snowflake_load(
+    csv_path: str,
+    table_name: str = "BOX_OFFICE_V3",
+    schema: str = "RAW",
+    mode: str = "merge",
+) -> dict:
+    """Load enriched data to Snowflake."""
+    from box_office.utils.snowflake_loader import SnowflakeLoader
+
+    logger.info(f"Loading to Snowflake: {schema}.{table_name}")
+
+    loader = SnowflakeLoader(schema=schema)
+    result = loader.load_csv_to_raw(csv_path=csv_path, table_name=table_name, mode=mode)
+
+    logger.info(f"Snowflake load complete: {result}")
+    return result
+
+
+def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare DataFrame for Snowflake loading by mapping columns.
+
+    Maps TMDB discovery output to expected Snowflake schema.
+    """
+    column_mapping = {
+        "id": "tmdb_id",
+        "vote_average": "rating",
+        "vote_count": "votes",
+        "budget": "production_budget",
+        "revenue": "worldwide_gross",
+        "production_companies": "production_company",
+    }
+
+    df = df.copy()
+
+    # Only rename if target doesn't already exist (preserve pre-mapped columns).
+    rename_map = {
+        k: v
+        for k, v in column_mapping.items()
+        if k in df.columns and v not in df.columns
+    }
+    df = df.rename(columns=rename_map)
+
+    # RAW.BOX_OFFICE_V3 still owns the source column name; dbt exposes
+    # movie_rank at the staging boundary.
+    required_cols = [
+        "tmdb_id",
+        "imdb_id",
+        "rank",
+        "title",
+        "release_date",
+        "rating",
+        "votes",
+        "original_language",
+        "production_countries",
+        "genres",
+        "production_budget",
+        "director",
+        "actors",
+        "mpaa",
+        "release_type",
+        "franchise_rating",
+        "runtime",
+        "overview",
+        "tagline",
+        "keywords",
+        "ad_budget",
+        "production_company",
+        "release_year",
+        "release_type_encoded",
+        "production_company_encoded",
+        "mpaa_encoded",
+        "worldwide_gross",
+    ]
+
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    for col in missing_cols:
+        df[col] = None
+
+    # Extract release_year from release_date if missing
+    if "release_year" in df.columns and df["release_year"].isna().all():
+        if "release_date" in df.columns:
+            df["release_year"] = pd.to_datetime(
+                df["release_date"], errors="coerce"
+            ).dt.year
+
+    # Rank semantic is "1 = highest worldwide gross"; rows missing gross sort
+    # to the bottom.
+    if "rank" in df.columns and df["rank"].isna().all():
+        df = df.sort_values(
+            by="worldwide_gross", ascending=False, na_position="last", kind="mergesort"
+        ).reset_index(drop=True)
+        df["rank"] = range(1, len(df) + 1)
+
+    encoded_defaults = {
+        "release_type_encoded": 1,
+        "mpaa_encoded": 2,
+        "production_company_encoded": 0,
+    }
+    for column, default in encoded_defaults.items():
+        df[column] = (
+            pd.to_numeric(df[column], errors="coerce").fillna(default).astype(int)
+        )
+
+    return df[required_cols]
+
+
+def main():
+    """Main entry point for ingestion CLI."""
+    parser = argparse.ArgumentParser(
+        description="Movie data ingestion pipeline: TMDB → Enrichment → Snowflake",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Full pipeline: discover 2024 movies and load to Snowflake
+  box-office-ingest --start-year 2024 --load-to-snowflake
+
+  # Discovery only (save to CSV)
+  box-office-ingest --discover-only --start-year 2024 --output movies_2024.csv
+
+  # Enrich existing CSV
+  box-office-ingest --enrich-only --input discovered.csv --output enriched.csv
+
+  # Custom year range
+  box-office-ingest --start-year 2020 --end-year 2023 --load-to-snowflake
+        """,
+    )
+
+    # Mode selection
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--discover-only",
+        action="store_true",
+        help="Only run TMDB discovery, skip enrichment and loading",
+    )
+    mode_group.add_argument(
+        "--enrich-only", action="store_true", help="Only run enrichment on existing CSV"
+    )
+
+    # Discovery options
+    parser.add_argument(
+        "--start-year",
+        type=int,
+        default=2024,
+        help="Start year for movie discovery (default: 2024)",
+    )
+    parser.add_argument(
+        "--end-year",
+        type=int,
+        default=None,
+        help="End year for discovery (default: current year)",
+    )
+    parser.add_argument(
+        "--min-revenue",
+        type=int,
+        default=50_000_000,
+        help="Minimum worldwide revenue filter (default: 50M)",
+    )
+    parser.add_argument(
+        "--page-limit",
+        type=int,
+        default=10,
+        help="Max pages per year from TMDB API (default: 10)",
+    )
+    parser.add_argument(
+        "--existing-csv", help="Path to existing dataset for deduplication"
+    )
+
+    # I/O options
+    parser.add_argument(
+        "--input", dest="input_csv", help="Input CSV for enrich-only mode"
+    )
+    parser.add_argument("--output", dest="output_csv", help="Output CSV path")
+
+    # Snowflake options
+    parser.add_argument(
+        "--load-to-snowflake",
+        action="store_true",
+        help="Load results to Snowflake after enrichment",
+    )
+    parser.add_argument(
+        "--table",
+        default="BOX_OFFICE_V3",
+        help="Target Snowflake table (default: BOX_OFFICE_V3)",
+    )
+    parser.add_argument(
+        "--schema", default="RAW", help="Target Snowflake schema (default: RAW)"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["merge", "overwrite"],
+        default="merge",
+        help="Snowflake load mode (default: merge)",
+    )
+
+    # Other options
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for heuristic enrichment (default: 42)",
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
+    )
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Set default end year to current year
+    if args.end_year is None:
+        args.end_year = datetime.now().year
+
+    # Generate default output path
+    if args.output_csv is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.output_csv = f"data/external/tmdb/ingested_movies_{args.start_year}_{args.end_year}_{timestamp}.csv"
+
+    logger.info("Movie Data Ingestion Pipeline")
+
+    try:
+        if args.enrich_only:
+            if not args.input_csv:
+                logger.error("--input required for --enrich-only mode")
+                sys.exit(1)
+
+            logger.info("Mode: Enrich only")
+            logger.info(f"Input: {args.input_csv}")
+            logger.info(f"Output: {args.output_csv}")
+
+            df = pd.read_csv(args.input_csv)
+            df = run_enrichment(df, seed=args.seed)
+            df = prepare_for_snowflake(df)
+            df.to_csv(args.output_csv, index=False)
+            logger.info(f"Saved enriched data to: {args.output_csv}")
+
+        elif args.discover_only:
+            logger.info("Mode: Discovery only")
+            logger.info(f"Years: {args.start_year}-{args.end_year}")
+            logger.info(f"Output: {args.output_csv}")
+
+            df = run_discovery(
+                start_year=args.start_year,
+                end_year=args.end_year,
+                min_revenue=args.min_revenue,
+                page_limit=args.page_limit,
+                existing_csv=args.existing_csv,
+                output_path=args.output_csv,
+            )
+            logger.info(f"Discovered {len(df)} movies")
+
+        else:
+            logger.info("Mode: Full pipeline")
+            logger.info(f"Years: {args.start_year}-{args.end_year}")
+            logger.info(f"Load to Snowflake: {args.load_to_snowflake}")
+
+            logger.info("\n--- Step 1: TMDB Discovery ---")
+            df = run_discovery(
+                start_year=args.start_year,
+                end_year=args.end_year,
+                min_revenue=args.min_revenue,
+                page_limit=args.page_limit,
+                existing_csv=args.existing_csv,
+            )
+
+            if len(df) == 0:
+                logger.info("No new movies discovered. Exiting.")
+                return 0
+
+            logger.info("\n--- Step 2: Heuristic Enrichment ---")
+            df = run_enrichment(df, seed=args.seed)
+
+            logger.info("\n--- Step 3: Prepare for Snowflake ---")
+            df = prepare_for_snowflake(df)
+
+            df.to_csv(args.output_csv, index=False)
+            logger.info(f"Saved to: {args.output_csv}")
+
+            if args.load_to_snowflake:
+                logger.info("\n--- Step 4: Load to Snowflake ---")
+                result = run_snowflake_load(
+                    csv_path=args.output_csv,
+                    table_name=args.table,
+                    schema=args.schema,
+                    mode=args.mode,
+                )
+                logger.info(f"Load result: {result}")
+
+        logger.info("\n" + "=" * 60)
+        logger.info("Pipeline Complete")
+        return 0
+
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}")
+        logger.debug("Full traceback:", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

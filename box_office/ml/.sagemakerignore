@@ -1,0 +1,9 @@
+# Exclude Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Exclude any local test files or artifacts if they exist
+tests/
+artifacts/

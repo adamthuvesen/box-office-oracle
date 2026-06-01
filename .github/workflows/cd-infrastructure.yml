@@ -1,0 +1,662 @@
+name: CD - Infrastructure Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+      skip_tests:
+        description: "Skip running tests before deployment"
+        required: false
+        default: false
+        type: boolean
+      deploy_inference_api:
+        description: "Deploy the public inference API Lambda + Function URL. Off by default — when off, the next infra apply will tear down any existing Lambda/URL/alarms."
+        required: false
+        default: false
+        type: boolean
+
+# Least privilege by default; the OIDC jobs below declare id-token: write.
+permissions: {}
+
+env:
+  PYTHON_VERSION: "3.12"
+  AWS_REGION: "eu-north-1"
+  TF_STATE_KEY: "box-office/terraform.tfstate"
+  TF_STATE_LOCK_TABLE: "terraform-state-lock"
+
+jobs:
+  preflight:
+    name: Preflight (deploy credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      can_deploy: ${{ steps.check.outputs.can_deploy }}
+    steps:
+      - name: Check deploy credentials
+        id: check
+        env:
+          AWS_OIDC_ROLE_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        run: |
+          if [ -n "$AWS_OIDC_ROLE_ARN" ]; then
+            echo "can_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AWS OIDC role not configured; skipping infrastructure deployment."
+          fi
+
+  pre-deploy-tests:
+    needs: [preflight]
+    if: ${{ needs.preflight.outputs.can_deploy == 'true' && !contains(github.event.head_commit.message, '[skip cd]') && !inputs.skip_tests }}
+    name: Pre-deployment Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          version: "0.5.13"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-test-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-test-
+            ${{ runner.os }}-uv-
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra test --frozen
+
+      - name: Setup Snowflake Private Key for Tests
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SNOWFLAKE_PRIVATE_KEY" ]; then
+            echo "::notice::SNOWFLAKE_PRIVATE_KEY not set; running hermetic tests without Snowflake credentials."
+            exit 0
+          fi
+          KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
+          printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "Snowflake private key materialized at \$RUNNER_TEMP"
+
+      - name: Run critical tests
+        env:
+          # AWS Configuration
+          SAGEMAKER_ROLE_ARN: ${{ secrets.SAGEMAKER_ROLE_ARN }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET || secrets.SAGEMAKER_BUCKET || secrets.S3_BUCKET_NAME }}
+
+          # Snowflake Configuration
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
+          SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
+          SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
+          SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
+          # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the previous step via $GITHUB_ENV.
+          SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+        run: |
+          uv run pytest tests/test_config.py -v
+          uv run pytest tests/test_model_registry.py -v
+
+  deploy-infrastructure:
+    if: ${{ always() && needs.preflight.outputs.can_deploy == 'true' && !contains(github.event.head_commit.message, '[skip cd]') && (needs.pre-deploy-tests.result == 'success' || needs.pre-deploy-tests.result == 'skipped') }}
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+    needs: [preflight, pre-deploy-tests]
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      ecr_repository_url: ${{ steps.terraform.outputs.ecr_repository_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Terraform Init
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
+        run: |
+          cd infrastructure/terraform
+          terraform init \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Plan
+        run: |
+          cd infrastructure/terraform
+          terraform plan -var-file="environments/${{ steps.env.outputs.environment }}.tfvars" -out=plan.tfplan
+
+      - name: Terraform Apply
+        run: |
+          cd infrastructure/terraform
+          terraform apply -auto-approve plan.tfplan
+
+      - name: Save Terraform Outputs
+        id: terraform
+        run: |
+          cd infrastructure/terraform
+
+          # Capture only the specific outputs we need. We deliberately do not
+          # dumpterraform outputwholesale — it would print role/bucket/function
+          # ARNs (and the account id) into the public job log.
+          echo "sagemaker_role_arn=$(terraform output -raw sagemaker_execution_role_arn)" >> $GITHUB_OUTPUT
+          echo "s3_bucket=$(terraform output -raw sagemaker_artifacts_bucket)" >> $GITHUB_OUTPUT
+
+          # Check if ECR repository URL is available
+          ECR_URL=$(terraform output -raw inference_api_ecr_repository_url 2>/dev/null || echo "not_available")
+          echo "ecr_repository_url=$ECR_URL" >> $GITHUB_OUTPUT
+
+          if [ "$ECR_URL" != "not_available" ] && [ "$ECR_URL" != "null" ] && [ -n "$ECR_URL" ]; then
+            # Don't print the URL: it embeds the AWS account ID and the log is public.
+            echo "ECR repository URL resolved."
+          else
+            echo "ECR repository URL not available in outputs"
+          fi
+
+  build-inference-image:
+    if: ${{ !contains(github.event.head_commit.message, '[skip cd]') && inputs.deploy_inference_api }}
+    name: Build and Push Inference Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+    needs: [deploy-infrastructure]
+    outputs:
+      image_uri: ${{ steps.outputs.outputs.image_uri }}
+      image_tag: ${{ steps.outputs.outputs.image_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get ECR repository URI
+        id: ecr
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
+        run: |
+          # First try to use the output from deploy-infrastructure job
+          ECR_URL="${{ needs.deploy-infrastructure.outputs.ecr_repository_url }}"
+
+          # If not available, query Terraform directly
+          if [ -z "$ECR_URL" ] || [ "$ECR_URL" == "null" ] || [ "$ECR_URL" == "not_available" ]; then
+            echo "ECR URL not available from job output, querying Terraform..."
+            cd infrastructure/terraform
+            terraform init \
+              -backend-config="bucket=${TF_STATE_BUCKET}" \
+              -backend-config="key=${TF_STATE_KEY}" \
+              -backend-config="region=${AWS_REGION}" \
+              -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
+              -backend-config="encrypt=true"
+
+            ECR_URL=$(terraform output -raw inference_api_ecr_repository_url 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$ECR_URL" ] || [ "$ECR_URL" == "null" ] || [ "$ECR_URL" == "not_available" ]; then
+            echo "Failed to resolve the ECR repository URL (required for the Docker image build)."
+            echo "Re-run the deploy-infrastructure job and confirm the inference module created the repository."
+            exit 1
+          fi
+
+          # Don't print the URL: it embeds the AWS account ID and the log is public.
+          echo "repository_uri=$ECR_URL" >> $GITHUB_OUTPUT
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@fa648b43de3d4d023bcb3f89ed6940096949c419  # v2
+
+      - name: Generate image tag
+        id: tag
+        run: |
+          # Use commit SHA for unique tagging
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          IMAGE_TAG="v${TIMESTAMP}-${SHORT_SHA}"
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Debug Docker build parameters
+        run: |
+          echo "Docker build parameters:"
+          echo "Repository URI: ${{ steps.ecr.outputs.repository_uri }}"
+          echo "Image Tag: ${{ steps.tag.outputs.image_tag }}"
+          echo "Context: ./box_office/inference"
+          echo "Dockerfile: ./infrastructure/docker/inference/Dockerfile"
+
+          # Verify the context and dockerfile exist
+          if [ ! -d "./box_office/inference" ]; then
+            echo "Context directory './box_office/inference' not found"
+            exit 1
+          fi
+
+          if [ ! -f "./infrastructure/docker/inference/Dockerfile" ]; then
+            echo "Dockerfile './infrastructure/docker/inference/Dockerfile' not found"
+            exit 1
+          fi
+
+          echo "Context and Dockerfile verified"
+
+      - name: Build and push Docker image (Lambda-compatible)
+        id: build
+        run: |
+          # ECR repo is IMMUTABLE: tag by SHA only, no :latest. Rollback is by digest.
+          # Build context is the repo root so the box_office package is included.
+          docker build \
+            --platform linux/amd64 \
+            --tag ${{ steps.ecr.outputs.repository_uri }}:${{ steps.tag.outputs.image_tag }} \
+            --file infrastructure/docker/inference/Dockerfile \
+            .
+
+          echo "Pushing image to ECR (SHA-derived tag only, no :latest)..."
+          docker push ${{ steps.ecr.outputs.repository_uri }}:${{ steps.tag.outputs.image_tag }}
+
+          echo "Docker image pushed successfully"
+
+      - name: Test Docker image
+        run: |
+          echo "Testing Docker image locally..."
+
+          # Test dependencies
+          echo "Testing dependencies..."
+          docker run --rm \
+            --platform linux/amd64 \
+            --entrypoint python \
+            ${{ steps.ecr.outputs.repository_uri }}:${{ steps.tag.outputs.image_tag }} \
+            -c "
+          import sys
+          required_packages = ['fastapi', 'mangum', 'boto3', 'pandas', 'numpy', 'sklearn', 'xgboost', 'pydantic']
+          failed_imports = []
+          for package in required_packages:
+              try:
+                  if package == 'sklearn':
+                      import sklearn
+                  else:
+                      __import__(package)
+                  print(f'{package} OK')
+              except ImportError:
+                  failed_imports.append(package)
+          if failed_imports:
+              print(f'Missing: {failed_imports}')
+              sys.exit(1)
+          print('All dependencies available')
+          "
+
+          # Test FastAPI import
+          echo "Testing FastAPI app import..."
+          docker run --rm \
+            --platform linux/amd64 \
+            --entrypoint python \
+            ${{ steps.ecr.outputs.repository_uri }}:${{ steps.tag.outputs.image_tag }} \
+            -c "from app.main import app; print('FastAPI app import OK')"
+
+          echo "Docker image tests completed"
+
+      - name: Set outputs
+        id: outputs
+        run: |
+          echo "image_uri=${{ steps.ecr.outputs.repository_uri }}:${{ steps.tag.outputs.image_tag }}" >> $GITHUB_OUTPUT
+          echo "image_tag=${{ steps.tag.outputs.image_tag }}" >> $GITHUB_OUTPUT
+
+  deploy-inference:
+    if: ${{ !contains(github.event.head_commit.message, '[skip cd]') && inputs.deploy_inference_api }}
+    name: Deploy Inference API
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+    needs: [deploy-infrastructure, build-inference-image]
+    outputs:
+      api_endpoint: ${{ steps.deploy.outputs.api_endpoint }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy or Update Lambda function
+        id: deploy
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
+          # Required when enable_function_url = true (the module precondition
+          # refuses to create a public URL without it). Set this repo secret.
+          TF_VAR_api_key: ${{ secrets.INFERENCE_API_KEY }}
+        run: |
+          cd infrastructure/terraform
+          terraform init \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
+
+          IMAGE_URI="${{ needs.build-inference-image.outputs.image_uri }}"
+          echo "Image URI to deploy: $IMAGE_URI"
+
+          # Validate image URI from the build step
+          if [ -z "$IMAGE_URI" ]; then
+            echo "Image URI from build step is empty. Cannot proceed."
+            exit 1
+          fi
+
+          TFVARS_FILE="environments/${{ steps.env.outputs.environment }}.tfvars"
+
+          echo "Planning Terraform deployment..."
+          # Pass the new image URI as a variable. Terraform will handle the rest.
+          # It will create the Lambda function if it doesn't exist, or simply
+          # update the image on the existing function if it does.
+          terraform plan \
+            -var-file="$TFVARS_FILE" \
+            -var="lambda_image_uri=$IMAGE_URI" \
+            -out=plan.tfplan
+
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve plan.tfplan
+
+          # Get outputs after apply
+          FUNCTION_NAME=$(terraform output -raw inference_api_lambda_function_name 2>/dev/null || echo "")
+          echo "Lambda function deployed: $FUNCTION_NAME"
+
+          echo "Retrieving API endpoint..."
+          API_ENDPOINT=$(terraform output -raw inference_api_function_url 2>/dev/null || echo "")
+
+          if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "null" ]]; then
+            echo "api_endpoint=${API_ENDPOINT}" >> $GITHUB_OUTPUT
+            echo "API Endpoint: ${API_ENDPOINT}"
+          else
+            echo "Could not retrieve API endpoint."
+            echo "api_endpoint=" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Deployed Image: ${{ needs.build-inference-image.outputs.image_uri }}"
+
+  validate-deployment:
+    if: ${{ always() && !contains(github.event.head_commit.message, '[skip cd]') && needs.deploy-infrastructure.result == 'success' }}
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
+    needs: [deploy-infrastructure, deploy-inference]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          version: "0.5.13"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-validation-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-validation-
+            ${{ runner.os }}-uv-
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Validate AWS Resources
+        run: |
+          uv run python -c "
+          import boto3
+          import sys
+
+          try:
+              # Check SageMaker role exists
+              iam = boto3.client('iam')
+              sts = boto3.client('sts')
+              account_id = sts.get_caller_identity()['Account']
+
+              role_name = 'box-office-dev-sagemaker-execution-role'
+              iam.get_role(RoleName=role_name)
+              print(f'SageMaker role {role_name} exists')
+
+              # Check S3 bucket exists
+              s3 = boto3.client('s3')
+              bucket_name = f'box-office-dev-sagemaker-artifacts-{account_id}'
+              s3.head_bucket(Bucket=bucket_name)
+              print(f'S3 bucket {bucket_name} exists')
+
+              print('Infrastructure validation successful')
+          except Exception as e:
+              print(f'Infrastructure validation failed: {e}')
+              sys.exit(1)
+                  "
+
+      - name: Validate Inference API
+        if: ${{ needs.deploy-inference.result == 'success' }}
+        env:
+          # Optional: set in repo secrets so /model/info works when Lambda has API_KEY
+          INFERENCE_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
+        run: |
+          uv run python -c "
+          import os
+          import sys
+          import time
+
+          import requests
+
+          # Get API endpoint from deployment output
+          api_endpoint = '${{ needs.deploy-inference.outputs.api_endpoint }}'
+          if not api_endpoint or api_endpoint == 'null':
+              print('No API endpoint found')
+              sys.exit(1)
+
+          print(f'Testing API endpoint: {api_endpoint}')
+
+          api_key = (os.environ.get('INFERENCE_API_KEY') or '').strip()
+          authed_headers = {}
+          if api_key:
+              authed_headers['X-API-Key'] = api_key
+
+          try:
+              # Test health endpoint with retries to absorb Lambda cold-start latency
+              health_url = f'{api_endpoint.rstrip(\"/\")}/health'
+              print(f'Testing health endpoint (with retries for cold start): {health_url}')
+              health_response = None
+              last_error = None
+              for attempt in range(1, 4):
+                  try:
+                      health_response = requests.get(health_url, timeout=60.0)
+                      break
+                  except requests.RequestException as e:
+                      last_error = e
+                      print(f'  attempt {attempt}/3 failed: {e}')
+                      if attempt < 3:
+                          time.sleep(5)
+
+              if health_response is None:
+                  print(f'Health check failed after 3 attempts: {last_error}')
+                  sys.exit(1)
+
+              if health_response.status_code == 200:
+                  print(f'Health check passed: {health_response.json()}')
+              else:
+                  print(f'Health check failed: {health_response.status_code} - {health_response.text}')
+                  sys.exit(1)
+
+              # Test model info endpoint
+              print('Testing model info endpoint...')
+              info_url = f'{api_endpoint.rstrip(\"/\")}/model/info'
+              response = requests.get(info_url, headers=authed_headers, timeout=30.0)
+              if response.status_code == 200:
+                  print(f'Model info endpoint working: {response.json()}')
+              else:
+                  print(f'Model info endpoint returned: {response.status_code} (may be expected if no model deployed yet)')
+
+          except Exception as e:
+              print(f'API validation failed: {str(e)}')
+              sys.exit(1)
+          "
+
+  notify:
+    if: ${{ always() && !contains(github.event.head_commit.message, '[skip cd]') }}
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      [
+        deploy-infrastructure,
+        build-inference-image,
+        deploy-inference,
+        validate-deployment,
+      ]
+
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create deployment summary
+        run: |
+          echo "## Infrastructure Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ steps.env.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Infrastructure**: ${{ needs.deploy-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Inference Image Build**: ${{ needs.build-inference-image.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Inference Deployment**: ${{ needs.deploy-inference.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Validation**: ${{ needs.validate-deployment.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Add inference details if successful
+          if [ "${{ needs.deploy-inference.result }}" == "success" ]; then
+            echo "### Inference API" >> $GITHUB_STEP_SUMMARY
+            echo "- **Endpoint**: ${{ needs.deploy-inference.outputs.api_endpoint }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Image**: ${{ needs.build-inference-image.outputs.image_uri }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: ${{ needs.build-inference-image.outputs.image_tag }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.validate-deployment.result }}" == "success" ]; then
+            echo "**Infrastructure deployment successful!**" >> $GITHUB_STEP_SUMMARY
+            echo "The ML pipeline infrastructure and inference API are ready for use." >> $GITHUB_STEP_SUMMARY
+
+            # Add API usage examples if inference deployed successfully
+            if [ "${{ needs.deploy-inference.result }}" == "success" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### API Usage Examples" >> $GITHUB_STEP_SUMMARY
+              echo 'bash' >> $GITHUB_STEP_SUMMARY
+              echo "# Health check (no API key)" >> $GITHUB_STEP_SUMMARY
+              echo "curl ${{ needs.deploy-inference.outputs.api_endpoint }}/health" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "# Model info (set X-API-Key if Lambda has API_KEY)" >> $GITHUB_STEP_SUMMARY
+              echo "curl -H \"X-API-Key: \$API_KEY\" ${{ needs.deploy-inference.outputs.api_endpoint }}/model/info" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "# Make prediction" >> $GITHUB_STEP_SUMMARY
+              echo "curl -X POST ${{ needs.deploy-inference.outputs.api_endpoint }}/predict \\" >> $GITHUB_STEP_SUMMARY
+              echo '  -H "Content-Type: application/json" \' >> $GITHUB_STEP_SUMMARY
+              echo '  -H "X-API-Key: $API_KEY" \' >> $GITHUB_STEP_SUMMARY
+              echo '  -d '"'"'{"budget": 100000000, "runtime": 120, "release_month": 6}'"'"'' >> $GITHUB_STEP_SUMMARY
+              echo '' >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "**Infrastructure deployment failed or incomplete**" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the logs for details." >> $GITHUB_STEP_SUMMARY
+          fi

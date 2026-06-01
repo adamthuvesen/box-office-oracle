@@ -1,0 +1,25 @@
+transformations:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      # Private key auth avoids MFA; the absence of a password field is intentional.
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      # Role comes from SNOWFLAKE_ROLE and must be least-privilege (e.g.
+      # DBT_RUNNER), never ACCOUNTADMIN.
+      role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA_STAGING') }}"
+      threads: 4
+      client_session_keep_alive: False
+      connect_retries: 2
+      connect_timeout: 60
+      # OCSP certificate revocation checking. Default secure (enabled). Local
+      # dev can opt out by exporting `DBT_DISABLE_OCSP=true` if their CA bundle
+      # is stale; CI must never set the var so revocation is enforced. See
+      # transformations/README.md for the canonical fix path.
+      # The case-insensitive comparison accepts true/True/TRUE/1.
+      disable_ocsp_checks: "{{ env_var('DBT_DISABLE_OCSP', 'false') | lower in ['true', '1', 'yes'] }}"

@@ -1,0 +1,17 @@
+version: 2
+
+macros:
+  - name: generate_schema_name
+    description: >
+      Overrides dbt's default schema-name logic. When a custom_schema_name is
+      provided it is used verbatim (trimmed and uppercased) instead of the
+      `dbt_<custom>` prefixed name that dbt would produce by default. When no
+      custom schema is set the target schema from the active profile is used.
+      This keeps Snowflake schema names clean and predictable across environments.
+    arguments:
+      - name: custom_schema_name
+        type: string
+        description: "Optional custom schema override; omit to fall back to target.schema."
+      - name: node
+        type: node
+        description: "The dbt node being compiled (passed automatically by dbt)."

@@ -1,0 +1,223 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "box-office-oracle"
+version = "0.1.0"
+description = "ML pipeline for box office revenue prediction using AWS SageMaker, Snowflake, and Prefect"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Adam Thuvesen"}]
+maintainers = [{name = "Adam Thuvesen"}]
+keywords = ["machine-learning", "mlops", "aws", "sagemaker", "box-office", "prediction", "xgboost"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # AWS & Cloud
+    "boto3==1.42.90",
+    "botocore==1.42.90",
+
+    # Data & Plotting (back to compatible versions)
+    "numpy==1.26.4",
+    "pandas==2.3.1",
+    "scikit-learn==1.7.0",
+    "scipy==1.16.0",
+
+    # Data Transformation
+    "dbt-core==1.11.11",
+    "dbt-snowflake==1.11.5",
+
+    # Environment & Configuration
+    "python-dotenv==1.2.2",
+    "PyYAML==6.0.2",
+
+    # Machine Learning & Optimization
+    "optuna==4.9.0",
+    "optuna-integration==4.9.0",
+    "xgboost==3.2.0",
+
+    # SageMaker
+    "sagemaker==2.257.2",
+
+    # Security & Cryptography
+    "cryptography==46.0.7",
+
+    # Snowflake
+    "snowflake-connector-python[pandas]==4.6.0",
+
+    # Utilities
+    "joblib==1.5.3",
+
+    # Workflow Orchestration
+    "prefect==3.7.3",
+    "prefect-aws==0.7.9",
+    "prefect-dbt==0.7.24",
+    "prefect-github==0.4.2",
+
+    # Additional Core Dependencies
+    "SQLAlchemy==2.0.50",
+    "pydantic-settings==2.14.1",
+
+    # Feature Store - Moved to optional dependencies due to numpy compatibility
+    # "feast[redis,snowflake]==0.52.0",
+    # "redis>=4.6.0,<5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Development & Testing
+    "pytest==9.0.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov==7.1.0",
+    "flake8==7.3.0",
+    "mypy==1.13.0",
+    "pip-tools==7.5.3",
+    "pre-commit>=3.0.0",
+
+    # Jupyter & Notebooks
+    "jupyter==1.1.1",
+    "ipykernel==7.2.0",
+    "ipython==9.14.0",
+
+    # Infrastructure & Deployment
+    "docker==7.1.0",
+
+    # Data & Plotting (matplotlib removed due to numpy compatibility)
+    "seaborn==0.11.1",
+    "plotly==6.7.0",
+
+    # Machine Learning
+    "lightgbm==4.6.0",
+    "catboost==1.2.10",
+
+    # Utilities
+    "bs4==0.0.2",
+    "beautifulsoup4==4.14.3",
+
+    # AI & LLM APIs
+    "openai==2.39.0",
+
+    # PyTorch
+    "torch==2.12.0",
+
+    # Additional Core Dependencies
+    "requests==2.34.2",
+    "Jinja2==3.1.6",
+    "click==8.4.1",
+
+    # Data Processing & Validation
+    "pydantic==2.13.4",
+    "jsonschema==4.26.0",
+
+    # ML Explainability
+    "shap==0.46.0",
+]
+
+inference = [
+    "fastapi==0.136.3",
+    "mangum==0.21.0",
+    "uvicorn==0.48.0",
+    "pydantic-settings==2.14.1",
+]
+
+test = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "pytest-asyncio>=0.21.1",
+]
+
+
+[project.scripts]
+box-office-pipeline = "box_office.orchestration.flows.ml_pipeline:main"
+box-office-api = "box_office.inference.app.main:cli_main"
+box-office-ingest = "box_office.ingestion.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/adamthuvesen/box-office-oracle"
+Documentation = "https://github.com/adamthuvesen/box-office-oracle/blob/main/README.md"
+Repository = "https://github.com/adamthuvesen/box-office-oracle"
+"Bug Reports" = "https://github.com/adamthuvesen/box-office-oracle/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["box_office*"]
+exclude = ["tests*", "analysis*", "artifacts*", "docs*", "infrastructure*", "transformations*", "data*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yml", "*.yaml", "*.sql", "*.json", "*.txt"]
+"box_office.inference" = ["**/*.txt", "**/*.json"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | transformations/target
+  | transformations/dbt_packages
+)/
+'''
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests", "box_office/inference/tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: Unit tests that test individual components in isolation",
+    "integration: Integration tests that test multiple components together",
+    "slow: Tests that take a long time to run",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "snowflake.*",
+    "sagemaker.*",
+    "prefect.*",
+    "boto3.*",
+    "botocore.*",
+    "xgboost.*",
+    "optuna.*",
+    "catboost.*",
+]
+ignore_missing_imports = true
