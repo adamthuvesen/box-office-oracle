@@ -52,12 +52,11 @@ uv run python -m box_office.ml.backtest_report \
   --output artifacts/per_year_table
 ```
 
-### Reality Check
+### Note
 
 - **What works:** Established franchises, summer tentpoles, and films with massive pre-release hype. The model interpolates well in data-rich regions.
-- **What fails:** Low-budget breakout hits (*Get Out*, *Everything Everywhere All at Once*), foreign-language crossovers, and post-2020 COVID anomalies. The baseline often beats the model here.
-- **No causal claims:** Features like `FRANCHISE_RATING` and `COMPANY_FREQ` correlate with revenue but don't cause it. This is an estimation tool, not a causal inference engine.
-
+- **What fails:** Low-budget breakout hits (*Get Out*, *Everything Everywhere All at Once*), foreign-language crossovers, and post-2020 COVID anomalies.
+- 
 ## Configuration
 
 Settings are loaded from environment variables and a `.env` file via Pydantic,
