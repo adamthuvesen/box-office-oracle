@@ -16,6 +16,7 @@ from box_office.utils.snowflake_connection import (
     create_snowflake_connection,
     enforce_data_types,
 )
+from box_office.utils.snowflake_loader import fully_qualified_name
 
 logger = logging.getLogger(__name__)
 
@@ -73,16 +74,27 @@ def load_processed_data_from_snowflake():
                 logger.info(
                     "Loading training data with JOIN on ROW_ID to ensure alignment..."
                 )
+                # Validate the env-driven database/schema identifiers before
+                # interpolating them into the query (the table names are
+                # literals). Mirrors the hardening already applied in
+                # snowflake_loader.py and data_tasks.py so no execute site
+                # interpolates an unvalidated identifier.
+                database = config.snowflake.database
+                schema = config.snowflake.schemas.ml_training
+                x_train_scaled = fully_qualified_name(database, schema, "X_TRAIN_SCALED")
+                x_train = fully_qualified_name(database, schema, "X_TRAIN")
+                y_train_log = fully_qualified_name(database, schema, "Y_TRAIN_LOG")
+
                 # Single query with JOIN on ROW_ID guarantees perfect row alignment
                 query = f"""
             SELECT
                 xs.*,
                 x.RELEASE_YEAR as RELEASE_YEAR_ORIGINAL,
                 y.GROSS_LOG
-            FROM {config.snowflake.database}.{config.snowflake.schemas.ml_training}.X_TRAIN_SCALED xs
-            INNER JOIN {config.snowflake.database}.{config.snowflake.schemas.ml_training}.X_TRAIN x
+            FROM {x_train_scaled} xs
+            INNER JOIN {x_train} x
                 ON xs.ROW_ID = x.ROW_ID
-            INNER JOIN {config.snowflake.database}.{config.snowflake.schemas.ml_training}.Y_TRAIN_LOG y
+            INNER JOIN {y_train_log} y
                 ON xs.ROW_ID = y.ROW_ID
             ORDER BY xs.ROW_ID
         """

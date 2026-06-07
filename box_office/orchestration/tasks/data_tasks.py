@@ -12,7 +12,10 @@ from box_office.utils.snowflake_connection import (
     create_snowflake_connection,
     enforce_data_types,
 )
-from box_office.utils.snowflake_loader import validate_sql_identifier
+from box_office.utils.snowflake_loader import (
+    fully_qualified_name,
+    validate_sql_identifier,
+)
 from box_office.ml.artifacts import FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL
 from box_office.ml.data_prep import TargetTransformer
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
@@ -169,7 +172,8 @@ def load_staging_box_office_from_snowflake():
 
         try:
             with conn.cursor() as cursor:
-                query = f"SELECT * FROM {database}.{schema}.STG_BOX_OFFICE"
+                table = fully_qualified_name(database, schema, "STG_BOX_OFFICE")
+                query = f"SELECT * FROM {table}"
                 cursor.execute(query)
                 df = cursor.fetch_pandas_all()
         finally:
