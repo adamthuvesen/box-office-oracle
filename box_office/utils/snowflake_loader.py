@@ -55,6 +55,24 @@ def validate_sql_identifier(name: str, identifier_type: str = "identifier") -> s
     return name
 
 
+def fully_qualified_name(database: str, schema: str, table: str) -> str:
+    """Build a validated ``database.schema.table`` identifier for SQL interpolation.
+
+    Validates every component through :func:`validate_sql_identifier` as it
+    assembles the name, so a caller cannot interpolate an unvalidated identifier
+    into a query. Prefer this over hand-built ``f"{db}.{schema}.{table}"`` strings:
+    routing all FQN construction through one validated path means no site can
+    silently skip the check (the gap that this closes in the SageMaker loader).
+    """
+    return ".".join(
+        (
+            validate_sql_identifier(database, "database"),
+            validate_sql_identifier(schema, "schema"),
+            validate_sql_identifier(table, "table"),
+        )
+    )
+
+
 logger = logging.getLogger(__name__)
 
 # Expected columns for BOX_OFFICE_V3: keep in sync with
@@ -258,8 +276,10 @@ class SnowflakeLoader:
         staging_table = f"STG_{table_name}_TEMP"
 
         with self._snowflake_cursor() as (cursor, conn):
-            full_staging = f"{self.database}.{self.schema}.{staging_table}"
-            full_target = f"{self.database}.{self.schema}.{table_name}"
+            full_staging = fully_qualified_name(
+                self.database, self.schema, staging_table
+            )
+            full_target = fully_qualified_name(self.database, self.schema, table_name)
 
             try:
                 logger.info(f"Creating staging table: {staging_table}")
@@ -328,7 +348,7 @@ class SnowflakeLoader:
 
         df_upload = df.copy()
         df_upload.columns = df_upload.columns.str.upper()
-        full_target = f"{self.database}.{self.schema}.{table_name}"
+        full_target = fully_qualified_name(self.database, self.schema, table_name)
 
         with self._snowflake_cursor() as (cursor, conn):
             logger.info(f"Overwriting table: {full_target}")
@@ -360,7 +380,7 @@ class SnowflakeLoader:
         see a misleading "Net change: N rows" log on a transient outage.
         """
         self._validate_identifier(table_name, "table")
-        full_target = f"{self.database}.{self.schema}.{table_name}"
+        full_target = fully_qualified_name(self.database, self.schema, table_name)
         try:
             with self._snowflake_cursor() as (cursor, conn):
                 cursor.execute(f"SELECT COUNT(*) FROM {full_target}")
@@ -381,7 +401,7 @@ class SnowflakeLoader:
         Connection / auth / network errors propagate.
         """
         self._validate_identifier(table_name, "table")
-        full_target = f"{self.database}.{self.schema}.{table_name}"
+        full_target = fully_qualified_name(self.database, self.schema, table_name)
         try:
             with self._snowflake_cursor() as (cursor, conn):
                 cursor.execute(f"SELECT DISTINCT TMDB_ID FROM {full_target}")

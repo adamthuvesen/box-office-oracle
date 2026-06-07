@@ -10,6 +10,7 @@ from box_office.utils.snowflake_loader import (
     EXPECTED_COLUMNS,
     NUMERIC_COLUMNS,
     STRING_COLUMNS,
+    fully_qualified_name,
 )
 
 
@@ -231,6 +232,31 @@ class TestSQLInjectionPrevention:
     def test_valid_table_names_accepted(self, loader, valid_name):
         result = loader._validate_identifier(valid_name, "table")
         assert result == valid_name
+
+
+class TestFullyQualifiedName:
+    def test_valid_components_joined(self):
+        assert (
+            fully_qualified_name("BOX_OFFICE", "ML_TRAINING", "X_TRAIN")
+            == "BOX_OFFICE.ML_TRAINING.X_TRAIN"
+        )
+
+    @pytest.mark.parametrize(
+        ("database", "schema", "table", "bad_part"),
+        [
+            ("BOX_OFFICE", "ML_TRAINING", "X_TRAIN; DROP TABLE Y--", "table"),
+            ("BOX_OFFICE", "ML_TRAINING' OR '1'='1", "X_TRAIN", "schema"),
+            ("BOX_OFFICE; DROP DATABASE X", "ML_TRAINING", "X_TRAIN", "database"),
+            # A dotted value must not slip through as a single component — it
+            # would otherwise let a caller smuggle in an extra qualifier.
+            ("BOX_OFFICE", "ML_TRAINING.PUBLIC", "X_TRAIN", "schema"),
+        ],
+    )
+    def test_injection_in_any_component_rejected(
+        self, database, schema, table, bad_part
+    ):
+        with pytest.raises(ValueError, match=f"Invalid {bad_part} name"):
+            fully_qualified_name(database, schema, table)
 
 
 class TestLoadModes:
