@@ -8,17 +8,17 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 | Layer               | Tool                         | Notes                                                                                                               |
 | ------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Data warehouse      | Snowflake                    | RAW → STAGING → ML_TRAINING schemas                                                                                 |
-| Transformations     | dbt-core + dbt-snowflake     | `[transformations/](../../transformations/)`                                                                           |
-| Feature engineering | scikit-learn + pandas        | Single `Pipeline` built by [`box_office/ml/feature_pipeline/`](../../box_office/ml/feature_pipeline/)                 |
+| Transformations     | dbt-core + dbt-snowflake     | `[transformations/](../transformations/)`                                                                           |
+| Feature engineering | scikit-learn + pandas        | Single `Pipeline` built by [`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)                 |
 | Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV                                                                                       |
 | Model registry      | AWS SageMaker Model Registry | manual approval gate at R² ≥ 0.75                                                                                   |
-| Inference           | Lambda (container image)     | `[box_office/inference/](../../box_office/inference)`                                                                  |
-| Orchestration       | Prefect                      | Three-phase flow in [`box_office/orchestration/flows/ml_pipeline.py`](../../box_office/orchestration/flows/ml_pipeline.py) |
-| Infra               | Terraform                    | `[infrastructure/terraform/](../../infrastructure/terraform)`                                                          |
+| Inference           | Lambda (container image)     | `[box_office/inference/](../box_office/inference)`                                                                  |
+| Orchestration       | Prefect                      | Three-phase flow in [`box_office/orchestration/flows/ml_pipeline.py`](../box_office/orchestration/flows/ml_pipeline.py) |
+| Infra               | Terraform                    | `[infrastructure/terraform/](../infrastructure/terraform)`                                                          |
 | CI/CD               | GitHub Actions               | OIDC → AWS, key-pair → Snowflake                                                                                    |
 
 
-Operational cost: ~$50/month. Training run: 2-5 min on ~2,400 movies. The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../../box_office/ml/backtest.py)) — never quoted as a single CV number, because the previous codebase's "0.70–0.85" figure leaned on a leaky synthetic feature.
+Operational cost: ~$50/month. Training run: 2-5 min on ~2,400 movies. The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) — never quoted as a single CV number, because the previous codebase's "0.70–0.85" figure leaned on a leaky synthetic feature.
 
 ## Data flow
 
@@ -46,21 +46,21 @@ ingestion (TMDB/IMDb) → Snowflake RAW
 
 ## Pipeline (three phases)
 
-`[box_office/orchestration/flows/ml_pipeline.py](../../box_office/orchestration/flows/ml_pipeline.py)` delegates to phase modules:
+`[box_office/orchestration/flows/ml_pipeline.py](../box_office/orchestration/flows/ml_pipeline.py)` delegates to phase modules:
 
 | Phase | Module | Responsibility |
 | ----- | ------ | -------------- |
-| Data | [`phases/data_phase.py`](../../box_office/orchestration/phases/data_phase.py) | dbt → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
-| Train | [`phases/train_phase.py`](../../box_office/orchestration/phases/train_phase.py) | In-memory `(X_TRAIN_SCALED, Y_TRAIN_LOG)` upload to S3 → SageMaker training → parse output metrics |
-| Registry | [`phases/registry_phase.py`](../../box_office/orchestration/phases/registry_phase.py) | Register model package → R² gate → optional promotion |
+| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
+| Train | [`phases/train_phase.py`](../box_office/orchestration/phases/train_phase.py) | In-memory `(X_TRAIN_SCALED, Y_TRAIN_LOG)` upload to S3 → SageMaker training → parse output metrics |
+| Registry | [`phases/registry_phase.py`](../box_office/orchestration/phases/registry_phase.py) | Register model package → R² gate → optional promotion |
 
 Snowflake `ML_TRAINING` tables remain the **audit/canonical store** after each data phase. SageMaker upload uses **in-memory frames** after successful saves (no Snowflake reload in the default flow). For manual/debug reload, use `sagemaker_train_job.load_processed_data_from_snowflake()`.
 
-Prefect `@task` wrappers in [`data_tasks`](../../box_office/orchestration/tasks/data_tasks.py) and [`training_tasks`](../../box_office/orchestration/tasks/training_tasks.py) retain retries and logging.
+Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/data_tasks.py) and [`training_tasks`](../box_office/orchestration/tasks/training_tasks.py) retain retries and logging.
 
 ## Feature engineering
 
-`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of six augmenting transformers plus a final raw-column strip. Turns 12 raw columns into **69 engineered features** in ~3 sec on 2,400 rows.
+`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of six augmenting transformers plus a final raw-column strip. Turns 12 raw columns into **69 engineered features** in ~3 sec on 2,400 rows.
 
 | Step                  | Adds | What it captures                                                                              |
 | --------------------- | ---- | --------------------------------------------------------------------------------------------- |
@@ -104,7 +104,7 @@ Production model lifecycle:
 
 Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v3`) with a `FeatureSchemaVersionMismatch` exception.
 
-CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../../box_office/ml/model_registry/aws_model_registry_cli.py)`.
+CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../box_office/ml/model_registry/aws_model_registry_cli.py)`.
 
 ## Snowflake schema
 
@@ -145,7 +145,7 @@ config.model.hyperparameters.n_estimators  # 2000
 
 ## Inference
 
-Lambda container (`[infrastructure/docker/inference/Dockerfile](../../infrastructure/docker/inference/Dockerfile)`) loads the latest approved model from the registry, verifies SHA256 against the manifest, then serves predictions via FastAPI + Mangum at the Function URL.
+Lambda container (`[infrastructure/docker/inference/Dockerfile](../infrastructure/docker/inference/Dockerfile)`) loads the latest approved model from the registry, verifies SHA256 against the manifest, then serves predictions via FastAPI + Mangum at the Function URL.
 
 Cold-start budget includes one `describe_model_package`, one S3 download, one SHA256 verify, one tar extract (with the `data` filter), and joblib loads of model + preprocessor + scaler. Warm invocations skip everything via the process-local `_extracted_artifacts_cache` dict.
 
@@ -173,7 +173,7 @@ A `tests/infrastructure/` suite asserts the posture offline by parsing `iam.tf` 
 
 ## Where to look next
 
-- For day-to-day commands: [README.md](../../README.md)
-- For AI-agent entry rules: [AGENTS.md](../../AGENTS.md)
+- For day-to-day commands: [README.md](../README.md)
+- For AI-agent entry rules: [AGENTS.md](../AGENTS.md)
 - For tests, style, and git workflow: [development.md](development.md)
 - For the actual code, the table above maps every layer to its module.

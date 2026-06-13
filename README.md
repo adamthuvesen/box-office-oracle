@@ -109,7 +109,7 @@ make datasets
 - **`box_office/inference/`**: Lambda FastAPI app
 - **`transformations/`**: dbt models
 - **`infrastructure/terraform/`**: IaC
-- **[`agents/docs/architecture.md`](agents/docs/architecture.md)**: Architecture deep-dive
+- **[`docs/architecture.md`](docs/architecture.md)**: Architecture deep-dive
 - **[`AGENTS.md`](AGENTS.md)**: AI coding agent conventions
 
 ## Tests
