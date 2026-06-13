@@ -77,7 +77,8 @@ dependencies = [
 dev = [
     # Development & Testing
     "pytest==9.0.3",
-    "pytest-asyncio>=0.24",
+    # >=1.0 registers asyncio_default_test_loop_scope; older releases break under --strict-config with pytest 9.
+    "pytest-asyncio>=1.0",
     "pytest-cov==7.1.0",
     "flake8==7.3.0",
     "mypy==1.13.0",
@@ -133,7 +134,7 @@ inference = [
 test = [
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "pytest-asyncio>=0.21.1",
+    "pytest-asyncio>=1.0",
 ]
 
 

@@ -1,6 +1,6 @@
 # Development playbook
 
-Non-negotiable rules and architecture context: [AGENTS.md](../../AGENTS.md) and [architecture.md](architecture.md).
+Non-negotiable rules and architecture context: [AGENTS.md](../AGENTS.md) and [architecture.md](architecture.md).
 
 ## Snowflake auth
 
@@ -16,11 +16,11 @@ SNOWFLAKE_ROLE=DBT_RUNNER
 
 ## Non-canonical scripts
 
-[`data/external/`](../../data/external/) holds one-off ingestion prototypes (TMDB discovery, LLM enrichment). They are **not** part of the `box_office` package contract; prefer [`box_office/ingestion/`](../../box_office/ingestion/) for maintained ingestion paths.
+[`data/external/`](../data/external/) holds one-off ingestion prototypes (TMDB discovery, LLM enrichment). They are **not** part of the `box_office` package contract; prefer [`box_office/ingestion/`](../box_office/ingestion/) for maintained ingestion paths.
 
 ## Test discipline
 
-- Tests live in [`tests/`](../../tests) (mirror the `box_office/` package layout) and [`box_office/inference/tests/`](../../box_office/inference/tests). Name `test_*.py`.
+- Tests live in [`tests/`](../tests) (mirror the `box_office/` package layout) and [`box_office/inference/tests/`](../box_office/inference/tests). Name `test_*.py`.
 - **Never** mutate `sys.modules` at module import. Real `boto3` / `snowflake-connector-python` / `sagemaker` import cleanly without contacting AWS — no mocking layer needed.
 - **Never** wrap a unit-under-test in `try/except: pass` and pass regardless. Use `pytest.raises` or assert a concrete value.
 - Random fixtures must be seeded (`np.random.default_rng(42)`).
