@@ -87,12 +87,14 @@ included) is in [`results/per_year_table.md`](results/per_year_table.md) and
 [`results/per_year_table.json`](results/per_year_table.json).
 
 Generated offline from the local training snapshot by [`scripts/run_backtest.py`](scripts/run_backtest.py)
-(no SageMaker, no AWS round-trip). It scores the 13-feature production model — the v3 contract from
-[Features](#features): `votes`, `production_budget`, `ad_to_prod_ratio`, `franchise_rating`,
-`release_year`, `mpaa_encoded`, `company_freq`, `genre_action`, `genre_comedy`, `super_genre_encoded`,
-`is_covid_era`, `is_july_4th_weekend`, `is_weekend_release` — and drops the 6 snapshot rows where
-`production_budget` was imputed as a fixed 0.4 × `worldwide_gross` (a budget-column artifact) before
-scoring. The snapshot CSVs are gitignored, so only the derived table — not the data — is committed.
+(no SageMaker, no AWS round-trip). The snapshot ships the broader engineered feature set that selection
+started from; this backtest reports the **13 features the model actually ships** — the v3 contract (see
+[Features](#features)), not that starting set: `votes`, `production_budget`, `ad_to_prod_ratio`,
+`franchise_rating`, `release_year`, `mpaa_encoded`, `company_freq`, `genre_action`, `genre_comedy`,
+`super_genre_encoded`, `is_covid_era`, `is_july_4th_weekend`, `is_weekend_release`. It also drops the
+6 snapshot rows where `production_budget` was imputed as a fixed 0.4 × `worldwide_gross` (a budget-column
+artifact) before scoring. The snapshot CSVs are gitignored, so only the derived table — not the data —
+is committed.
 
 Where budget alone is weakest and the model adds the most: established franchises, summer tentpoles,
 and hype-driven releases in the data-rich interior. Hardest cases: low-budget breakouts (*Get Out*,
