@@ -65,6 +65,7 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "yarl" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/ee/ab/93ce242f899b68c51b0578c027aafa791ab3614cb9345fa5d37b5f5c8e3e/aiohttp-3.14.0.tar.gz", hash = "sha256:2882de819734c715fd1b9c11c97e09fa020d14438203d1d354d8ed1702791c9b", size = 7940674, upload-time = "2026-06-01T19:41:02.763Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/67/47/7727bfe8db93f8835a001bd4359d8480cc68d1259b8bce334668f8be97bd/aiohttp-3.14.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:54bf3522d6f7351e55f89a62d5c2bf138ad557b031670266c5df604ae88e0b5a", size = 759147, upload-time = "2026-06-01T19:37:12.918Z" },
     { url = "https://files.pythonhosted.org/packages/eb/f2/cd3fedff6fade73d71df9ec908c210cec518ef90fd00289250684b90aecf/aiohttp-3.14.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:0746d9fb0ac4fdef643a84494efe3f06d50335dd8c7a530228b86448aae0a803", size = 513705, upload-time = "2026-06-01T19:37:14.633Z" },
@@ -544,8 +545,8 @@ requires-dist = [
     { name = "pydantic-settings", marker = "extra == 'inference'", specifier = "==2.14.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "==9.0.3" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.0.3" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
-    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.21.1" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=1.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = "==7.1.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=7.1.0" },
     { name = "python-dotenv", specifier = "==1.2.2" },
