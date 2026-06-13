@@ -54,21 +54,44 @@ if any feature correlates >0.99 with the log-target on synthetic data.
 
 ## Evaluation
 
-Per-year expanding-window backtest (train on `<2020`, score 2020; then `<2021`, score 2021;
-and so on). Every fold is compared against a log-budget baseline (revenue ≈ a · budget^b) fit
-on the same window — that baseline is the floor, so any lift has to come from features other
+**On 2019 releases the model scores 0.78 dollar-space R² against a 0.21 log-budget baseline —
+a +0.57 R² lift from non-budget features — and the gain holds at +0.55 to +0.62 per year
+across the data-rich 2015–2019 interior.** COVID-2020 is the honest exception: the model goes
+*negative* (−0.42 R², 200% median APE) on a 56-film year the training window never anticipated,
+and the 2021–2023 recovery trails off (+0.19 to +0.33 gain). The table is per-year on purpose —
+a single aggregate R² would paper over that regime shift, which is exactly the kind of leaky
+"0.70–0.85" headline this repo retired.
+
+Per-year expanding-window backtest (train on `<2015`, score 2015; then `<2016`, score 2016;
+and so on through 2023). Every fold is compared against a log-budget baseline (revenue ≈ a · budget^b)
+fit on the same window — that baseline is the floor, so any lift has to come from features other
 than budget. Folds report dollar-space R² and median APE, not just the log-space loss.
 
-```bash
-uv run python -m box_office.ml.backtest_report \
-  --raw-data data/box_office_raw.parquet \
-  --cv-results artifacts/per_year_model_metrics.json \
-  --output artifacts/per_year_table
-```
+| Year | n | Baseline R² | Model R² | Gain | Model RMSLE | Median APE |
+|---|---:|---:|---:|---:|---:|---:|
+| 2015 | 110 | 0.215 | 0.769 | +0.553 | 0.470 | 30.9% |
+| 2016 | 119 | 0.201 | 0.812 | +0.611 | 0.410 | 28.9% |
+| 2017 | 108 | 0.174 | 0.797 | +0.623 | 0.509 | 31.4% |
+| 2018 | 111 | 0.189 | 0.742 | +0.553 | 0.476 | 31.8% |
+| 2019 | 104 | 0.211 | 0.779 | +0.568 | 0.494 | 26.5% |
+| 2020 | 56 | 0.114 | -0.425 | -0.539 | 1.180 | 200.2% |
+| 2021 | 92 | 0.297 | 0.620 | +0.323 | 0.771 | 42.8% |
+| 2022 | 96 | 0.352 | 0.679 | +0.326 | 0.845 | 53.5% |
+| 2023 | 117 | 0.315 | 0.506 | +0.191 | 0.858 | 52.9% |
+
+Generated offline from the local training snapshot by [`scripts/run_backtest.py`](scripts/run_backtest.py)
+(no SageMaker, no AWS round-trip; numbers also in [`results/per_year_table.json`](results/per_year_table.json)).
+That snapshot predates the v2 leakage fix, so the driver re-applies **both** leak controls before
+scoring: it drops the target-synthesized `social_media_buzz` feature family (`social_media_buzz`,
+`viral_potential`, `social_buzz_to_budget`, `buzz_to_votes_ratio`, `marketing_efficiency`) and the
+6 rows carrying the `production_budget = 0.4 · worldwide_gross` imputation signature. Scores are for
+the de-leaked snapshot feature set; the deployed model further slims it to the 13-feature v3 contract
+(within ~1% backtest R², see [Features](#features)). The snapshot CSVs are gitignored, so only the
+derived table — not the data — is committed.
 
 Where it holds up: established franchises, summer tentpoles, hype-driven releases — the
-data-rich interior. Where it doesn't: low-budget breakouts (*Get Out*, *Everything Everywhere
-All at Once*), foreign-language crossovers, and post-2020 COVID anomalies.
+data-rich pre-COVID interior. Where it doesn't: the COVID-2020 shock (negative R² above), low-budget
+breakouts (*Get Out*, *Everything Everywhere All at Once*), and foreign-language crossovers.
 
 ## Configuration
 
