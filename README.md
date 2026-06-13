@@ -54,21 +54,52 @@ if any feature correlates >0.99 with the log-target on synthetic data.
 
 ## Evaluation
 
-Per-year expanding-window backtest (train on `<2020`, score 2020; then `<2021`, score 2021;
-and so on). Every fold is compared against a log-budget baseline (revenue ≈ a · budget^b) fit
-on the same window — that baseline is the floor, so any lift has to come from features other
-than budget. Folds report dollar-space R² and median APE, not just the log-space loss.
+**Scored on the 13-feature production model, in the data-rich pre-COVID interior (2015–2019) it beats
+the budget-only baseline by +0.54 to +0.63 in dollar-space R² — model 0.76–0.82 vs the baseline's
+0.17–0.22 — and it clears the baseline in every valid backtested year on the log scale it is trained
+against (+0.27 to +0.52 R²) and on rank correlation (Spearman 0.74–0.91 vs 0.62–0.78).** Budget alone
+is a weak predictor; the lift over it is what the other 12 features buy.
 
-```bash
-uv run python -m box_office.ml.backtest_report \
-  --raw-data data/box_office_raw.parquet \
-  --cv-results artifacts/per_year_model_metrics.json \
-  --output artifacts/per_year_table
-```
+Per-year expanding-window backtest (train on `<Y`, score year `Y`, walking forward). Each fold is
+scored against a log-budget baseline (revenue ≈ a · budget^b) fit on the same window — the floor any
+feature beyond budget has to clear. Log-space R² matches the training objective and is robust to the
+heavy revenue tail; rank correlation (ρ) measures ordering quality; dollar-space R² and median APE
+show absolute calibration.
 
-Where it holds up: established franchises, summer tentpoles, hype-driven releases — the
-data-rich interior. Where it doesn't: low-budget breakouts (*Get Out*, *Everything Everywhere
-All at Once*), foreign-language crossovers, and post-2020 COVID anomalies.
+| Year | n | Model R² (log) | Baseline R² (log) | Gain (log) | Model ρ | Baseline ρ | Model R² ($) | Median APE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2015 | 110 | 0.799 | 0.502 | +0.297 | 0.861 | 0.779 | 0.755 | 33.9% |
+| 2016 | 119 | 0.835 | 0.423 | +0.412 | 0.908 | 0.734 | 0.820 | 29.2% |
+| 2017 | 108 | 0.811 | 0.431 | +0.380 | 0.891 | 0.711 | 0.802 | 29.2% |
+| 2018 | 111 | 0.787 | 0.349 | +0.438 | 0.867 | 0.652 | 0.779 | 27.5% |
+| 2019 | 104 | 0.804 | 0.531 | +0.273 | 0.859 | 0.741 | 0.778 | 33.2% |
+| 2021 | 92 | 0.636 | 0.121 | +0.515 | 0.737 | 0.615 | 0.551 | 44.5% |
+| 2022 | 96 | 0.662 | 0.326 | +0.336 | 0.763 | 0.624 | 0.621 | 54.4% |
+| 2023 | 117 | 0.700 | 0.319 | +0.380 | 0.865 | 0.653 | 0.467 | 49.6% |
+
+**2020 is held out of the headline as a regime break, not a model result.** COVID theater closures
+severed the budget→revenue relationship market-wide, so *no* budget-based predictor can model that
+year — the log-budget baseline fails too (dollar-space R² 0.11, log-space R² −0.39). The fold is still
+computed and committed for completeness: model log-space R² 0.013, dollar-space R² −0.29, median APE
+179%, rank ρ 0.79. The model still *orders* 2020 films correctly (ρ 0.79 vs the baseline's 0.55); it
+just cannot anticipate the market-wide collapse in the level. The full nine-year table (2020
+included) is in [`results/per_year_table.md`](results/per_year_table.md) and
+[`results/per_year_table.json`](results/per_year_table.json).
+
+Generated offline from the local training snapshot by [`scripts/run_backtest.py`](scripts/run_backtest.py)
+(no SageMaker, no AWS round-trip). The snapshot ships the broader engineered feature set that selection
+started from; this backtest reports the **13 features the model actually ships** — the v3 contract (see
+[Features](#features)), not that starting set: `votes`, `production_budget`, `ad_to_prod_ratio`,
+`franchise_rating`, `release_year`, `mpaa_encoded`, `company_freq`, `genre_action`, `genre_comedy`,
+`super_genre_encoded`, `is_covid_era`, `is_july_4th_weekend`, `is_weekend_release`. It also drops the
+6 snapshot rows where `production_budget` was imputed as a fixed 0.4 × `worldwide_gross` (a budget-column
+artifact) before scoring. The snapshot CSVs are gitignored, so only the derived table — not the data —
+is committed.
+
+Where budget alone is weakest and the model adds the most: established franchises, summer tentpoles,
+and hype-driven releases in the data-rich interior. Hardest cases: low-budget breakouts (*Get Out*,
+*Everything Everywhere All at Once*) and foreign-language crossovers — the COVID-2020 demand collapse
+is the regime break noted above, not a typical miss.
 
 ## Configuration
 

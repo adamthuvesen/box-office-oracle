@@ -17,6 +17,8 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
+from box_office.ml.regression_metrics import spearman_rank_corr
+
 
 @dataclass(frozen=True)
 class BaselineFoldResult:
@@ -24,6 +26,8 @@ class BaselineFoldResult:
     n_train: int
     n_val: int
     baseline_r2_dollars: float
+    baseline_r2_log: float
+    baseline_spearman: float
 
 
 class LogBudgetBaseline:
@@ -96,16 +100,21 @@ def compute_baseline_per_year(
             target_log.loc[train_mask],
         )
         y_pred_log = baseline.predict_log(df.loc[val_mask, budget_col])
+        y_true_log = target_log.loc[val_mask].to_numpy()
         y_true_dollars = df.loc[val_mask, target_col].to_numpy()
         y_pred_dollars = np.expm1(y_pred_log)
 
-        baseline_r2 = float(r2_score(y_true_dollars, y_pred_dollars))
+        # Score on the same three lenses as the model: log-space R² (matches
+        # the model's objective), rank correlation (ordering quality), and
+        # dollar-space R² (absolute calibration).
         results.append(
             BaselineFoldResult(
                 year=int(year),
                 n_train=n_train,
                 n_val=n_val,
-                baseline_r2_dollars=baseline_r2,
+                baseline_r2_dollars=float(r2_score(y_true_dollars, y_pred_dollars)),
+                baseline_r2_log=float(r2_score(y_true_log, y_pred_log)),
+                baseline_spearman=spearman_rank_corr(y_true_log, y_pred_log),
             )
         )
     return results
@@ -119,52 +128,73 @@ def assemble_per_year_metrics_table(
     """Combine model + baseline per-year results into one report DataFrame.
 
     Required columns on each model fold dict (added by the CV loop):
-    ``eval_year``, ``val_samples``, ``model_r2_dollars``, ``rmsle_score``,
-    ``model_median_ape``. Folds with errors are skipped. Returns columns:
-    ``year``, ``n_movies``, ``baseline_r2``, ``model_r2``, ``model_rmsle``,
-    ``model_median_ape``, ``gain_r2``.
+    ``eval_year``, ``val_samples``, ``model_r2_log``, ``model_spearman``,
+    ``model_r2_dollars``, ``rmsle_score``, ``model_median_ape``. Folds with
+    errors are skipped. Returns columns: ``year``, ``n_movies``,
+    ``baseline_r2_log``, ``model_r2_log``, ``gain_r2_log``, ``baseline_spearman``,
+    ``model_spearman``, ``baseline_r2``, ``model_r2``, ``gain_r2``,
+    ``model_rmsle``, ``model_median_ape`` (``_r2`` columns are dollar-space).
     """
-    baseline_by_year = {b.year: b.baseline_r2_dollars for b in baseline_results}
+    base_dollars = {b.year: b.baseline_r2_dollars for b in baseline_results}
+    base_log = {b.year: b.baseline_r2_log for b in baseline_results}
+    base_spear = {b.year: b.baseline_spearman for b in baseline_results}
+
+    def _gain(model: float, baseline: float) -> float:
+        return model - baseline if not np.isnan(baseline) else float("nan")
+
     rows = []
     for fold in model_fold_results:
         if fold.get("error") is not None:
             continue
         year = int(fold["eval_year"])
-        baseline_r2 = baseline_by_year.get(year, float("nan"))
+        baseline_r2 = base_dollars.get(year, float("nan"))
+        baseline_r2_log = base_log.get(year, float("nan"))
         model_r2 = float(fold.get("model_r2_dollars", float("nan")))
+        model_r2_log = float(fold.get("model_r2_log", float("nan")))
         rows.append(
             {
                 "year": year,
                 "n_movies": int(fold["val_samples"]),
+                "baseline_r2_log": baseline_r2_log,
+                "model_r2_log": model_r2_log,
+                "gain_r2_log": _gain(model_r2_log, baseline_r2_log),
+                "baseline_spearman": base_spear.get(year, float("nan")),
+                "model_spearman": float(fold.get("model_spearman", float("nan"))),
                 "baseline_r2": baseline_r2,
                 "model_r2": model_r2,
+                "gain_r2": _gain(model_r2, baseline_r2),
                 "model_rmsle": float(fold.get("rmsle_score", float("nan"))),
                 "model_median_ape": float(fold.get("model_median_ape", float("nan"))),
-                "gain_r2": (
-                    model_r2 - baseline_r2
-                    if not np.isnan(baseline_r2)
-                    else float("nan")
-                ),
             }
         )
     return pd.DataFrame(rows).sort_values("year").reset_index(drop=True)
 
 
 def render_metrics_table_markdown(table: pd.DataFrame) -> str:
-    """Render the per-year table as a Markdown block for the README / model card."""
+    """Render the per-year table as a Markdown block for the README / model card.
+
+    Log-space R² leads: it matches the model's training objective
+    (``reg:squarederror`` on ``log1p`` revenue) and is robust to the heavy
+    revenue tail. Rank ρ (Spearman) shows ordering quality. Dollar-space R² and
+    median APE expose absolute calibration — where a market-wide shock such as
+    the COVID-2020 theatrical shutdown surfaces — and are kept in view rather
+    than dropped.
+    """
     if table.empty:
         return "_No per-year metrics available._"
 
     header = (
-        "| Year | n | Baseline R² | Model R² | Gain | Model RMSLE | Median APE |\n"
-        "|---|---:|---:|---:|---:|---:|---:|"
+        "| Year | n | Model R² (log) | Baseline R² (log) | Gain (log) "
+        "| Model ρ | Baseline ρ | Model R² ($) | Median APE |\n"
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|"
     )
     rows = []
     for _, r in table.iterrows():
         rows.append(
             f"| {int(r['year'])} | {int(r['n_movies'])} "
-            f"| {r['baseline_r2']:.3f} | {r['model_r2']:.3f} "
-            f"| {r['gain_r2']:+.3f} "
-            f"| {r['model_rmsle']:.3f} | {r['model_median_ape']:.1%} |"
+            f"| {r['model_r2_log']:.3f} | {r['baseline_r2_log']:.3f} "
+            f"| {r['gain_r2_log']:+.3f} "
+            f"| {r['model_spearman']:.3f} | {r['baseline_spearman']:.3f} "
+            f"| {r['model_r2']:.3f} | {r['model_median_ape']:.1%} |"
         )
     return "\n".join([header, *rows])
