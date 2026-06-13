@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
 
 from box_office.ml.exceptions import CrossValidationFailed, OOFIndexCollision
-from box_office.ml.regression_metrics import rmse_on_log_scale
+from box_office.ml.regression_metrics import rmse_on_log_scale, spearman_rank_corr
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +169,16 @@ class TimeSeriesCrossValidator:
                 cv_scores.append(fold_mae)
                 cv_rmsle_scores.append(fold_rmsle)
 
-                # Per-fold dollar-scale metrics so the report can speak in
-                # USD R² / APE rather than only log-scale RMSLE. Inputs above
-                # log(~1e308) overflow expm1; emit NaN rather than break CV.
+                # Log-scale R² and rank correlation are the stable lenses: the
+                # model minimizes squared error on log1p(target), so log-space
+                # R² matches the objective, and Spearman captures ordering
+                # quality regardless of the dollar-level calibration.
+                fold_model_r2_log = float(r2_score(y_fold_val, y_pred))
+                fold_model_spearman = spearman_rank_corr(y_fold_val.to_numpy(), y_pred)
+
+                # Per-fold dollar-scale metrics so the report can also speak in
+                # USD R² / APE. Inputs above log(~1e308) overflow expm1; emit
+                # NaN rather than break CV.
                 with np.errstate(over="ignore", invalid="ignore"):
                     y_true_dollars = np.expm1(y_fold_val.to_numpy())
                     y_pred_dollars = np.expm1(y_pred)
@@ -205,6 +212,8 @@ class TimeSeriesCrossValidator:
                         "eval_year": eval_year,
                         "mae_score": fold_mae,
                         "rmsle_score": fold_rmsle,
+                        "model_r2_log": fold_model_r2_log,
+                        "model_spearman": fold_model_spearman,
                         "model_r2_dollars": fold_model_r2_dollars,
                         "model_median_ape": fold_model_median_ape,
                         "best_iteration": fold_best_iteration,

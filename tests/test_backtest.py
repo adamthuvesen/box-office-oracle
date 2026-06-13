@@ -75,6 +75,8 @@ class TestComputeBaselinePerYear:
             assert r.n_val > 0
             # Synthetic data is highly budget-driven; baseline should explain plenty.
             assert r.baseline_r2_dollars > 0.3
+            assert r.baseline_r2_log > 0.3
+            assert -1.0 <= r.baseline_spearman <= 1.0
 
     def test_skips_year_with_no_train_data(self, synthetic_yearly_movies):
         # 2020 is the earliest year; with eval_years=[2020], train_mask is empty.
@@ -95,6 +97,8 @@ class TestAssemblePerYearTable:
                 "eval_year": 2023,
                 "val_samples": 100,
                 "rmsle_score": 1.2,
+                "model_r2_log": 0.80,
+                "model_spearman": 0.88,
                 "model_r2_dollars": 0.65,
                 "model_median_ape": 0.4,
                 "error": None,
@@ -103,6 +107,8 @@ class TestAssemblePerYearTable:
                 "eval_year": 2024,
                 "val_samples": 95,
                 "rmsle_score": 1.4,
+                "model_r2_log": 0.78,
+                "model_spearman": 0.86,
                 "model_r2_dollars": 0.55,
                 "model_median_ape": 0.5,
                 "error": None,
@@ -129,13 +135,21 @@ class TestAssemblePerYearTable:
         assert set(table.columns) == {
             "year",
             "n_movies",
+            "baseline_r2_log",
+            "model_r2_log",
+            "gain_r2_log",
+            "baseline_spearman",
+            "model_spearman",
             "baseline_r2",
             "model_r2",
+            "gain_r2",
             "model_rmsle",
             "model_median_ape",
-            "gain_r2",
         }
         assert (table["gain_r2"] == table["model_r2"] - table["baseline_r2"]).all()
+        assert (
+            table["gain_r2_log"] == table["model_r2_log"] - table["baseline_r2_log"]
+        ).all()
 
     def test_skips_failed_folds(self):
         fold_results = [
@@ -163,11 +177,16 @@ class TestMarkdownRendering:
                 {
                     "year": 2024,
                     "n_movies": 100,
-                    "baseline_r2": 0.5,
-                    "model_r2": 0.7,
+                    "baseline_r2_log": 0.5,
+                    "model_r2_log": 0.7,
+                    "gain_r2_log": 0.2,
+                    "baseline_spearman": 0.6,
+                    "model_spearman": 0.85,
+                    "baseline_r2": 0.4,
+                    "model_r2": 0.65,
+                    "gain_r2": 0.25,
                     "model_rmsle": 1.1,
                     "model_median_ape": 0.35,
-                    "gain_r2": 0.2,
                 }
             ]
         )
@@ -188,6 +207,8 @@ class TestBuildReportEndToEnd:
                     "eval_year": 2023,
                     "val_samples": 30,
                     "rmsle_score": 1.0,
+                    "model_r2_log": 0.83,
+                    "model_spearman": 0.9,
                     "model_r2_dollars": 0.78,
                     "model_median_ape": 0.32,
                     "error": None,
@@ -196,6 +217,8 @@ class TestBuildReportEndToEnd:
                     "eval_year": 2024,
                     "val_samples": 30,
                     "rmsle_score": 1.05,
+                    "model_r2_log": 0.81,
+                    "model_spearman": 0.88,
                     "model_r2_dollars": 0.74,
                     "model_median_ape": 0.36,
                     "error": None,
@@ -212,3 +235,6 @@ class TestBuildReportEndToEnd:
         assert len(table) == 2
         # Model should beat baseline on synthetic data with strong budget signal + noise
         assert (table["model_r2"] >= table["baseline_r2"]).all()
+        # Log-space + rank columns flow end-to-end alongside the dollar columns.
+        assert {"model_r2_log", "gain_r2_log", "model_spearman"} <= set(table.columns)
+        assert table[["model_r2_log", "model_spearman"]].notna().all().all()
