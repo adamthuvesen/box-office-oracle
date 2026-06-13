@@ -2,82 +2,127 @@
   {
     "year":2015,
     "n_movies":110,
+    "baseline_r2_log":0.5015448667,
+    "model_r2_log":0.8029722135,
+    "gain_r2_log":0.3014273468,
+    "baseline_spearman":0.7794390317,
+    "model_spearman":0.8562225278,
     "baseline_r2":0.2151393594,
     "model_r2":0.7685814365,
+    "gain_r2":0.5534420771,
     "model_rmsle":0.4695233331,
-    "model_median_ape":0.3092757637,
-    "gain_r2":0.5534420771
+    "model_median_ape":0.3092757637
   },
   {
     "year":2016,
     "n_movies":119,
+    "baseline_r2_log":0.4225768721,
+    "model_r2_log":0.8359172697,
+    "gain_r2_log":0.4133403975,
+    "baseline_spearman":0.7339098475,
+    "model_spearman":0.9177182738,
     "baseline_r2":0.2010023622,
     "model_r2":0.8124125567,
+    "gain_r2":0.6114101945,
     "model_rmsle":0.4103069046,
-    "model_median_ape":0.2891110262,
-    "gain_r2":0.6114101945
+    "model_median_ape":0.2891110262
   },
   {
     "year":2017,
     "n_movies":108,
+    "baseline_r2_log":0.4307708255,
+    "model_r2_log":0.8040126449,
+    "gain_r2_log":0.3732418194,
+    "baseline_spearman":0.7105524595,
+    "model_spearman":0.8925376547,
     "baseline_r2":0.1741269653,
     "model_r2":0.7974338212,
+    "gain_r2":0.6233068559,
     "model_rmsle":0.5089242421,
-    "model_median_ape":0.3140434577,
-    "gain_r2":0.6233068559
+    "model_median_ape":0.3140434577
   },
   {
     "year":2018,
     "n_movies":111,
+    "baseline_r2_log":0.3491580163,
+    "model_r2_log":0.8001299068,
+    "gain_r2_log":0.4509718906,
+    "baseline_spearman":0.652006506,
+    "model_spearman":0.8753685504,
     "baseline_r2":0.1891617178,
     "model_r2":0.741880298,
+    "gain_r2":0.5527185803,
     "model_rmsle":0.4764009449,
-    "model_median_ape":0.3182811085,
-    "gain_r2":0.5527185803
+    "model_median_ape":0.3182811085
   },
   {
     "year":2019,
     "n_movies":104,
+    "baseline_r2_log":0.5306922017,
+    "model_r2_log":0.8168557002,
+    "gain_r2_log":0.2861634985,
+    "baseline_spearman":0.7407373112,
+    "model_spearman":0.8688063288,
     "baseline_r2":0.2110562687,
     "model_r2":0.7794364846,
+    "gain_r2":0.5683802159,
     "model_rmsle":0.4944533393,
-    "model_median_ape":0.2650656148,
-    "gain_r2":0.5683802159
+    "model_median_ape":0.2650656148
   },
   {
     "year":2020,
     "n_movies":56,
+    "baseline_r2_log":-0.3848089144,
+    "model_r2_log":0.0397441637,
+    "gain_r2_log":0.4245530782,
+    "baseline_spearman":0.5547785984,
+    "model_spearman":0.8270676692,
     "baseline_r2":0.1140730732,
     "model_r2":-0.4246828491,
+    "gain_r2":-0.5387559222,
     "model_rmsle":1.1804877819,
-    "model_median_ape":2.0017030016,
-    "gain_r2":-0.5387559222
+    "model_median_ape":2.0017030016
   },
   {
     "year":2021,
     "n_movies":92,
+    "baseline_r2_log":0.1207981183,
+    "model_r2_log":0.6460420632,
+    "gain_r2_log":0.5252439449,
+    "baseline_spearman":0.61519977,
+    "model_spearman":0.7484086741,
     "baseline_r2":0.2971350302,
     "model_r2":0.6197137354,
+    "gain_r2":0.3225787051,
     "model_rmsle":0.7709664534,
-    "model_median_ape":0.4278659828,
-    "gain_r2":0.3225787051
+    "model_median_ape":0.4278659828
   },
   {
     "year":2022,
     "n_movies":96,
+    "baseline_r2_log":0.3262386178,
+    "model_r2_log":0.6623684753,
+    "gain_r2_log":0.3361298576,
+    "baseline_spearman":0.6244304557,
+    "model_spearman":0.7798426479,
     "baseline_r2":0.3521225462,
     "model_r2":0.6785582971,
+    "gain_r2":0.3264357509,
     "model_rmsle":0.8447095189,
-    "model_median_ape":0.5347795617,
-    "gain_r2":0.3264357509
+    "model_median_ape":0.5347795617
   },
   {
     "year":2023,
     "n_movies":117,
+    "baseline_r2_log":0.319331333,
+    "model_r2_log":0.6553928533,
+    "gain_r2_log":0.3360615203,
+    "baseline_spearman":0.6534347766,
+    "model_spearman":0.8393427146,
     "baseline_r2":0.3148889319,
     "model_r2":0.5062918608,
+    "gain_r2":0.1914029289,
     "model_rmsle":0.857821146,
-    "model_median_ape":0.5289389387,
-    "gain_r2":0.1914029289
+    "model_median_ape":0.5289389387
   }
 ]
