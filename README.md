@@ -22,10 +22,19 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 
 ## Quick Start
 
+Public demo boundary:
+
+- The production pipeline needs private or external services: Snowflake, AWS SageMaker/S3/Lambda, Prefect, and TMDB credentials.
+- The checked-in repo does not include the private warehouse snapshot, trained model artifacts, or cloud resources.
+- Public users can run the no-secret smoke path below and inspect the committed backtest result table.
+- Do not treat AWS, Snowflake, TMDB, or headline metric reproduction as public unless you have the same services and data.
+
 ```bash
 make install-dev
 make test
 ```
+
+The smoke path is local and hermetic. It does not call AWS, Snowflake, or TMDB.
 
 Run the pipeline (requires AWS and Snowflake credentials in `.env`):
 
@@ -55,6 +64,8 @@ if any feature correlates >0.99 with the log-target on synthetic data.
 ## Evaluation
 
 The 13-feature production model beats a budget-only baseline in every valid yearly fold. In the data-rich 2015-2019 window, dollar-space R² lands at `0.76-0.82` versus the baseline's `0.17-0.22`; on the log scale used for training, the yearly gain is `+0.27` to `+0.52` R².
+
+The committed result table is the visual proof for public review: [`results/per_year_table.md`](results/per_year_table.md). It is an artifact, not a promise that the private training run can be reproduced without the production data and services.
 
 | Year | n | Model R² (log) | Baseline R² (log) | Gain (log) | Model ρ | Baseline ρ | Model R² ($) | Median APE |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
