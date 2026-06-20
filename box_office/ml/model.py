@@ -17,7 +17,7 @@ class BoxOfficeXGBoostModel:
         self,
         n_estimators: int = 2000,
         learning_rate: float = 0.05,
-        max_depth: int = 6,
+        max_depth: int = 3,
         min_child_weight: int = 1,
         subsample: float = 0.8,
         colsample_bytree: float = 0.8,

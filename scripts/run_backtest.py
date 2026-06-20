@@ -9,7 +9,8 @@ round-trip. It runs entirely against the local training snapshot under
 Why this exists separately from ``box_office.ml.backtest_report``'s CLI: that
 CLI expects a raw-movie parquet plus a SageMaker-produced ``cv_results.json``,
 and neither exists offline. This driver loads the training snapshot, scores the
-13-feature production model (``SELECTED_FEATURES`` — the v3 contract), runs the
+selected-feature production model (``SELECTED_FEATURES`` — the active schema
+contract), runs the
 repo's ``TimeSeriesCrossValidator`` with the production XGBoost wrapper, then
 feeds the folds into the same report builder the CLI would call.
 
@@ -90,7 +91,7 @@ def drop_budget_artifact_rows(
 
 
 def select_production_features(X: pd.DataFrame) -> pd.DataFrame:
-    """Subset to the 13-feature production contract (``SELECTED_FEATURES``).
+    """Subset to the production contract (``SELECTED_FEATURES``).
 
     The contract is stored in production casing; the snapshot uses lowercase
     column names, so match case-insensitively.
@@ -100,7 +101,7 @@ def select_production_features(X: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise SystemExit(
             f"snapshot X_train is missing production features {missing}; "
-            "cannot score the v3 contract."
+            "cannot score the active production contract."
         )
     return X[[by_lower[f.lower()] for f in SELECTED_FEATURES]]
 

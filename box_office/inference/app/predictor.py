@@ -251,9 +251,9 @@ class PredictionEngine:
         """Fail loudly when preprocessor output and the model disagree.
 
         Guards the training↔serving contract at predict time: the schema-version
-        check at load handles wrong-vintage artifacts, this catches a v3 artifact
-        whose components were assembled inconsistently — before XGBoost raises a
-        cryptic shape error deep in ``predict``.
+        check at load handles wrong-vintage artifacts, this catches an artifact
+        whose components were assembled inconsistently — before XGBoost raises
+        a cryptic shape error deep in ``predict``.
         """
         expected = self.preprocessor.get_feature_names()
         actual = list(features.columns)

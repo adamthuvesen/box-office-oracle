@@ -10,9 +10,13 @@ Bumped to 3 when the pipeline was slimmed to the curated, decorrelated
 ``SELECTED_FEATURES`` set (see feature_pipeline/constants.py). Wider artifacts
 (the old ~66-feature matrix) are rejected at load: their pickled scaler expects
 a different feature width than the runtime pipeline now produces.
+
+Bumped to 4 when the depth-3/drop-COVID challenger removed ``IS_COVID_ERA``
+from the selected feature contract. The transformer may still emit the era
+indicator internally, but runtime artifacts now expect the 12-feature contract.
 """
 
-CURRENT_FEATURE_SCHEMA_VERSION = "3"
+CURRENT_FEATURE_SCHEMA_VERSION = "4"
 SCHEMA_VERSION_METADATA_KEY = "feature_schema_version"
 
 
