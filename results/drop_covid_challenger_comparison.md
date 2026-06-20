@@ -1,15 +1,12 @@
-# Drop-COVID Challenger Comparison
+# Model Replacement Evidence
 
-Offline comparison run against the ignored `analysis/datasets_high` snapshot with
-`scripts/run_backtest.py`'s leakage controls: 2,762 raw rows, 6 rows dropped for
-the `production_budget = 0.4 * worldwide_gross` imputation signature, 2,756 rows
-scored. Both variants use the same expanding yearly folds and baseline builder.
+Snapshot: ignored `analysis/datasets_high`; 2,762 rows; 6 budget-imputation rows
+dropped; 2,756 rows scored. Same yearly folds, same baseline builder.
 
-Replacement bar used here: improve validation on the model's training objective
-(`log1p(worldwide_gross)` R2) and be non-worse on the 2023 final holdout across
-log R2, dollar R2, and dollar MAE. Median APE is reported as a calibration caveat.
+Replacement bar: validation log R2 improves; 2023 log R2, dollar R2, and dollar
+MAE are non-worse. Median APE is reported but is not the bar.
 
-| Split | Metric | Current depth-6 + COVID | Depth-3 drop-COVID | Delta |
+| Split | Metric | Previous default | New default | Delta |
 |---|---:|---:|---:|---:|
 | Validation 2015-2022 | OOF R2 (log) | 0.742558 | 0.750061 | +0.007502 |
 | Validation 2015-2022 | OOF R2 ($) | 0.745366 | 0.711094 | -0.034272 |
@@ -24,8 +21,4 @@ log R2, dollar R2, and dollar MAE. Median APE is reported as a calibration cavea
 | Final 2023 | OOF MAE ($M) | 84.167 | 75.802 | -8.365 |
 | Final 2023 | Median APE | 49.6% | 52.4% | +2.8 pp |
 
-Decision: replace the default with `xgb-depth3-drop-covid`. The challenger is
-better on validation log R2, the same metric optimized by training and led in
-the README, and better on the 2023 final holdout across log R2, dollar R2, and
-dollar MAE. The validation dollar-space regression and 2023 median APE regression
-are known caveats rather than silent wins.
+Decision: replace the default with `xgb-depth3-drop-covid`.

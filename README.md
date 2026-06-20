@@ -52,22 +52,20 @@ uv run uvicorn box_office.inference.app.main:app --reload
 
 The pipeline expands 12 raw columns into ~66 engineered features (temporal windows,
 genre vectors, frequency-encoded industry signals, CPI-adjusted financials, interactions),
-then selects 12. The v3 selection was importance-ranked greedy with a Spearman ceiling
-(`analysis/feature_selection_study.py`); the v4 contract removes `IS_COVID_ERA`
-after a same-split challenger backtest improved log-scale validation and 2023 holdout
-R² with shallower XGBoost trees. Revenue is log-transformed before training.
+then selects 12 (`SELECTED_FEATURES`). The current contract excludes `IS_COVID_ERA`,
+and the production XGBoost default uses `max_depth=3`. Revenue is log-transformed
+before training.
 
-An earlier version leaned on a `social_media_buzz` feature synthesized from the target and
-a budget imputation conditioned on revenue — both leaks. Removing them bumped the schema to
-`v2`; the curated slim was `v3`; the depth-3/drop-COVID contract is `v4`.
-`tests/test_feature_leakage_guard.py` now fails the build if any feature correlates
->0.99 with the log-target on synthetic data.
+Leakage guard: `tests/test_feature_leakage_guard.py` fails the build if any feature
+correlates >0.99 with the log-target on synthetic data. The target-derived
+`social_media_buzz` family and target-conditioned budget-imputation rows remain
+excluded.
 
 ## Evaluation
 
 The 12-feature production model beats a budget-only baseline in every valid yearly fold. In the data-rich 2015-2019 window, dollar-space R² lands at `0.72-0.80` versus the baseline's `0.17-0.22`; on the log scale used for training, the yearly gain is `+0.30` to `+0.52` R².
 
-The committed result table is the visual proof for public review: [`results/per_year_table.md`](results/per_year_table.md). The challenger decision is documented in [`results/drop_covid_challenger_comparison.md`](results/drop_covid_challenger_comparison.md). These are artifacts, not promises that the private training run can be reproduced without the production data and services.
+The committed result table is the visual proof for public review: [`results/per_year_table.md`](results/per_year_table.md). Replacement evidence is in [`results/drop_covid_challenger_comparison.md`](results/drop_covid_challenger_comparison.md). These are artifacts, not promises that the private training run can be reproduced without the production data and services.
 
 | Year | n | Model R² (log) | Baseline R² (log) | Gain (log) | Model ρ | Baseline ρ | Model R² ($) | Median APE |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -80,7 +78,7 @@ The committed result table is the visual proof for public review: [`results/per_
 | 2022 | 96 | 0.650 | 0.326 | +0.323 | 0.774 | 0.624 | 0.503 | 50.0% |
 | 2023 | 117 | 0.711 | 0.319 | +0.392 | 0.865 | 0.653 | 0.614 | 52.4% |
 
-The model adds the most for franchises, summer tentpoles, and hype-driven releases. The hardest cases are low-budget breakouts and foreign-language crossovers. COVID-2020 is excluded from the headline as a market-wide regime break; the full table, including 2020, is committed in [`results/per_year_table.md`](results/per_year_table.md) and [`results/per_year_table.json`](results/per_year_table.json).
+COVID-2020 is excluded from the headline. The full table, including 2020, is committed in [`results/per_year_table.md`](results/per_year_table.md) and [`results/per_year_table.json`](results/per_year_table.json).
 
 ## Configuration
 
