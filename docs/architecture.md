@@ -87,7 +87,7 @@ Fold 4: Train on <2023, evaluate on 2023
 Fold 5: Train on <2024, evaluate on 2024     # default: --backtest-years 5
 ```
 
-Hyperparameters: `n_estimators=2000`, `learning_rate=0.05`, `max_depth=6`, early stopping at 50 rounds. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
+Hyperparameters: `n_estimators=2000`, `learning_rate=0.05`, `max_depth=3`, early stopping at 50 rounds. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
 
 Each fold reports both **dollar-space R²** and **median APE** alongside the log-space loss. The per-fold output is merged with a `LogBudgetBaseline` (revenue ≈ a · budget^b, fit on the same training window) by `box_office.ml.backtest_report` to produce the final per-year table the README quotes.
 
@@ -102,7 +102,7 @@ Production model lifecycle:
 3. **Promotion** — automated approval if validation passes
 4. **Production** — Lambda loads latest `Approved` package on cold start
 
-Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v3`) with a `FeatureSchemaVersionMismatch` exception.
+Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v4`) with a `FeatureSchemaVersionMismatch` exception.
 
 CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../box_office/ml/model_registry/aws_model_registry_cli.py)`.
 

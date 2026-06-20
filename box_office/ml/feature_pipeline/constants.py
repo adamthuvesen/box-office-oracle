@@ -42,11 +42,11 @@ CORE_NUMERICAL_FEATURES: tuple[str, ...] = (
 
 # Canonical feature contract enforced by ``FeatureSelector`` (the final pipeline
 # step) and asserted training↔serving. A compact, decorrelated (max |Spearman|
-# = 0.57), axis-balanced subset chosen by analysis/feature_selection_study.py:
-# 13 features match the full ~55-feature model on cross-validation (within ~1%
-# CV R²) without the multicollinearity. Changing this list is a feature-contract
-# change — bump CURRENT_FEATURE_SCHEMA_VERSION and retrain. Names must match what
-# the transformers emit exactly (note ``GENRE_<name>`` keeps a lowercase suffix).
+# = 0.57), axis-balanced subset chosen by analysis/feature_selection_study.py,
+# then tightened by the depth-3/drop-COVID challenger evaluation. Changing this
+# list is a feature-contract change — bump CURRENT_FEATURE_SCHEMA_VERSION and
+# retrain. Names must match what the transformers emit exactly (note
+# ``GENRE_<name>`` keeps a lowercase suffix).
 SELECTED_FEATURES: tuple[str, ...] = (
     # Demand, budget, marketing, IP, time
     "VOTES",
@@ -61,8 +61,7 @@ SELECTED_FEATURES: tuple[str, ...] = (
     "GENRE_action",
     "GENRE_comedy",
     "SUPER_GENRE_ENCODED",
-    # Era shock + release-window seasonality
-    "IS_COVID_ERA",
+    # Release-window seasonality
     "IS_JULY_4TH_WEEKEND",
     "IS_WEEKEND_RELEASE",
 )

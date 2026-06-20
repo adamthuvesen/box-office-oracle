@@ -54,6 +54,6 @@ def test_rejects_artifact_with_old_schema_version():
         loader._download_and_load_model({"ModelPackageArn": "arn:aws:test"})
 
 
-def test_current_schema_version_is_v3():
-    """Belt-and-suspenders: the contract is v3 (curated feature set)."""
-    assert CURRENT_FEATURE_SCHEMA_VERSION == "3"
+def test_current_schema_version_is_v4():
+    """Belt-and-suspenders: the contract is v4 (depth-3/drop-COVID feature set)."""
+    assert CURRENT_FEATURE_SCHEMA_VERSION == "4"
