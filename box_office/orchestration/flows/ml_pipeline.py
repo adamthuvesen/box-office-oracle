@@ -172,7 +172,7 @@ def main():
         result = ml_pipeline(
             environment=args.environment, experiment_name=args.experiment_name
         )
-        print(f"Pipeline completed with result: {result}")
+        get_logger().info("Pipeline completed with result: %s", result)
 
 
 if __name__ == "__main__":
