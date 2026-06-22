@@ -1,6 +1,26 @@
 # AGENTS.md
 
-Conventions for AI coding agents (Claude, Codex, Cursor, etc.) in this repo. Human overview: [README.md](README.md).
+box-office-oracle is an end-to-end MLOps pipeline that predicts movie box-office revenue: XGBoost trained on SageMaker, served from Lambda, with Snowflake/dbt features and Terraform infra. Human overview: [README.md](README.md).
+
+User-level guidance (tone, principles, git etiquette) lives in `~/.claude/CLAUDE.md` and `~/dotfiles/agents/AGENTS.md` and is *not* duplicated here. This file is for project-specific facts.
+
+## Layout
+
+```
+box_office/        Python package: ingestion, training, inference (serving)
+transformations/   dbt project (Snowflake staging + ML feature models)
+infrastructure/    Terraform (SageMaker, Lambda, IAM, S3)
+tests/             Pytest suite mirroring box_office/
+docs/              Deeper docs — see Read next
+```
+
+## Quickstart
+
+```bash
+make install-dev                                  # uv sync --extra dev
+uv run pytest tests/ box_office/inference/tests/  # CI gate (excludes integration/slow)
+make lint                                         # flake8 + mypy
+```
 
 ## Critical rules
 
@@ -17,3 +37,5 @@ Conventions for AI coding agents (Claude, Codex, Cursor, etc.) in this repo. Hum
 | Architecture, data flow, security | [docs/architecture.md](docs/architecture.md) |
 | Snowflake env, tests, commands, style, git, subagents | [docs/development.md](docs/development.md) |
 | Index of docs | [docs/README.md](docs/README.md) |
+
+If a doc disagrees with code, fix the doc in the same change.
