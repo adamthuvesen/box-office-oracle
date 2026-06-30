@@ -14,7 +14,7 @@ import sys
 import time
 import warnings
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, NoReturn
 from pydantic import ValidationError
 from .config import get_settings
 from .predictor import PredictionResponse
@@ -34,6 +34,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _error_detail(
+    error: str,
+    message: str,
+    correlation_id: str | None = None,
+    details: Any | None = None,
+) -> Dict[str, Any]:
+    detail: Dict[str, Any] = {
+        "error": error,
+        "message": message,
+    }
+    if details is not None:
+        detail["details"] = details
+    if correlation_id is not None:
+        detail["correlation_id"] = correlation_id
+    detail["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return detail
+
+
 def _auth_error_response(
     status_code: int,
     error: str,
@@ -42,15 +60,95 @@ def _auth_error_response(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content={
-            "detail": {
-                "error": error,
-                "message": message,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-        },
+        content={"detail": _error_detail(error, message)},
         headers=headers,
     )
+
+
+def _raise_prediction_error(
+    status_code: int,
+    error: str,
+    message: str,
+    correlation_id: str,
+    details: Any | None = None,
+) -> NoReturn:
+    raise HTTPException(
+        status_code=status_code,
+        detail=_error_detail(
+            error=error,
+            message=message,
+            correlation_id=correlation_id,
+            details=details,
+        ),
+    )
+
+
+def _check_content_length_limit(request: Request, correlation_id: str) -> None:
+    content_length = request.headers.get("content-length")
+    if content_length is None:
+        return
+
+    try:
+        body_size = int(content_length)
+    except ValueError:
+        return
+
+    if body_size <= MAX_REQUEST_BODY_BYTES:
+        return
+
+    logger.warning(
+        f"Request body too large (Content-Length={content_length}) "
+        f"- {correlation_id}"
+    )
+    _raise_prediction_error(
+        status_code=413,
+        error="REQUEST_TOO_LARGE",
+        message=f"Request body exceeds {MAX_REQUEST_BODY_BYTES} bytes",
+        correlation_id=correlation_id,
+    )
+
+
+async def _read_json_object_body(
+    request: Request, correlation_id: str
+) -> Dict[str, Any]:
+    _check_content_length_limit(request, correlation_id)
+
+    raw_body = await request.body()
+    if len(raw_body) > MAX_REQUEST_BODY_BYTES:
+        logger.warning(
+            f"Request body too large (actual={len(raw_body)}) - {correlation_id}"
+        )
+        _raise_prediction_error(
+            status_code=413,
+            error="REQUEST_TOO_LARGE",
+            message=f"Request body exceeds {MAX_REQUEST_BODY_BYTES} bytes",
+            correlation_id=correlation_id,
+        )
+
+    try:
+        request_data = json.loads(raw_body) if raw_body else None
+    except json.JSONDecodeError as e:
+        logger.warning(f"Invalid JSON body - {correlation_id}: {e}")
+        _raise_prediction_error(
+            status_code=400,
+            error="INVALID_JSON",
+            message="Request body is not valid JSON",
+            correlation_id=correlation_id,
+        )
+
+    if not isinstance(request_data, dict):
+        logger.warning(
+            f"Non-object JSON payload ({type(request_data).__name__}) - {correlation_id}"
+        )
+        _raise_prediction_error(
+            status_code=400,
+            error="INVALID_PAYLOAD_SHAPE",
+            message="Request body must be a JSON object",
+            correlation_id=correlation_id,
+        )
+
+    return request_data
+
 
 settings = get_settings()
 environment = settings.environment.lower()
@@ -222,76 +320,7 @@ async def predict(request: Request) -> PredictionResponse:
     )
 
     try:
-        # Enforce the body cap before parsing — Content-Length is a fast
-        # path but not authoritative, so re-check actual body length too.
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
-            try:
-                if int(content_length) > MAX_REQUEST_BODY_BYTES:
-                    logger.warning(
-                        f"Request body too large (Content-Length={content_length}) "
-                        f"- {correlation_id}"
-                    )
-                    raise HTTPException(
-                        status_code=413,
-                        detail={
-                            "error": "REQUEST_TOO_LARGE",
-                            "message": (
-                                f"Request body exceeds {MAX_REQUEST_BODY_BYTES} bytes"
-                            ),
-                            "correlation_id": correlation_id,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                    )
-            except ValueError:
-                # Non-integer Content-Length: fall through to body-length check.
-                pass
-
-        raw_body = await request.body()
-        if len(raw_body) > MAX_REQUEST_BODY_BYTES:
-            logger.warning(
-                f"Request body too large (actual={len(raw_body)}) - {correlation_id}"
-            )
-            raise HTTPException(
-                status_code=413,
-                detail={
-                    "error": "REQUEST_TOO_LARGE",
-                    "message": f"Request body exceeds {MAX_REQUEST_BODY_BYTES} bytes",
-                    "correlation_id": correlation_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-
-        # Malformed JSON is 400, not 500 — don't page for client mistakes.
-        try:
-            request_data = json.loads(raw_body) if raw_body else None
-        except json.JSONDecodeError as e:
-            logger.warning(f"Invalid JSON body - {correlation_id}: {e}")
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "INVALID_JSON",
-                    "message": "Request body is not valid JSON",
-                    "correlation_id": correlation_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-
-        # Reject non-object payloads at the boundary; downstream code does
-        # `'budget' in request_data` which would TypeError → 500.
-        if not isinstance(request_data, dict):
-            logger.warning(
-                f"Non-object JSON payload ({type(request_data).__name__}) - {correlation_id}"
-            )
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "INVALID_PAYLOAD_SHAPE",
-                    "message": "Request body must be a JSON object",
-                    "correlation_id": correlation_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+        request_data = await _read_json_object_body(request, correlation_id)
 
         logger.info(
             f"Prediction request received - {correlation_id}",
@@ -313,29 +342,23 @@ async def predict(request: Request) -> PredictionResponse:
             FeatureSchemaVersionMismatch,
         ) as e:
             logger.error(f"Model refresh failed - {correlation_id}: {str(e)}")
-            raise HTTPException(
+            _raise_prediction_error(
                 status_code=503,
-                detail={
-                    "error": "SERVICE_UNAVAILABLE",
-                    "message": "Model refresh failed",
-                    "correlation_id": correlation_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                error="SERVICE_UNAVAILABLE",
+                message="Model refresh failed",
+                correlation_id=correlation_id,
             )
 
         try:
             validated_request = runtime.validate_input(request_data)
         except ValidationError as e:
             logger.warning(f"Input validation failed - {correlation_id}: {str(e)}")
-            raise HTTPException(
+            _raise_prediction_error(
                 status_code=400,
-                detail={
-                    "error": "INVALID_INPUT",
-                    "message": "Input validation failed",
-                    "details": e.errors(),
-                    "correlation_id": correlation_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                error="INVALID_INPUT",
+                message="Input validation failed",
+                correlation_id=correlation_id,
+                details=e.errors(),
             )
 
         try:
@@ -358,14 +381,11 @@ async def predict(request: Request) -> PredictionResponse:
             # Bounded literal-eval rejected an oversize field. This is a client
             # input problem (a 400), not a server bug.
             logger.warning(f"Oversize input rejected - {correlation_id}: {e}")
-            raise HTTPException(
+            _raise_prediction_error(
                 status_code=400,
-                detail={
-                    "error": "INPUT_TOO_LARGE",
-                    "message": str(e),
-                    "correlation_id": correlation_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                error="INPUT_TOO_LARGE",
+                message=str(e),
+                correlation_id=correlation_id,
             )
         except RuntimeError as e:
             # Don't leak internals to clients; correlation_id points ops at the logs.
@@ -373,17 +393,14 @@ async def predict(request: Request) -> PredictionResponse:
                 f"Prediction failed - {correlation_id}: {str(e)}",
                 exc_info=True,
             )
-            raise HTTPException(
+            _raise_prediction_error(
                 status_code=500,
-                detail={
-                    "error": "PREDICTION_FAILED",
-                    "message": (
-                        f"Prediction failed; check logs for correlation_id "
-                        f"{correlation_id}"
-                    ),
-                    "correlation_id": correlation_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                error="PREDICTION_FAILED",
+                message=(
+                    f"Prediction failed; check logs for correlation_id "
+                    f"{correlation_id}"
+                ),
+                correlation_id=correlation_id,
             )
 
     except HTTPException:

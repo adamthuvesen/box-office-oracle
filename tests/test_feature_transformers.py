@@ -73,6 +73,18 @@ class TestGenreTransformer(unittest.TestCase):
         canon = _split_genre_field("Action|Adventure|Science Fiction")
         self.assertEqual(_map_super_genre(canon), "SciFi_Blockbuster")
 
+    def test_super_genre_rules_keep_priority_order(self):
+        from box_office.ml.feature_pipeline import _map_super_genre, _split_genre_field
+
+        canon = _split_genre_field("Action|Adventure|Science Fiction|Thriller")
+        self.assertEqual(_map_super_genre(canon), "SciFi_Blockbuster")
+
+    def test_super_genre_romantic_comedy_alias(self):
+        from box_office.ml.feature_pipeline import _map_super_genre, _split_genre_field
+
+        canon = _split_genre_field("Romantic Comedy")
+        self.assertEqual(_map_super_genre(canon), "RomCom")
+
 
 class TestIndustryTransformer(unittest.TestCase):
     def test_transform_works(self):

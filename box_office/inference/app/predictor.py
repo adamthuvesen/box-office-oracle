@@ -47,6 +47,14 @@ def _parse_json_or_python_repr_str_list(raw: str) -> List[str]:
     return [s]
 
 
+def _normalize_str_list(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return _parse_json_or_python_repr_str_list(value)
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return [] if value is None else [str(value)]
+
+
 class PredictionRequest(BaseModel):
     """Input schema for prediction requests."""
 
@@ -93,25 +101,13 @@ class PredictionRequest(BaseModel):
     @classmethod
     def validate_genre(cls, v):
         """Convert genre to list format."""
-        if isinstance(v, str):
-            return _parse_json_or_python_repr_str_list(v)
-
-        if isinstance(v, list):
-            return [str(x) for x in v]
-
-        return [str(v)] if v is not None else []
+        return _normalize_str_list(v)
 
     @field_validator("actors")
     @classmethod
     def validate_actors(cls, v):
         """Convert actors to list format."""
-        if isinstance(v, str):
-            return _parse_json_or_python_repr_str_list(v)
-
-        if isinstance(v, list):
-            return [str(x) for x in v]
-
-        return [] if v is None else [str(v)]
+        return _normalize_str_list(v)
 
 
 class PredictionResponse(BaseModel):
@@ -313,18 +309,9 @@ class PredictionEngine:
 
             prediction_interval_heuristic = None
             if request.return_confidence:
-                try:
-                    if prediction_value < 1000000:
-                        std_error = prediction_value * 0.20
-                    else:
-                        std_error = prediction_value * 0.15
-                    prediction_interval_heuristic = [
-                        max(0, prediction_value - 1.96 * std_error),
-                        prediction_value + 1.96 * std_error,
-                    ]
-                except Exception as e:
-                    logger.warning(f"Failed to calculate heuristic interval: {str(e)}")
-                    prediction_interval_heuristic = None
+                prediction_interval_heuristic = self._prediction_interval_heuristic(
+                    prediction_value
+                )
 
             processing_time = (
                 datetime.now(timezone.utc) - start_time
@@ -347,3 +334,11 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"Prediction failed: {str(e)}", exc_info=True)
             raise RuntimeError(f"Prediction failed: {str(e)}")
+
+    @staticmethod
+    def _prediction_interval_heuristic(prediction_value: float) -> List[float]:
+        std_error = prediction_value * (0.20 if prediction_value < 1000000 else 0.15)
+        return [
+            max(0, prediction_value - 1.96 * std_error),
+            prediction_value + 1.96 * std_error,
+        ]

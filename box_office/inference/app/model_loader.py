@@ -10,7 +10,7 @@ import pickle
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, cast
 from datetime import datetime, timezone
 import tarfile
 import joblib
@@ -248,77 +248,25 @@ class ModelLoader:
         bucket = None
 
         try:
-            if model_package_arn in self._extracted_artifacts_cache:
-                logger.info(f"Using cached extracted artifacts for {model_package_arn}")
-                cached_paths = self._extracted_artifacts_cache[model_package_arn]
-                # The registry manifest hashes the tarball, not the extracted
-                # model.pkl. For process-local extracted-cache reuse, verify the
-                # model file against the digest captured immediately after the
-                # first verified extraction.
-                model_sha256 = cached_paths.get("model_sha256")
-                if model_sha256:
-                    verify_artifact(Path(cached_paths["model"]), model_sha256)
-                else:
-                    logger.warning(
-                        "Cached extracted artifacts for %s lack model_sha256; "
-                        "discarding cache and downloading again",
-                        model_package_arn,
-                    )
-                    self._extracted_artifacts_cache.pop(model_package_arn, None)
-                    return self._download_and_load_model(model_info)
-                model_obj = joblib.load(cached_paths["model"])
-                return model_obj
+            cached_model = self._load_from_extracted_cache(model_package_arn)
+            if cached_model is not None:
+                return cached_model
 
-            # Describe model package to get the manifest + S3 URL
             package_details = self.sagemaker_client.describe_model_package(
                 ModelPackageName=model_package_arn
             )
-
-            inference_spec = package_details.get("InferenceSpecification", {})
-            containers = inference_spec.get("Containers", [])
-            if not containers:
-                raise ModelLoadError("No containers found in model package")
-
-            model_data_url = containers[0].get("ModelDataUrl")
-            if not model_data_url:
-                raise ModelLoadError(
-                    "No model data URL found in container specification"
-                )
+            model_data_url = self._model_data_url(package_details)
 
             logger.info(f"Downloading model from: {model_data_url}")
-            if not model_data_url.startswith("s3://"):
-                raise ModelLoadError(f"Invalid S3 URL format: {model_data_url}")
-            s3_path = model_data_url[5:]
-            bucket, key = s3_path.split("/", 1)
+            bucket, key = self._parse_s3_url(model_data_url)
 
             customer_meta = package_details.get("CustomerMetadataProperties", {}) or {}
-            expected_sha256 = customer_meta.get("sha256")
-            if not expected_sha256:
-                raise ArtifactIntegrityError(
-                    f"Model package {model_package_arn} has no 'sha256' in "
-                    "CustomerMetadataProperties; refusing to load unverified artifact. "
-                    "Run scripts/backfill_model_manifests.py against this group."
-                )
+            expected_sha256 = self._validated_manifest_sha256(
+                model_package_arn, customer_meta
+            )
 
-            artifact_schema_version = customer_meta.get(SCHEMA_VERSION_METADATA_KEY)
-            if artifact_schema_version != CURRENT_FEATURE_SCHEMA_VERSION:
-                raise FeatureSchemaVersionMismatch(
-                    f"Model package {model_package_arn} has feature_schema_version="
-                    f"{artifact_schema_version!r}; runtime requires "
-                    f"{CURRENT_FEATURE_SCHEMA_VERSION!r}. Older artifacts use an "
-                    f"incompatible feature set (v1 also contains target-leaked "
-                    f"features) and are not loadable. Retrain and re-register."
-                )
-
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=".tar.gz"
-            ) as temp_file:
-                temp_path = temp_file.name
-
+            temp_path = self._download_model_archive(bucket, key)
             try:
-                self.s3_client.download_file(bucket, key, temp_path)
-                logger.info(f"Downloaded model to: {temp_path}")
-
                 # CRITICAL: verify the tarball SHA256 BEFORE we touch its contents.
                 verify_artifact(Path(temp_path), expected_sha256)
 
@@ -353,6 +301,81 @@ class ModelLoader:
         except Exception as e:
             logger.exception("Unexpected error downloading model")
             raise ModelLoadError(f"Failed to download model: {e}") from e
+
+    def _load_from_extracted_cache(self, model_package_arn: str) -> Optional[Any]:
+        if model_package_arn not in self._extracted_artifacts_cache:
+            return None
+
+        logger.info(f"Using cached extracted artifacts for {model_package_arn}")
+        cached_paths = self._extracted_artifacts_cache[model_package_arn]
+        # The registry manifest hashes the tarball, not the extracted model.pkl.
+        # For process-local extracted-cache reuse, verify the model file against
+        # the digest captured immediately after the first verified extraction.
+        model_sha256 = cached_paths.get("model_sha256")
+        if not model_sha256:
+            logger.warning(
+                "Cached extracted artifacts for %s lack model_sha256; "
+                "discarding cache and downloading again",
+                model_package_arn,
+            )
+            self._extracted_artifacts_cache.pop(model_package_arn, None)
+            return None
+
+        verify_artifact(Path(cached_paths["model"]), model_sha256)
+        return joblib.load(cached_paths["model"])
+
+    def _model_data_url(self, package_details: Dict[str, Any]) -> str:
+        inference_spec = package_details.get("InferenceSpecification", {})
+        containers = inference_spec.get("Containers", [])
+        if not containers:
+            raise ModelLoadError("No containers found in model package")
+
+        model_data_url = containers[0].get("ModelDataUrl")
+        if not model_data_url:
+            raise ModelLoadError("No model data URL found in container specification")
+        return cast(str, model_data_url)
+
+    def _parse_s3_url(self, model_data_url: str) -> Tuple[str, str]:
+        if not model_data_url.startswith("s3://"):
+            raise ModelLoadError(f"Invalid S3 URL format: {model_data_url}")
+        bucket, key = model_data_url[5:].split("/", 1)
+        return bucket, key
+
+    def _validated_manifest_sha256(
+        self, model_package_arn: str, customer_meta: Dict[str, Any]
+    ) -> str:
+        expected_sha256 = customer_meta.get("sha256")
+        if not expected_sha256:
+            raise ArtifactIntegrityError(
+                f"Model package {model_package_arn} has no 'sha256' in "
+                "CustomerMetadataProperties; refusing to load unverified artifact. "
+                "Run scripts/backfill_model_manifests.py against this group."
+            )
+
+        artifact_schema_version = customer_meta.get(SCHEMA_VERSION_METADATA_KEY)
+        if artifact_schema_version != CURRENT_FEATURE_SCHEMA_VERSION:
+            raise FeatureSchemaVersionMismatch(
+                f"Model package {model_package_arn} has feature_schema_version="
+                f"{artifact_schema_version!r}; runtime requires "
+                f"{CURRENT_FEATURE_SCHEMA_VERSION!r}. Older artifacts use an "
+                f"incompatible feature set (v1 also contains target-leaked "
+                f"features) and are not loadable. Retrain and re-register."
+            )
+
+        return cast(str, expected_sha256)
+
+    def _download_model_archive(self, bucket: str, key: str) -> str:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as temp_file:
+            temp_path = temp_file.name
+
+        try:
+            self.s3_client.download_file(bucket, key, temp_path)
+            logger.info(f"Downloaded model to: {temp_path}")
+            return temp_path
+        except Exception:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
 
     def _extract_and_load_model_with_cache(
         self,

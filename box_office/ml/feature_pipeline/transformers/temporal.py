@@ -35,35 +35,31 @@ class TemporalTransformer(BaseEstimator, TransformerMixin):
             return _DEFAULT_DATE_FEATURES.copy()
 
         month, day, weekday = date_obj.month, date_obj.day, date_obj.weekday()
-        is_memorial = 1 if _is_in_holiday_weekend(date_obj, USMemorialDay) else 0
-        is_thanks = 1 if _is_in_holiday_weekend(date_obj, USThanksgivingDay) else 0
-        is_covid = (
-            1
-            if config.feature_engineering.enable_covid_features
+        is_memorial = int(_is_in_holiday_weekend(date_obj, USMemorialDay))
+        is_thanks = int(_is_in_holiday_weekend(date_obj, USThanksgivingDay))
+        is_covid = int(
+            config.feature_engineering.enable_covid_features
             and date_obj >= pd.to_datetime("2020-03-01")
-            else 0
         )
 
         return {
             "RELEASE_MONTH": month,
             "RELEASE_WEEK": date_obj.isocalendar().week,
             "RELEASE_QUARTER": (month - 1) // 3 + 1,
-            "IS_SUMMER_RELEASE": 1 if month in (5, 6, 7, 8) else 0,
-            "IS_HOLIDAY_RELEASE": (
-                1 if month in (11, 12) or (month == 1 and day <= 15) else 0
-            ),
-            "IS_BLOCKBUSTER_SEASON": 1 if month in (5, 6, 7, 11, 12) else 0,
-            "IS_WEEKEND_RELEASE": 1 if weekday >= 4 else 0,
+            "IS_SUMMER_RELEASE": int(month in (5, 6, 7, 8)),
+            "IS_HOLIDAY_RELEASE": int(month in (11, 12) or (month == 1 and day <= 15)),
+            "IS_BLOCKBUSTER_SEASON": int(month in (5, 6, 7, 11, 12)),
+            "IS_WEEKEND_RELEASE": int(weekday >= 4),
             "IS_MEMORIAL_DAY_WEEKEND": is_memorial,
-            "IS_JULY_4TH_WEEKEND": 1 if month == 7 and 1 <= day <= 7 else 0,
+            "IS_JULY_4TH_WEEKEND": int(month == 7 and 1 <= day <= 7),
             "IS_THANKSGIVING_WEEK": is_thanks,
-            "IS_CHRISTMAS_WEEK": 1 if month == 12 and 18 <= day <= 31 else 0,
-            "IS_FIRST_WEEK_OF_MONTH": 1 if day <= 7 else 0,
-            "IS_MID_MONTH": 1 if 10 <= day <= 20 else 0,
+            "IS_CHRISTMAS_WEEK": int(month == 12 and 18 <= day <= 31),
+            "IS_FIRST_WEEK_OF_MONTH": int(day <= 7),
+            "IS_MID_MONTH": int(10 <= day <= 20),
             "DAYS_FROM_MONTH_START": day,
             "YEARS_SINCE_2000": max(0, date_obj.year - 2000),
-            "IS_PRE_STREAMING_ERA": 1 if date_obj.year < 2010 else 0,
-            "IS_STREAMING_MATURE_ERA": 1 if date_obj.year >= 2015 else 0,
+            "IS_PRE_STREAMING_ERA": int(date_obj.year < 2010),
+            "IS_STREAMING_MATURE_ERA": int(date_obj.year >= 2015),
             "IS_COVID_ERA": is_covid,
         }
 
