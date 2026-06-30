@@ -12,6 +12,36 @@ from box_office.config import config
 from box_office.ml.feature_pipeline.constants import GENRE_VOCABULARY
 from box_office.ml.text_utils import process_text_list
 
+_SUPER_GENRE_RULES: tuple[tuple[frozenset[str], str], ...] = (
+    (
+        frozenset({"action", "adventure", "science_fiction"}),
+        "SciFi_Blockbuster",
+    ),
+    (frozenset({"superhero", "action"}), "Superhero_Blockbuster"),
+    (frozenset({"adventure", "fantasy"}), "Epic_Fantasy"),
+    (frozenset({"animation", "family"}), "Family_Animation"),
+    (frozenset({"animation", "comedy"}), "Animated_Comedy"),
+    (
+        frozenset({"action", "adventure", "thriller"}),
+        "Action_Thriller_Vehicle",
+    ),
+    (frozenset({"horror", "thriller"}), "Horror_Suspense"),
+    (frozenset({"comedy", "romance"}), "RomCom"),
+    (frozenset({"romantic_comedy"}), "RomCom"),
+    (frozenset({"action", "comedy"}), "Action_Comedy"),
+)
+
+_SINGLE_GENRE_LABELS: tuple[tuple[str, str], ...] = (
+    ("action", "Action"),
+    ("adventure", "Adventure"),
+    ("science_fiction", "SciFi"),
+    ("fantasy", "Fantasy"),
+    ("animation", "Animation"),
+    ("horror", "Horror"),
+    ("thriller", "Thriller"),
+    ("comedy", "Comedy"),
+)
+
 
 def _pipe_split(s: str) -> List[str]:
     """Module-level tokenizer for ``CountVectorizer`` so artifacts can pickle.
@@ -80,35 +110,11 @@ def _split_genre_field(value) -> List[str]:
 
 
 def _map_super_genre(genres) -> str:
-    g = set(genres)
-    if {"action", "adventure", "science_fiction"}.issubset(g):
-        return "SciFi_Blockbuster"
-    if "superhero" in g and "action" in g:
-        return "Superhero_Blockbuster"
-    if {"adventure", "fantasy"}.issubset(g):
-        return "Epic_Fantasy"
-    if "animation" in g and "family" in g:
-        return "Family_Animation"
-    if {"animation", "comedy"}.issubset(g):
-        return "Animated_Comedy"
-    if {"action", "adventure", "thriller"}.issubset(g):
-        return "Action_Thriller_Vehicle"
-    if {"horror", "thriller"}.issubset(g):
-        return "Horror_Suspense"
-    if {"comedy", "romance"}.issubset(g) or "romantic_comedy" in g:
-        return "RomCom"
-    if {"action", "comedy"}.issubset(g):
-        return "Action_Comedy"
-    for k, label in (
-        ("action", "Action"),
-        ("adventure", "Adventure"),
-        ("science_fiction", "SciFi"),
-        ("fantasy", "Fantasy"),
-        ("animation", "Animation"),
-        ("horror", "Horror"),
-        ("thriller", "Thriller"),
-        ("comedy", "Comedy"),
-    ):
-        if k in g:
+    genre_set = set(genres)
+    for required_genres, label in _SUPER_GENRE_RULES:
+        if required_genres.issubset(genre_set):
             return label
-    return "Drama" if "drama" in g else "Other"
+    for genre, label in _SINGLE_GENRE_LABELS:
+        if genre in genre_set:
+            return label
+    return "Drama" if "drama" in genre_set else "Other"
