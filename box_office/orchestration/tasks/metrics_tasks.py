@@ -155,8 +155,8 @@ def log_pipeline_completion_metrics(
     data_metrics: Dict[str, Any],
     feature_metrics: Dict[str, Any],
     training_metrics: Dict[str, Any],
-    model_registry_metrics: Dict[str, Any] = None,
-):
+    model_registry_metrics: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     """Log comprehensive pipeline completion summary."""
     logger = get_run_logger()
 
@@ -172,12 +172,34 @@ def log_pipeline_completion_metrics(
     logger.info(f"Completion time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"Pipeline ID: {pipeline_start_metrics['pipeline_id']}")
 
+    _log_completion_data_summary(logger, data_metrics, feature_metrics)
+    _log_completion_training_summary(logger, training_metrics)
+    _log_model_registry_summary(logger, model_registry_metrics)
+
+    return _build_pipeline_execution_summary(
+        pipeline_start_metrics=pipeline_start_metrics,
+        data_metrics=data_metrics,
+        feature_metrics=feature_metrics,
+        training_metrics=training_metrics,
+        model_registry_metrics=model_registry_metrics,
+        end_time=end_time,
+        total_duration=total_duration,
+    )
+
+
+def _log_completion_data_summary(
+    logger: Any, data_metrics: Dict[str, Any], feature_metrics: Dict[str, Any]
+) -> None:
     logger.info("\n DATA PROCESSING SUMMARY:")
     logger.info(f"Training samples: {data_metrics['training_samples']:,}")
     logger.info(f"Validation samples: {data_metrics['validation_samples']:,}")
     logger.info(f"Features created: {feature_metrics['total_features']}")
     logger.info(f"Target: {data_metrics['target_column']}")
 
+
+def _log_completion_training_summary(
+    logger: Any, training_metrics: Dict[str, Any]
+) -> None:
     logger.info("\n MODEL PERFORMANCE SUMMARY:")
     if "cv_results" in training_metrics:
         cv = training_metrics["cv_results"]
@@ -202,70 +224,94 @@ def log_pipeline_completion_metrics(
     if "estimated_cost" in training_metrics:
         logger.info(f"Estimated cost: ${training_metrics['estimated_cost']:.4f}")
 
-    # Log model registry information if available
+
+def _log_model_registry_summary(
+    logger: Any, model_registry_metrics: Dict[str, Any] | None
+) -> None:
     if model_registry_metrics:
         logger.info("\n MODEL REGISTRY SUMMARY:")
+        _log_model_registration(logger, model_registry_metrics)
+        _log_promotion_validation(logger, model_registry_metrics)
+        _log_aws_promotion(logger, model_registry_metrics)
 
-        # Registration results
-        if "model_registration" in model_registry_metrics:
-            reg_result = model_registry_metrics["model_registration"]
+    _log_production_readiness(logger, model_registry_metrics)
 
-            if reg_result and "aws_result" in reg_result:
-                aws_result = reg_result["aws_result"]
-                if aws_result and aws_result.get("status") == "success":
-                    arn = aws_result.get("model_package_arn", "Unknown ARN")
-                    logger.info("AWS Model Registry: Package registered")
-                    logger.info(
-                        f"Model Package ARN: ...{arn[-20:] if len(arn) > 20 else arn}"
-                    )
-                    logger.info(
-                        f"Approval Status: {aws_result.get('approval_status', 'Unknown')}"
-                    )
-                else:
-                    logger.info(
-                        f"AWS Model Registry failed: {aws_result.get('error', 'Unknown error') if aws_result else 'No result'}"
-                    )
 
-            aws_status = reg_result.get("status", "unknown")
-            if aws_status == "success":
-                logger.info("Overall: Successfully registered in AWS Model Registry")
-            else:
-                logger.info("Overall: AWS Model Registry registration failed")
+def _log_model_registration(
+    logger: Any, model_registry_metrics: Dict[str, Any]
+) -> None:
+    if "model_registration" not in model_registry_metrics:
+        return
 
-        if "model_promotion_validation" in model_registry_metrics:
-            promo_result = model_registry_metrics["model_promotion_validation"]
-            if promo_result and promo_result.get("promote"):
-                logger.info("Model approved for promotion to production")
-                if "validation_details" in promo_result:
-                    details = promo_result["validation_details"]
-                    if "r2_score" in details:
-                        logger.info(
-                            f"R² Score: {safe_format(details.get('r2_score', 'N/A'), '.4f')} (threshold: {details.get('min_required', 0.75)})"
-                        )
-            else:
-                logger.info("Model does not meet promotion criteria")
-                if promo_result and "validation_details" in promo_result:
-                    details = promo_result["validation_details"]
-                    if "r2_score" in details:
-                        logger.info(
-                            f"R² Score: {safe_format(details.get('r2_score', 'N/A'), '.4f')} (threshold: {details.get('min_required', 0.75)})"
-                        )
+    reg_result = model_registry_metrics["model_registration"]
 
-        if (
-            "aws_promotion" in model_registry_metrics
-            and model_registry_metrics["aws_promotion"] is not None
-        ):
-            aws_promo_result = model_registry_metrics["aws_promotion"]
-            if aws_promo_result.get("status") == "success":
-                logger.info("AWS Model Package promoted to Approved status")
-                logger.info(
-                    f"Promotion time: {aws_promo_result.get('promotion_time_seconds', 0):.2f}s"
-                )
-            else:
-                logger.info(
-                    f"AWS promotion failed: {aws_promo_result.get('error', 'Unknown error')}"
-                )
+    if reg_result and "aws_result" in reg_result:
+        aws_result = reg_result["aws_result"]
+        if aws_result and aws_result.get("status") == "success":
+            arn = aws_result.get("model_package_arn", "Unknown ARN")
+            logger.info("AWS Model Registry: Package registered")
+            logger.info(f"Model Package ARN: ...{arn[-20:] if len(arn) > 20 else arn}")
+            logger.info(
+                f"Approval Status: {aws_result.get('approval_status', 'Unknown')}"
+            )
+        else:
+            logger.info(
+                f"AWS Model Registry failed: {aws_result.get('error', 'Unknown error') if aws_result else 'No result'}"
+            )
 
+    aws_status = reg_result.get("status", "unknown")
+    if aws_status == "success":
+        logger.info("Overall: Successfully registered in AWS Model Registry")
+    else:
+        logger.info("Overall: AWS Model Registry registration failed")
+
+
+def _log_promotion_validation(
+    logger: Any, model_registry_metrics: Dict[str, Any]
+) -> None:
+    if "model_promotion_validation" not in model_registry_metrics:
+        return
+
+    promo_result = model_registry_metrics["model_promotion_validation"]
+    if promo_result and promo_result.get("promote"):
+        logger.info("Model approved for promotion to production")
+    else:
+        logger.info("Model does not meet promotion criteria")
+
+    if promo_result and "validation_details" in promo_result:
+        _log_validation_r2(logger, promo_result["validation_details"])
+
+
+def _log_validation_r2(logger: Any, details: Dict[str, Any]) -> None:
+    if "r2_score" not in details:
+        return
+    logger.info(
+        f"R² Score: {safe_format(details.get('r2_score', 'N/A'), '.4f')} (threshold: {details.get('min_required', 0.75)})"
+    )
+
+
+def _log_aws_promotion(logger: Any, model_registry_metrics: Dict[str, Any]) -> None:
+    if (
+        "aws_promotion" not in model_registry_metrics
+        or model_registry_metrics["aws_promotion"] is None
+    ):
+        return
+
+    aws_promo_result = model_registry_metrics["aws_promotion"]
+    if aws_promo_result.get("status") == "success":
+        logger.info("AWS Model Package promoted to Approved status")
+        logger.info(
+            f"Promotion time: {aws_promo_result.get('promotion_time_seconds', 0):.2f}s"
+        )
+    else:
+        logger.info(
+            f"AWS promotion failed: {aws_promo_result.get('error', 'Unknown error')}"
+        )
+
+
+def _log_production_readiness(
+    logger: Any, model_registry_metrics: Dict[str, Any] | None
+) -> None:
     if (
         model_registry_metrics
         and model_registry_metrics.get("model_registration", {}).get("status")
@@ -299,6 +345,16 @@ def log_pipeline_completion_metrics(
     else:
         logger.info("Check S3 output for detailed results")
 
+
+def _build_pipeline_execution_summary(
+    pipeline_start_metrics: Dict[str, Any],
+    data_metrics: Dict[str, Any],
+    feature_metrics: Dict[str, Any],
+    training_metrics: Dict[str, Any],
+    model_registry_metrics: Dict[str, Any] | None,
+    end_time: datetime,
+    total_duration: float,
+) -> Dict[str, Any]:
     final_summary = PipelineExecutionSummary(
         pipeline_id=pipeline_start_metrics["pipeline_id"],
         execution_time={
