@@ -27,9 +27,8 @@ def _scoped_env(updates: dict):
     """Apply ``updates`` to ``os.environ`` for the duration of the with block.
 
     Restores the prior values (or removes the key if it was previously absent)
-    on exit. Concurrent Prefect tasks on the same worker were leaking env vars
-    between runs because the previous code used ``os.environ.setdefault`` /
-    direct assignment without ever undoing the change.
+    on exit so concurrent Prefect tasks on the same worker do not leak env vars
+    between runs.
     """
     sentinel = object()
     previous = {k: os.environ.get(k, sentinel) for k in updates}

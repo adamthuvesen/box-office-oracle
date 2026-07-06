@@ -15,14 +15,14 @@ class BoxOfficeXGBoostModel:
 
     def __init__(
         self,
-        n_estimators: int = 2000,
-        learning_rate: float = 0.05,
-        max_depth: int = 3,
-        min_child_weight: int = 1,
+        n_estimators: int = 1500,
+        learning_rate: float = 0.04,
+        max_depth: int = 4,
+        min_child_weight: int = 2,
         subsample: float = 0.8,
         colsample_bytree: float = 0.8,
         reg_alpha: float = 0.01,
-        reg_lambda: float = 0.01,
+        reg_lambda: float = 0.2,
         early_stopping_rounds: int | None = None,
         random_state: int = 42,
     ):

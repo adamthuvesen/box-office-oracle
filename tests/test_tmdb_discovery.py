@@ -71,3 +71,6 @@ def test_min_revenue_threshold_is_honoured():
         )
         assert len(included) == 1
         assert included[0]["id"] == 1
+        assert "vote_average" not in included[0]
+        assert "vote_count" not in included[0]
+        assert "popularity" not in included[0]

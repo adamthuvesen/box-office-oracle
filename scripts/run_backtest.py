@@ -37,6 +37,7 @@ import pandas as pd
 from box_office.ml.backtest import render_metrics_table_markdown
 from box_office.ml.backtest_report import build_report
 from box_office.ml.cv import TimeSeriesCrossValidator
+from box_office.ml.feature_pipeline.cpi import CPI_ANCHOR_YEAR, CPI_BY_YEAR
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 from box_office.ml.model import BoxOfficeXGBoostModel
 
@@ -90,6 +91,65 @@ def drop_budget_artifact_rows(
     )
 
 
+def add_snapshot_contract_features(X: pd.DataFrame) -> pd.DataFrame:
+    """Add selected-contract features missing from the gitignored snapshot.
+
+    The local snapshot predates the current feature contract. It has the safe
+    source columns needed to reproduce the selected interactions, so this keeps
+    the offline backtest rerunnable without reloading Snowflake.
+    """
+    out = X.copy()
+    prod = _numeric(out, "production_budget").clip(lower=0)
+    ad = _numeric(out, "ad_budget").clip(lower=0)
+    total = prod + ad
+    log_total = np.log1p(total)
+
+    out["log_production_budget"] = np.log1p(prod)
+
+    anchor_cpi = CPI_BY_YEAR[CPI_ANCHOR_YEAR]
+    year = _numeric(out, "release_year").fillna(CPI_ANCHOR_YEAR).astype(int)
+    row_cpi = year.map(CPI_BY_YEAR).fillna(anchor_cpi)
+    out["budget_inflation_adjusted"] = total * (anchor_cpi / row_cpi)
+
+    director_freq = _numeric(out, "director_freq")
+    company_freq = _numeric(out, "company_freq")
+    lead_actor_freq = _numeric(out, "lead_actor_freq")
+    max_actor_freq = _numeric(out, "max_actor_freq")
+
+    out["director_budget_confidence"] = director_freq * log_total
+    out["creative_freq_score"] = (
+        np.log1p(director_freq.clip(lower=0))
+        + np.log1p(company_freq.clip(lower=0))
+        + np.log1p(max_actor_freq.clip(lower=0))
+    )
+    out["log1p_lead_actor_freq"] = np.log1p(lead_actor_freq.clip(lower=0))
+    out["log_total_budget_x_horror"] = log_total * _numeric(out, "genre_horror")
+    out["log_total_budget_x_adventure"] = log_total * _numeric(
+        out, "genre_adventure"
+    )
+    out["log_total_budget_x_comedy"] = log_total * _numeric(out, "genre_comedy")
+    out["log_total_budget_x_summer"] = log_total * _numeric(out, "is_summer_release")
+    out["log_total_budget_x_company_freq"] = log_total * np.log1p(
+        company_freq.clip(lower=0)
+    )
+
+    holiday_score = (
+        _numeric(out, "is_blockbuster_season")
+        + 2 * _numeric(out, "is_memorial_day_weekend")
+        + 2 * _numeric(out, "is_july_4th_weekend")
+        + 1.5 * _numeric(out, "is_thanksgiving_week")
+        + 1.5 * _numeric(out, "is_christmas_week")
+    )
+    out["blockbuster_budget_multiplier"] = total * holiday_score
+    return out
+
+
+def _numeric(df: pd.DataFrame, col: str) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series(0.0, index=df.index)
+    return pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+
 def select_production_features(X: pd.DataFrame) -> pd.DataFrame:
     """Subset to the production contract (``SELECTED_FEATURES``).
 
@@ -110,6 +170,7 @@ def main() -> None:
     X, y_raw = load_snapshot()
     n_raw = len(y_raw)
     X, y_raw, n_dropped = drop_budget_artifact_rows(X, y_raw)
+    X = add_snapshot_contract_features(X)
 
     dates = X[YEAR_COL].copy()
     X_model = select_production_features(X)

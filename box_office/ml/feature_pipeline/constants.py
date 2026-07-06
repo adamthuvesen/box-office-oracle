@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 # Raw input columns dropped by the final ``_SelectEngineered`` step.
-# Core numerical columns are NOT in this list — the ``CoreNumericalTransformer``
-# claims them as engineered output (type-coerced versions), matching how the
-# old ``FeaturePreprocessorHigh`` reported them.
+# Core numerical columns are not in this list; ``CoreNumericalTransformer``
+# claims them as engineered, type-coerced output.
 RAW_INPUT_COLUMNS_TO_DROP: tuple[str, ...] = (
+    "RANK",
+    "MOVIE_RANK",
     "RELEASE_DATE",
+    "RATING",
+    "VOTES",
     "MPAA",
     "GENRES",
     "DIRECTOR",
     "PRODUCTION_COMPANY",
     "ACTORS",
-    # Removed in the leakage fix; if a stale upstream still passes it, drop here
-    # so the output matrix stays canonical.
+    "DOMESTIC_GROSS",
+    "FRANCHISE_RATING",
     "SOCIAL_MEDIA_BUZZ",
     # String columns the staging table carries that no transformer reads.
     # Without dropping them here they reach the scaler and explode on the first
@@ -32,38 +35,30 @@ RAW_INPUT_COLUMNS_TO_DROP: tuple[str, ...] = (
 
 CORE_NUMERICAL_FEATURES: tuple[str, ...] = (
     "RELEASE_YEAR",
-    "RATING",
-    "VOTES",
     "AD_BUDGET",
     "PRODUCTION_BUDGET",
-    "FRANCHISE_RATING",
     "RUNTIME",
 )
 
 # Canonical feature contract enforced by ``FeatureSelector`` (the final pipeline
-# step) and asserted training↔serving. A compact, decorrelated (max |Spearman|
-# = 0.57), axis-balanced subset chosen by analysis/feature_selection_study.py,
-# then tightened by the depth-3/drop-COVID challenger evaluation. Changing this
-# list is a feature-contract change — bump CURRENT_FEATURE_SCHEMA_VERSION and
-# retrain. Names must match what the transformers emit exactly (note
-# ``GENRE_<name>`` keeps a lowercase suffix).
+# step) and asserted training↔serving. Changing this list is a feature-contract
+# change: bump CURRENT_FEATURE_SCHEMA_VERSION and retrain. Names must match what
+# the transformers emit exactly (note ``GENRE_<name>`` keeps a lowercase suffix).
 SELECTED_FEATURES: tuple[str, ...] = (
-    # Demand, budget, marketing, IP, time
-    "VOTES",
+    # Budget, time, release disruption
     "PRODUCTION_BUDGET",
-    "AD_TO_PROD_RATIO",
-    "FRANCHISE_RATING",
+    "IS_COVID_ERA",
+    "GENRE_drama",
     "RELEASE_YEAR",
-    # Content rating + studio track record
-    "MPAA_ENCODED",
-    "COMPANY_FREQ",
-    # Genre
-    "GENRE_action",
-    "GENRE_comedy",
+    # Budget x genre interactions
+    "LOG_TOTAL_BUDGET_X_HORROR",
     "SUPER_GENRE_ENCODED",
-    # Release-window seasonality
-    "IS_JULY_4TH_WEEKEND",
-    "IS_WEEKEND_RELEASE",
+    "LOG1P_LEAD_ACTOR_FREQ",
+    "AD_TO_PROD_RATIO",
+    "RUNTIME",
+    "LOG_TOTAL_BUDGET_X_COMEDY",
+    "AD_BUDGET",
+    "COMPANY_FREQ",
 )
 
 GENRE_VOCABULARY: tuple[str, ...] = (

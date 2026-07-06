@@ -63,9 +63,7 @@ def load_processed_data_from_snowflake():
         logger.info(f"Database: {config.snowflake.database}")
         logger.info(f"Schema: {config.snowflake.schemas.ml_training}")
 
-        # Use try/finally so a query failure mid-fetch still releases the cursor
-        # AND the connection — leaving Snowflake sessions open on every error
-        # was previously a sustained source of session leaks.
+        # Release both objects if a query fails mid-fetch.
         conn = create_snowflake_connection(
             schema=config.snowflake.schemas.ml_training, use_private_key=True
         )

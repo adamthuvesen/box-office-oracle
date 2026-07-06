@@ -392,15 +392,13 @@ class ModelLoader:
 
         Single-slot policy for ``/tmp/models``:
 
-        1. Stage extraction into ``<sha256>.tmp`` (removed first if it exists
-           from a previous crash) so a mid-extract failure cannot leave a
+        1. Stage extraction into ``<sha256>.tmp`` (removed first if it exists)
+           so a mid-extract failure cannot leave a
            half-populated directory that *looks* like a valid SHA-keyed slot.
         2. Atomic-rename to the final ``<sha256>`` only after extraction
            completes successfully.
         3. Reap every sibling SHA-keyed dir that is neither the new slot nor
-           the in-flight stage. Lambda ``/tmp`` is 512 MiB and the previous
-           ``finally: pass`` no-op meant old extracts piled up across warm
-           invocations.
+           the in-flight stage to keep Lambda ``/tmp`` within its 512 MiB limit.
         """
         import shutil
 
@@ -408,8 +406,8 @@ class ModelLoader:
             final_dir = Path(self.cache_dir) / expected_sha256
             stage_dir = Path(self.cache_dir) / f"{expected_sha256}.tmp"
 
-            # If we already have the final slot from a previous warm invocation,
-            # skip extraction entirely. The model file inside is already verified.
+            # If the final slot already exists, skip extraction entirely. The
+            # model file inside is already verified.
             if final_dir.exists() and (final_dir / MODEL_PKL).exists():
                 logger.info(f"Reusing cached extract at: {final_dir}")
                 self._reap_stale_slots(keep_sha256=expected_sha256)

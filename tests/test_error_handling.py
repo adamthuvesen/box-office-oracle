@@ -48,12 +48,8 @@ class TestFeaturePreprocessorErrors:
             {
                 "RELEASE_YEAR": [],
                 "RELEASE_DATE": pd.to_datetime([]),
-                "RATING": [],
-                "VOTES": [],
                 "AD_BUDGET": [],
                 "PRODUCTION_BUDGET": [],
-                "FRANCHISE_RATING": [],
-                "SOCIAL_MEDIA_BUZZ": [],
                 "RUNTIME": [],
                 "DIRECTOR": [],
                 "PRODUCTION_COMPANY": [],
@@ -85,12 +81,8 @@ class TestFeaturePreprocessorErrors:
             {
                 "RELEASE_YEAR": [2023],
                 "RELEASE_DATE": pd.to_datetime(["2023-06-15"]),
-                "RATING": [7.5],
-                "VOTES": [1000],
                 "AD_BUDGET": [500000],
                 "PRODUCTION_BUDGET": [1000000],
-                "FRANCHISE_RATING": [7.0],
-                "SOCIAL_MEDIA_BUZZ": [1000],
                 "RUNTIME": [120],
                 "DIRECTOR": ["Director A"],
                 "PRODUCTION_COMPANY": ["Company A"],
@@ -115,12 +107,8 @@ class TestFeaturePreprocessorErrors:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-01-01", "2021-01-01"]),
-                "RATING": [7.5, 8.0],
-                "VOTES": [1000, 2000],
                 "AD_BUDGET": [500000, 600000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
-                "FRANCHISE_RATING": [7.0, 8.0],
-                "SOCIAL_MEDIA_BUZZ": [1000, 2000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
                 "PRODUCTION_COMPANY": ["Company A", "Company B"],
@@ -130,7 +118,7 @@ class TestFeaturePreprocessorErrors:
             }
         )
 
-        X_val = X_train.drop(columns=["RATING"]).copy()
+        X_val = X_train.drop(columns=["RUNTIME"]).copy()
 
         preprocessor = FeaturePreprocessorHigh()
         preprocessor.fit(X_train)
@@ -229,9 +217,6 @@ class TestDataValidation:
                 "RELEASE_YEAR": [2020, 2021, 2022],
                 "AD_BUDGET": [1000000, -500000, 2000000],
                 "PRODUCTION_BUDGET": [5000000, 3000000, -1000000],
-                "VOTES": [1000, 2000, 3000],
-                "RATING": [7.0, 8.0, 7.5],
-                "SOCIAL_MEDIA_BUZZ": [100, 200, 300],
                 "RUNTIME": [120, 130, 140],
                 "IS_SUMMER_RELEASE": [1, 0, 1],
                 "IS_HOLIDAY_RELEASE": [0, 1, 0],

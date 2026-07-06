@@ -39,10 +39,9 @@ class TestEnforceDataTypes:
         df = pd.DataFrame(
             {
                 "RELEASE_YEAR": ["2020", "2021", "2022"],
-                "RATING": ["7.5", "8.0", "6.5"],
-                "VOTES": ["1000", "2000", "1500"],
                 "AD_BUDGET": [500000.0, 600000.0, 700000.0],
                 "PRODUCTION_BUDGET": ["1000000", "2000000", "1500000"],
+                "RUNTIME": ["120", "130", "110"],
                 "GENRE_ACTION": ["1", "0", "1"],
                 "IS_SUMMER_RELEASE": ["1", "0", "1"],
             }
@@ -51,10 +50,9 @@ class TestEnforceDataTypes:
         result = enforce_data_types(df, table_type="training")
 
         assert pd.api.types.is_numeric_dtype(result["RELEASE_YEAR"])
-        assert pd.api.types.is_numeric_dtype(result["RATING"])
-        assert pd.api.types.is_numeric_dtype(result["VOTES"])
         assert pd.api.types.is_numeric_dtype(result["AD_BUDGET"])
         assert pd.api.types.is_numeric_dtype(result["PRODUCTION_BUDGET"])
+        assert pd.api.types.is_numeric_dtype(result["RUNTIME"])
 
     def test_enforce_data_types_handles_null_strings(self):
         from box_office.utils.snowflake_connection import enforce_data_types
@@ -62,8 +60,7 @@ class TestEnforceDataTypes:
         df = pd.DataFrame(
             {
                 "RELEASE_YEAR": ["2020", "NULL", "2022"],
-                "RATING": ["7.5", "null", "6.5"],
-                "VOTES": ["1000", "None", "1500"],
+                "RUNTIME": ["120", "null", "110"],
             }
         )
 
@@ -71,8 +68,7 @@ class TestEnforceDataTypes:
 
         assert pd.api.types.is_numeric_dtype(result["RELEASE_YEAR"])
         assert pd.isna(result["RELEASE_YEAR"].iloc[1])
-        assert pd.isna(result["RATING"].iloc[1])
-        assert pd.isna(result["VOTES"].iloc[1])
+        assert pd.isna(result["RUNTIME"].iloc[1])
 
 
 class TestSnowflakePrivateKeyLoading:

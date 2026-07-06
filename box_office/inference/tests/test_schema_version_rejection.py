@@ -1,4 +1,4 @@
-"""The inference loader must reject model artifacts produced before the leakage fix."""
+"""The inference loader must reject artifacts with stale feature schemas."""
 
 from unittest.mock import MagicMock, patch
 
@@ -54,6 +54,6 @@ def test_rejects_artifact_with_old_schema_version():
         loader._download_and_load_model({"ModelPackageArn": "arn:aws:test"})
 
 
-def test_current_schema_version_is_v4():
-    """Belt-and-suspenders: the contract is v4 (depth-3/drop-COVID feature set)."""
-    assert CURRENT_FEATURE_SCHEMA_VERSION == "4"
+def test_current_schema_version_is_v7():
+    """Belt-and-suspenders: the contract is v7 (pre-release feature set)."""
+    assert CURRENT_FEATURE_SCHEMA_VERSION == "7"

@@ -1,6 +1,7 @@
 # Analysis Directory
 
-Local scratchpad for EDA and modelling experiments. **Nothing here is tracked in git** — notebooks and datasets are all `.gitignore`d. Production code lives in `box_office/`.
+Local scratchpad for EDA and modelling experiments. Notebooks and datasets are
+gitignored; production code lives in `box_office/`.
 
 ## Datasets
 

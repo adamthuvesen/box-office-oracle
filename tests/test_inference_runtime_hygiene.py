@@ -131,10 +131,10 @@ class TestSingleSlotCacheCleanup:
             "feature_scaler.pkl": m,
         }
 
-    def test_new_arn_load_reaps_previous_slot(self, tmp_path):
+    def test_new_arn_load_reaps_sibling_slot(self, tmp_path):
         loader = _build_loader(tmp_path / "cache")
 
-        # Pre-existing previous slot — totally unrelated SHA.
+        # Pre-existing sibling slot with an unrelated SHA.
         prev_sha = "0" * 64
         prev_dir = loader.cache_dir / prev_sha
         prev_dir.mkdir(parents=True)
@@ -155,9 +155,9 @@ class TestSingleSlotCacheCleanup:
         )
 
         assert (loader.cache_dir / new_sha / "model.pkl").exists()
-        assert not prev_dir.exists(), "previous slot should be reaped"
+        assert not prev_dir.exists(), "sibling slot should be reaped"
 
-    def test_failed_mid_extract_preserves_previous_slot(self, tmp_path):
+    def test_failed_mid_extract_preserves_sibling_slot(self, tmp_path):
         loader = _build_loader(tmp_path / "cache")
 
         prev_sha = "0" * 64
@@ -167,7 +167,7 @@ class TestSingleSlotCacheCleanup:
 
         new_sha = "1" * 64
         # Point at a non-existent tar so tarfile.open raises before any
-        # rename happens. The previous slot must still be intact.
+        # rename happens. The sibling slot must still be intact.
         with pytest.raises(Exception):
             loader._extract_and_load_model_with_cache(
                 "/tmp/does-not-exist.tar.gz",
@@ -175,7 +175,7 @@ class TestSingleSlotCacheCleanup:
                 expected_sha256=new_sha,
             )
 
-        assert prev_dir.exists(), "previous slot must NOT be reaped on failure"
+        assert prev_dir.exists(), "sibling slot must NOT be reaped on failure"
         assert (prev_dir / "model.pkl").exists()
         # No final slot for the failed sha.
         assert not (loader.cache_dir / new_sha).exists()

@@ -20,11 +20,8 @@ def sample_csv_data():
         {
             "tmdb_id": [12345, 67890],
             "imdb_id": ["tt1234567", "tt7654321"],
-            "rank": [1, 2],
             "title": ["Test Movie 1", "Test Movie 2"],
             "release_date": ["2024-01-15", "2024-02-20"],
-            "rating": [7.5, 8.2],
-            "votes": [1000, 2000],
             "original_language": ["en", "en"],
             "production_countries": ["United States", "United Kingdom"],
             "genres": ["Action, Adventure", "Drama, Comedy"],
@@ -32,9 +29,7 @@ def sample_csv_data():
             "director": ["Director A", "Director B"],
             "actors": ["Actor 1, Actor 2", "Actor 3, Actor 4"],
             "mpaa": ["PG-13", "R"],
-            "social_media_buzz": [7, 5],
             "release_type": ["wide", "limited"],
-            "franchise_rating": [2, 0],
             "runtime": [120, 95],
             "overview": ["A test movie overview", "Another overview"],
             "tagline": ["Tagline 1", "Tagline 2"],
@@ -42,9 +37,6 @@ def sample_csv_data():
             "ad_budget": [50000000, 25000000],
             "production_company": ["Studio A", "Studio B"],
             "release_year": [2024, 2024],
-            "release_type_encoded": [1, 0],
-            "production_company_encoded": [1, 2],
-            "mpaa_encoded": [2, 3],
             "worldwide_gross": [500000000, 75000000],
         }
     )
@@ -105,8 +97,6 @@ class TestColumnTransformation:
         df = pd.DataFrame(
             {
                 "tmdb_id": ["12345", "67890"],
-                "rating": ["7.5", "8.2"],
-                "votes": ["1000", "2000"],
                 "production_budget": ["100000000", "50000000"],
                 "worldwide_gross": ["500000000", "75000000"],
             }
@@ -116,8 +106,6 @@ class TestColumnTransformation:
 
         for col in [
             "tmdb_id",
-            "rating",
-            "votes",
             "production_budget",
             "worldwide_gross",
         ]:
@@ -129,14 +117,14 @@ class TestColumnTransformation:
         df = pd.DataFrame(
             {
                 "tmdb_id": ["12345", "invalid"],
-                "rating": ["7.5", "not_a_number"],
+                "runtime": ["120", "not_a_number"],
             }
         )
         df = loader.validate_schema(df)
         result = loader.transform_columns(df)
 
         assert result["tmdb_id"].iloc[1] is None
-        assert result["rating"].iloc[1] is None
+        assert result["runtime"].iloc[1] is None
 
     def test_transform_date_column(self, loader):
         df = pd.DataFrame(
@@ -166,7 +154,7 @@ class TestColumnTransformation:
 
 class TestExpectedColumns:
     def test_expected_columns_count(self):
-        assert len(EXPECTED_COLUMNS) == 28
+        assert len(EXPECTED_COLUMNS) == 20
 
     def test_primary_key_in_columns(self):
         assert "tmdb_id" in EXPECTED_COLUMNS

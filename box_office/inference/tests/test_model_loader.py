@@ -124,7 +124,7 @@ class TestModelLoader:
             "CustomerMetadataProperties": {
                 "sha256": "placeholder-overridden-by-tests-that-actually-download",
                 "size_bytes": "0",
-                "feature_schema_version": "4",
+                "feature_schema_version": "7",
             },
         }
 
@@ -259,7 +259,7 @@ class TestModelLoader:
             details["CustomerMetadataProperties"] = {
                 "sha256": digest,
                 "size_bytes": str(Path(tar_path).stat().st_size),
-                "feature_schema_version": "4",
+                "feature_schema_version": "7",
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -303,7 +303,7 @@ class TestModelLoader:
             details["CustomerMetadataProperties"] = {
                 "sha256": "0" * 64,
                 "size_bytes": "0",
-                "feature_schema_version": "4",
+                "feature_schema_version": "7",
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -517,8 +517,10 @@ class TestModelLoader:
         with pytest.raises(ModelValidationError, match="is_fitted"):
             loader._validate_model(UnfittedWrapper(), model_info)
 
-    def test_md5_cache_methods_removed(self, mock_aws_clients, temp_cache_dir):
-        """The legacy MD5-keyed disk cache must no longer exist on the loader."""
+    def test_cache_surface_only_exposes_sha256_paths(
+        self, mock_aws_clients, temp_cache_dir
+    ):
+        """Only the SHA256-keyed cache surface exists on the loader."""
         mock_s3, mock_sagemaker = mock_aws_clients
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 
@@ -530,7 +532,7 @@ class TestModelLoader:
         ):
             assert not hasattr(
                 loader, attr
-            ), f"{attr} should be removed from ModelLoader"
+            ), f"{attr} should not exist on ModelLoader"
 
     def test_clear_cache_removes_sha_dirs(self, mock_aws_clients, temp_cache_dir):
         mock_s3, mock_sagemaker = mock_aws_clients
@@ -734,7 +736,7 @@ class TestModelLoaderIntegration:
             "CustomerMetadataProperties": {
                 "sha256": digest,
                 "size_bytes": str(tar_file.stat().st_size),
-                "feature_schema_version": "4",
+                "feature_schema_version": "7",
             },
         }
 

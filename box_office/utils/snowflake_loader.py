@@ -80,11 +80,8 @@ logger = logging.getLogger(__name__)
 EXPECTED_COLUMNS = [
     "tmdb_id",
     "imdb_id",
-    "rank",
     "title",
     "release_date",
-    "rating",
-    "votes",
     "original_language",
     "production_countries",
     "genres",
@@ -92,9 +89,7 @@ EXPECTED_COLUMNS = [
     "director",
     "actors",
     "mpaa",
-    "social_media_buzz",
     "release_type",
-    "franchise_rating",
     "runtime",
     "overview",
     "tagline",
@@ -102,27 +97,16 @@ EXPECTED_COLUMNS = [
     "ad_budget",
     "production_company",
     "release_year",
-    "release_type_encoded",
-    "production_company_encoded",
-    "mpaa_encoded",
     "worldwide_gross",
 ]
 
 # Column type mappings for Snowflake
 NUMERIC_COLUMNS = [
     "tmdb_id",
-    "rank",
-    "rating",
-    "votes",
     "production_budget",
-    "social_media_buzz",
-    "franchise_rating",
     "runtime",
     "ad_budget",
     "release_year",
-    "release_type_encoded",
-    "production_company_encoded",
-    "mpaa_encoded",
     "worldwide_gross",
 ]
 
@@ -163,8 +147,7 @@ class SnowflakeLoader:
 
     @staticmethod
     def _validate_identifier(name: str, identifier_type: str = "table") -> str:
-        """Backwards-compatible alias for the module-level
-        :func:`validate_sql_identifier`."""
+        """Validate a Snowflake identifier with the shared module helper."""
         return validate_sql_identifier(name, identifier_type)
 
     @contextmanager

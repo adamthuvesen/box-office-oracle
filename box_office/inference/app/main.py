@@ -453,9 +453,8 @@ async def get_model_info() -> Dict[str, Any]:
         raise
 
 
-# Module-scope Mangum adapter. Built once on cold start; reused across every
-# warm invocation. Building it per-call (the previous behavior) defeated
-# Lambda's warm-start advantage.
+# Module-scope Mangum adapter. Built once on cold start and reused across warm
+# invocations.
 try:
     from mangum import Mangum
 

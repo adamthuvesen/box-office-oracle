@@ -151,7 +151,7 @@ def run_data_phase(logger) -> DataPhaseResult:
 def sagemaker_training_frames(
     data: DataPhaseResult,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Build in-memory training frames matching the former Snowflake reload query."""
+    """Build in-memory training frames for SageMaker upload."""
     X = data.X_train_scaled.copy()
     if "RELEASE_YEAR" not in data.X_train_processed.columns:
         raise ValueError("RELEASE_YEAR is required for SageMaker time-series CV")

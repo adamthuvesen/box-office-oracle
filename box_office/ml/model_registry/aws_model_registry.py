@@ -448,10 +448,8 @@ class AWSModelRegistry:
     def _get_account_id(self) -> str:
         """Get AWS account ID via STS.
 
-        Raises ``ClientError`` on STS failure. The previous behavior of
-        returning the literal string ``"unknown"`` produced invalid ECR URLs
-        (``unknown.dkr.ecr.<region>.amazonaws.com/...``) that surfaced as
-        cryptic image-pull errors much later.
+        Raises ``ClientError`` on STS failure so invalid ECR URLs are not
+        assembled from placeholder account IDs.
         """
         sts = boto3.client("sts", region_name=self.region_name)
         return sts.get_caller_identity()["Account"]

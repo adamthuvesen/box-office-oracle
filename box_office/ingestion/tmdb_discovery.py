@@ -1,9 +1,8 @@
 """TMDB movie discovery.
 
 Discovers candidate movies from the TMDB API and enriches each with details,
-keywords, credits, and US certification. This is the maintained implementation
-behind the ``box-office-ingest`` CLI; the historical standalone runner at
-``data/external/tmdb/1_tmdb_api_movie_discovery_v2.py`` imports from here.
+keywords, credits, and US certification. This is the implementation behind the
+``box-office-ingest`` CLI.
 
 Only ``get_existing_ids``, ``discover_movies``, and ``filter_new_movies`` are
 public; the per-movie fetch helpers are internal.
@@ -23,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 TMDB_API_URL = "https://api.themoviedb.org/3"
 
-# Discovery filters (historical defaults from the original data-gathering run).
 MIN_REVENUE_USD = 50_000_000
 _EXCLUDED_GENRES = frozenset({"Documentary"})
 
@@ -126,7 +124,7 @@ def extract_key_fields(
     credits: Dict | None = None,
     mpaa: str = "",
 ) -> Dict:
-    """Flatten TMDB movie data into the historical CSV column order."""
+    """Flatten TMDB movie data into ingestion column names."""
     if not movie_data:
         return {}
 
@@ -146,8 +144,6 @@ def extract_key_fields(
     return {
         "id": movie_data.get("id"),
         "title": movie_data.get("title"),
-        "vote_average": movie_data.get("vote_average"),
-        "vote_count": movie_data.get("vote_count"),
         "status": movie_data.get("status"),
         "release_date": movie_data.get("release_date"),
         "revenue": movie_data.get("revenue"),
@@ -160,7 +156,6 @@ def extract_key_fields(
         "original_language": movie_data.get("original_language"),
         "original_title": movie_data.get("original_title"),
         "overview": movie_data.get("overview"),
-        "popularity": movie_data.get("popularity"),
         "poster_path": movie_data.get("poster_path"),
         "tagline": movie_data.get("tagline"),
         "genres": genres,
@@ -185,7 +180,7 @@ def discover_movies(
 
     Fetches details only for movies not already in ``existing_ids``, filters to
     English originals at or above ``min_revenue`` (excluding documentaries), and
-    returns the enriched records sorted by vote count descending.
+    returns the enriched records sorted by revenue descending.
     """
     session = requests.Session()
     all_movies: List[Dict] = []
@@ -199,7 +194,7 @@ def discover_movies(
             params = {
                 "primary_release_year": year,
                 "with_original_language": "en",
-                "sort_by": "vote_count.desc",
+                "sort_by": "revenue.desc",
                 "page": page,
             }
 
@@ -267,11 +262,11 @@ def discover_movies(
 
             time.sleep(0.25)
 
-        year_movies.sort(key=lambda x: x.get("vote_count", 0), reverse=True)
+        year_movies.sort(key=lambda x: x.get("revenue", 0), reverse=True)
         all_movies.extend(year_movies)
         logger.info("Found %d new English movies for %d", len(year_movies), year)
 
-    all_movies.sort(key=lambda x: x.get("vote_count", 0), reverse=True)
+    all_movies.sort(key=lambda x: x.get("revenue", 0), reverse=True)
     return all_movies
 
 

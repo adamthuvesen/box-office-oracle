@@ -291,12 +291,8 @@ def test_check_model_script_exists_and_writes_github_output_correctly() -> None:
 # ---------------------------------------------------------------------------
 # 3.10 / Spec: dbt CI runs compile (catches Jinja + ref/source errors)
 #
-# An earlier draft also gated `dbt build --select staging --empty` on
-# SNOWFLAKE_PRIVATE_KEY availability, but the warehouse role used in CI
-# (DBT_RUNNER) doesn't hold CREATE TABLE on the STAGING schema, so the
-# build step failed with a real-world 003001 access-control error. For a
-# solo project, parse + compile catches every regression we actually care
-# about (Jinja, refs, sources) without forcing a CI-specific role grant.
+# Parse + compile catches Jinja, ref, and source regressions without requiring
+# CI to hold CREATE TABLE on the STAGING schema.
 # ---------------------------------------------------------------------------
 
 

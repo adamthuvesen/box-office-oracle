@@ -6,7 +6,6 @@ import pandas as pd
 from box_office.ingestion.data_enrichment import (
     HeuristicEnricher,
     enrich_dataframe,
-    MAJOR_FRANCHISE_KEYWORDS,
 )
 
 
@@ -47,10 +46,10 @@ class TestHeuristicEnricher:
         assert len(result) == len(sample_movie_data)
 
 
-class TestNoTargetLeakageAtEnrichment:
-    """Enrichment must not synthesize features from worldwide_gross."""
+class TestNoLeakageAtEnrichment:
+    """Enrichment must not synthesize post-release features."""
 
-    def test_no_social_media_buzz_column(self, enricher):
+    def test_no_leakage_columns(self, enricher):
         df = pd.DataFrame(
             {
                 "title": ["Some Movie"],
@@ -60,6 +59,9 @@ class TestNoTargetLeakageAtEnrichment:
         )
         result = enricher.enrich(df)
         assert "social_media_buzz" not in result.columns
+        assert "franchise_rating" not in result.columns
+        assert "rating" not in result.columns
+        assert "votes" not in result.columns
 
     def test_missing_budget_left_as_is(self, enricher):
         """Missing or zero production_budget is NOT imputed from worldwide_gross."""
@@ -130,88 +132,16 @@ class TestAdBudgetGeneration:
         assert ratio_high > ratio_low
 
 
-class TestFranchiseRating:
-    @pytest.mark.parametrize(
-        "title,revenue,budget,expected_rating",
-        [
-            (
-                "Avengers: Infinity War",
-                2_000_000_000,
-                300_000_000,
-                2,
-            ),  # major franchise, high revenue
-            (
-                "X-Men: Dark Phoenix",
-                252_000_000,
-                200_000_000,
-                1,
-            ),  # major franchise, lower revenue
-            ("Original Standalone Film", 500_000_000, 100_000_000, 0),  # non-franchise
-        ],
-    )
-    def test_franchise_rating_by_type(
-        self, enricher, title, revenue, budget, expected_rating
-    ):
-        df = pd.DataFrame(
-            {
-                "title": [title],
-                "worldwide_gross": [revenue],
-                "production_budget": [budget],
-            }
-        )
-        result = enricher.enrich(df)
-        assert result["franchise_rating"].iloc[0] == expected_rating
-
-    @pytest.mark.parametrize(
-        "title,is_franchise",
-        [
-            ("Spider-Man: No Way Home", True),
-            ("The Dark Knight Rises", True),
-            ("Toy Story 4", True),
-            ("The Matrix Resurrections", True),
-            ("Original Movie Title", False),
-            ("Some Random Film", False),
-        ],
-    )
-    def test_franchise_keywords_detection(self, enricher, title, is_franchise):
-        rating = enricher._assign_franchise_rating(title, 500_000_000)
-        if is_franchise:
-            assert rating >= 1, f"Expected {title} to be franchise"
-        else:
-            assert rating == 0, f"Expected {title} to be non-franchise"
-
-
 class TestEnrichDataframeFunction:
     def test_enrich_dataframe_works(self, sample_movie_data):
         result = enrich_dataframe(sample_movie_data, seed=42)
         assert isinstance(result, pd.DataFrame)
         assert "ad_budget" in result.columns
-        assert "franchise_rating" in result.columns
         assert "social_media_buzz" not in result.columns
+        assert "franchise_rating" not in result.columns
 
     def test_reproducible_with_seed(self, sample_movie_data):
         result1 = enrich_dataframe(sample_movie_data, seed=42)
         result2 = enrich_dataframe(sample_movie_data, seed=42)
 
         pd.testing.assert_frame_equal(result1, result2)
-
-
-class TestMajorFranchiseKeywords:
-    def test_keywords_list_not_empty(self):
-        assert len(MAJOR_FRANCHISE_KEYWORDS) > 0
-
-    def test_major_franchises_included(self):
-        expected_franchises = [
-            "Star Wars",
-            "Marvel",
-            "Spider-Man",
-            "Batman",
-            "Harry Potter",
-            "Jurassic",
-            "Avengers",
-        ]
-        keywords_lower = [k.lower() for k in MAJOR_FRANCHISE_KEYWORDS]
-
-        for franchise in expected_franchises:
-            found = any(franchise.lower() in k for k in keywords_lower)
-            assert found, f"Expected {franchise} in franchise keywords"

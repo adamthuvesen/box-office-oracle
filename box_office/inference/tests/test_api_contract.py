@@ -344,7 +344,7 @@ class TestBucketUnboundContract:
 
 
 class TestPredictionResponseConfig:
-    """M57: exactly one model_config; no deprecated json_encoders."""
+    """M57: exactly one model_config and no json_encoders."""
 
     def test_single_model_config_in_class_body(self):
         # Source-level check: only one assignment to `model_config` survives.
@@ -407,7 +407,7 @@ class TestResponseFieldRename:
     def test_renamed_field_present(self):
         assert "prediction_interval_heuristic" in PredictionResponse.model_fields
 
-    def test_old_field_absent(self):
+    def test_confidence_interval_field_absent(self):
         assert "confidence_interval" not in PredictionResponse.model_fields
 
     def test_description_calls_out_heuristic(self):
