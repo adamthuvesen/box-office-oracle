@@ -62,7 +62,7 @@ class _CrossValidationState:
             "mean_best_iteration": (
                 np.mean(self.best_iterations)
                 if self.best_iterations
-                else model_kwargs.get("n_estimators", 2000)
+                else model_kwargs.get("n_estimators", 1500)
             ),
             "oof_predictions": {
                 str(idx): pred
@@ -296,7 +296,7 @@ class TimeSeriesCrossValidator:
         fold_best_iteration = (
             fold_model.best_iteration
             if hasattr(fold_model, "best_iteration")
-            else model_kwargs.get("n_estimators", 2000)
+            else model_kwargs.get("n_estimators", 1500)
         )
         state.best_iterations.append(fold_best_iteration)
         state.fold_importances.append(fold_model.feature_importances_)

@@ -18,7 +18,7 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 | CI/CD               | GitHub Actions               | OIDC → AWS, key-pair → Snowflake                                                                                    |
 
 
-Operational cost: ~$50/month. Training run: 2-5 min on ~2,400 movies. The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) — never quoted as a single CV number, because the previous codebase's "0.70–0.85" figure leaned on a leaky synthetic feature.
+Operational cost: ~$50/month. Training run: 2-5 min on ~2,400 movies. The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) and is the public performance artifact for the v7 pre-release feature contract.
 
 ## Data flow
 
@@ -29,7 +29,7 @@ ingestion (TMDB/IMDb) → Snowflake RAW
                             ↓
                   Snowflake STAGING.stg_box_office
                             ↓
-              build_feature_pipeline() (13 curated features)
+              build_feature_pipeline() (12 pre-release features)
                             ↓
                    Snowflake ML_TRAINING.{X,Y}_TRAIN
                             ↓
@@ -60,34 +60,32 @@ Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/dat
 
 ## Feature engineering
 
-`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of six augmenting transformers plus a final raw-column strip. Turns 12 raw columns into **69 engineered features** in ~3 sec on 2,400 rows.
+`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of five augmenting transformers plus a final raw-column strip. It turns pre-release raw columns into **52 engineered features**, then projects them to the **12-feature** runtime contract.
 
 | Step                  | Adds | What it captures                                                                              |
 | --------------------- | ---- | --------------------------------------------------------------------------------------------- |
-| Core numerical        | 8    | Numeric pass-through with type coercion + missing-column fill                                 |
-| Temporal              | 18   | Release timing — summer/holiday/Oscar windows, COVID era, day-of-week                         |
+| Core numerical        | 4    | Numeric pass-through with type coercion + missing-column fill                                 |
+| Temporal              | 18   | Release timing — summer/holiday windows, COVID era, day-of-week                               |
 | Genre                 | 9    | Binary genre vectors + super-genre encoding                                                   |
 | Industry              | 6    | Frequency encoding of director / studio / actor / MPAA                                        |
-| Financial             | 8    | Total budget, ad/prod ratio, CPI-adjusted budget (real CPI table; no proxy)                   |
-| Interactions          | 20   | Rating × votes, COVID × budget, seasonal × budget, blockbuster multipliers                    |
+| Financial             | 15   | Total budget, budget logs, ad/prod ratio, CPI adjustment, and safe budget interactions         |
 
 `TransformerMixin`-style augmenting steps: each one returns the input frame plus its new columns, so the pipeline is debuggable via `set_output(transform="pandas")`. The final `_SelectEngineered` step drops the raw input columns the transformers consumed.
 
-**Removed in the leakage cleanup**: any feature derived from `social_media_buzz`, plus the `_fill_missing_budget` target-conditional imputation. `tests/test_feature_leakage_guard.py` rejects any column whose absolute Pearson correlation with the log-target exceeds 0.99 on a synthetic year.
+Outcome-derived and post-release signals are not feature inputs. `tests/test_feature_leakage_guard.py` rejects any column whose absolute Pearson correlation with the log-target exceeds 0.99 on a synthetic year and blocks forbidden leakage names from the feature contract.
 
 ## Training
 
 XGBoost regressor with an **expanding-window per-year backtest** (forward chaining by `RELEASE_YEAR`):
 
 ```
-Fold 1: Train on <2020, evaluate on 2020
-Fold 2: Train on <2021, evaluate on 2021
-Fold 3: Train on <2022, evaluate on 2022
-Fold 4: Train on <2023, evaluate on 2023
-Fold 5: Train on <2024, evaluate on 2024     # default: --backtest-years 5
+Fold 1: Train on <2015, evaluate on 2015
+Fold 2: Train on <2016, evaluate on 2016
+...
+Fold 9: Train on <2023, evaluate on 2023
 ```
 
-Hyperparameters: `n_estimators=2000`, `learning_rate=0.05`, `max_depth=3`, early stopping at 50 rounds. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
+Hyperparameters: `n_estimators=1500`, `learning_rate=0.04`, `max_depth=4`, `min_child_weight=2`, `reg_lambda=0.2`, early stopping at 50 rounds. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
 
 Each fold reports both **dollar-space R²** and **median APE** alongside the log-space loss. The per-fold output is merged with a `LogBudgetBaseline` (revenue ≈ a · budget^b, fit on the same training window) by `box_office.ml.backtest_report` to produce the final per-year table the README quotes.
 
@@ -102,7 +100,7 @@ Production model lifecycle:
 3. **Promotion** — automated approval if validation passes
 4. **Production** — Lambda loads latest `Approved` package on cold start
 
-Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v4`) with a `FeatureSchemaVersionMismatch` exception.
+Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v7`) with a `FeatureSchemaVersionMismatch` exception.
 
 CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../box_office/ml/model_registry/aws_model_registry_cli.py)`.
 
@@ -128,8 +126,7 @@ dbt runs as a least-privilege `DBT_RUNNER` role (not `ACCOUNTADMIN`). The role o
 
 1. Environment variables (`pydantic-settings` handles type coercion)
 2. `.env`
-3. `config.yaml` (legacy; settings inherit defaults from this file when set)
-4. Defaults declared on the model
+3. Defaults declared on the model
 
 The `config` singleton exposes nested *frozen-dataclass* views (`config.aws`, `config.snowflake`, `config.model`) so call sites read like `config.x.y.z` — but the underlying source of truth is the flat `Settings` model, not a bespoke proxy. `tests/test_config.py::test_every_documented_env_var_is_known` keeps the README env-var table honest.
 
@@ -140,7 +137,7 @@ config.aws.region                          # eu-north-1
 config.snowflake.database                  # BOX_OFFICE
 config.snowflake.schemas.staging           # STAGING
 config.model.promotion_threshold           # 0.75
-config.model.hyperparameters.n_estimators  # 2000
+config.model.hyperparameters.n_estimators  # 1500
 ```
 
 ## Inference

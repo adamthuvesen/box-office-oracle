@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: stg_box_office
-    description: "Staging model for movies data with basic transformations and calculated fields"
+    description: "Staging model for pre-release movie features plus the training target"
     columns:
       - name: tmdb_id
         description: "TMDb identifier; one row per id after source deduplication"
@@ -10,16 +10,13 @@ models:
         tests:
           - not_null
           - unique
-      - name: movie_rank
-        description: "Movie ranking. Renamed from `rank` to avoid colliding with the SQL reserved word."
-        data_type: integer
       - name: title
         description: "Movie title"
         data_type: string
         tests:
           - not_null
       - name: worldwide_gross
-        description: "Worldwide box office gross revenue"
+        description: "Worldwide box office gross revenue; training target only"
         data_type: float
         tests:
           - not_null
@@ -32,19 +29,6 @@ models:
           - dbt_utils.accepted_range:
               min_value: 1900
               max_value: 2030
-      - name: rating
-        description: "Movie rating (e.g., IMDb rating)"
-        data_type: float
-        tests:
-          - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 10
-      - name: votes
-        description: "Number of votes/reviews"
-        data_type: float
-        tests:
-          - dbt_utils.accepted_range:
-              min_value: 0
       - name: original_language
         description: "Original language of the movie"
         data_type: string
@@ -112,16 +96,6 @@ models:
       - name: keywords
         description: "Movie keywords/tags"
         data_type: string
-      - name: social_media_buzz
-        description: >
-          Social media buzz score. WARNING: this feature is dropped by the ML
-          feature preprocessor as a potential target-leakage signal — do not
-          use it as a model input.
-        data_type: integer
-        tests:
-          - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 10
       - name: release_type
         description: "Type of release (wide, limited; source occasionally emits NULL/other values)"
         data_type: string
@@ -131,31 +105,6 @@ models:
               config:
                 severity: warn
                 store_failures: true
-      - name: release_type_encoded
-        description: >
-          Label-encoded release type for ML ingestion. WARNING: this column is
-          dropped by the ML feature preprocessor as a target-leakage risk — do
-          not use it as a model input.
-        data_type: integer
-      - name: production_company_encoded
-        description: >
-          Label-encoded production company for ML ingestion. WARNING: this
-          column is dropped by the ML feature preprocessor as a target-leakage
-          risk — do not use it as a model input.
-        data_type: integer
-      - name: mpaa_encoded
-        description: >
-          Label-encoded MPAA rating for ML ingestion. WARNING: this column is
-          dropped by the ML feature preprocessor as a target-leakage risk — do
-          not use it as a model input.
-        data_type: integer
-      - name: franchise_rating
-        description: "Franchise rating indicator"
-        data_type: integer
-        tests:
-          - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 10
       - name: loaded_at
         description: "Timestamp when the record was loaded into the staging table"
         data_type: timestamp

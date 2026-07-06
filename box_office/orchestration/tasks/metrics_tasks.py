@@ -82,11 +82,6 @@ def log_feature_engineering_metrics(processor, feature_names: List[str]):
             for f in feature_names
             if any(t in f.lower() for t in ["budget", "gross", "revenue", "cost"])
         ],
-        "rating": [
-            f
-            for f in feature_names
-            if any(t in f.lower() for t in ["rating", "vote", "score"])
-        ],
         "categorical": [
             f
             for f in feature_names

@@ -82,8 +82,6 @@ class TestPredictionRequest:
         assert request.release_year == 2024
         # Check defaults
         assert request.ad_budget == 0
-        assert request.rating == 5.0
-        assert request.votes == 100
         assert request.return_confidence is True
 
     def test_valid_request_full(self):
@@ -95,9 +93,6 @@ class TestPredictionRequest:
             "release_month": 12,
             "release_year": 2024,
             "ad_budget": 25000000,
-            "rating": 8.5,
-            "votes": 50000,
-            "franchise_rating": 7.8,
             "mpaa": "PG-13",
             "director": "Christopher Nolan",
             "actors": ["Tom Hardy", "Anne Hathaway"],
@@ -110,8 +105,6 @@ class TestPredictionRequest:
 
         assert request.budget == 100000000
         assert request.ad_budget == 25000000
-        assert request.rating == 8.5
-        assert request.votes == 50000
         assert request.genre == ["Action", "Adventure"]
         assert request.actors == ["Tom Hardy", "Anne Hathaway"]
         assert request.director == "Christopher Nolan"
@@ -205,22 +198,25 @@ class TestPredictionRequest:
         errors = exc_info.value.errors()
         assert any(error["loc"] == ("release_month",) for error in errors)
 
-    def test_invalid_rating_out_of_range(self):
-        """Test validation error for invalid rating."""
+    def test_post_release_fields_rejected(self):
+        """Post-release/leakage request fields are rejected."""
         request_data = {
             "budget": 50000000,
             "runtime": 120,
             "genre": "Action",
             "release_month": 6,
             "release_year": 2024,
-            "rating": 15.0,
+            "rating": 8.0,
+            "votes": 1000,
+            "franchise_rating": 2,
         }
 
         with pytest.raises(ValidationError) as exc_info:
             PredictionRequest(**request_data)
 
         errors = exc_info.value.errors()
-        assert any(error["loc"] == ("rating",) for error in errors)
+        rejected = {error["loc"][0] for error in errors}
+        assert {"rating", "votes", "franchise_rating"}.issubset(rejected)
 
     def test_missing_required_fields(self):
         """Test validation error for missing required fields."""
@@ -356,9 +352,6 @@ class TestPredictionEngine:
             release_month=6,
             release_year=2024,
             ad_budget=10000000,
-            rating=7.5,
-            votes=25000,
-            franchise_rating=8.0,
             mpaa="PG-13",
             director="Test Director",
             actors=["Actor 1", "Actor 2"],
@@ -481,11 +474,11 @@ class TestPredictionEngine:
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 1
         assert "RELEASE_YEAR" in df.columns
-        assert "RATING" in df.columns
-        assert "VOTES" in df.columns
         assert "AD_BUDGET" in df.columns
         assert "PRODUCTION_BUDGET" in df.columns
-        assert "FRANCHISE_RATING" in df.columns
+        assert "RATING" not in df.columns
+        assert "VOTES" not in df.columns
+        assert "FRANCHISE_RATING" not in df.columns
         assert "RUNTIME" in df.columns
         assert "SOCIAL_MEDIA_BUZZ" not in df.columns
         assert "MPAA" in df.columns
@@ -728,7 +721,7 @@ class RealisticPreprocessor:
         # Emit the full SELECTED_FEATURES contract; populate the columns this
         # mock knows, zero-fill the rest. Order matches the contract.
         row = {c: 0.0 for c in SELECTED_FEATURES}
-        for col in ("PRODUCTION_BUDGET", "VOTES"):
+        for col in ("PRODUCTION_BUDGET",):
             if col in df.columns:
                 row[col] = df[col].iloc[0]
         return pd.DataFrame([row], columns=list(SELECTED_FEATURES))
@@ -783,9 +776,6 @@ class TestPredictionEngineIntegration:
                 "release_month": 6,
                 "release_year": 2024,
                 "ad_budget": 50000000,
-                "rating": 8.0,
-                "votes": 100000,
-                "franchise_rating": 8.5,
                 "mpaa": "PG-13",
                 "director": "Christopher Nolan",
                 "actors": ["Christian Bale", "Tom Hardy"],
@@ -828,8 +818,6 @@ class TestPredictionEngineIntegration:
                 "genre": ["Action", "Adventure", "Comedy", "Drama"],
                 "release_month": 12,
                 "release_year": 2030,
-                "rating": 10.0,
-                "votes": 1000000,
             },
             # Empty optional fields
             {

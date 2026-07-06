@@ -1,9 +1,4 @@
-"""Shared AWS / boto3 helpers.
-
-Centralises constants and parsing utilities that were previously copy-pasted
-across the SageMaker training entrypoint, the orchestration tasks, the
-inference Lambda's model loader, and the model registry.
-"""
+"""Shared AWS / boto3 constants and parsing helpers."""
 
 from __future__ import annotations
 

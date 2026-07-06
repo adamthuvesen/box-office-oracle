@@ -59,14 +59,14 @@ def parse_args():
     )
 
     # XGBoost hyperparameters injected via Estimator.hyperparameters.
-    parser.add_argument("--n_estimators", type=int, default=2000)
-    parser.add_argument("--learning_rate", type=float, default=0.05)
-    parser.add_argument("--max_depth", type=int, default=3)
-    parser.add_argument("--min_child_weight", type=int, default=9)
+    parser.add_argument("--n_estimators", type=int, default=1500)
+    parser.add_argument("--learning_rate", type=float, default=0.04)
+    parser.add_argument("--max_depth", type=int, default=4)
+    parser.add_argument("--min_child_weight", type=int, default=2)
     parser.add_argument("--subsample", type=float, default=0.8)
     parser.add_argument("--colsample_bytree", type=float, default=0.8)
     parser.add_argument("--reg_alpha", type=float, default=0.01)
-    parser.add_argument("--reg_lambda", type=float, default=0.01)
+    parser.add_argument("--reg_lambda", type=float, default=0.2)
     parser.add_argument("--early_stopping_rounds", type=int, default=50)
 
     args = parser.parse_args()

@@ -24,8 +24,7 @@ class TestBoxOfficeXGBoostModel(unittest.TestCase):
         """Test basic model fitting.
 
         Asserts the underlying XGBRegressor receives ``X_train, y_train`` in
-        that order — the previous ``assert_called_once()`` would have happily
-        accepted a regression that swapped the args.
+        that order.
         """
         mock_model_instance = MagicMock()
         mock_xgb.return_value = mock_model_instance

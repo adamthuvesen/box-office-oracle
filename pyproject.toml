@@ -27,7 +27,7 @@ dependencies = [
     "boto3==1.42.90",
     "botocore==1.42.90",
 
-    # Data & Plotting (back to compatible versions)
+    # Data & Plotting
     "numpy==1.26.4",
     "pandas==2.3.1",
     "scikit-learn==1.7.0",
@@ -68,16 +68,12 @@ dependencies = [
     "SQLAlchemy==2.0.50",
     "pydantic-settings==2.14.1",
 
-    # Feature Store - Moved to optional dependencies due to numpy compatibility
-    # "feast[redis,snowflake]==0.52.0",
-    # "redis>=4.6.0,<5.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     # Development & Testing
     "pytest==9.0.3",
-    # >=1.0 registers asyncio_default_test_loop_scope; older releases break under --strict-config with pytest 9.
     "pytest-asyncio>=1.0",
     "pytest-cov==7.1.0",
     "flake8==7.3.0",
@@ -93,7 +89,7 @@ dev = [
     # Infrastructure & Deployment
     "docker==7.1.0",
 
-    # Data & Plotting (matplotlib removed due to numpy compatibility)
+    # Data & Plotting
     "seaborn==0.11.1",
     "plotly==6.7.0",
 

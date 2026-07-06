@@ -31,6 +31,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _write_csv(df: pd.DataFrame, output_path: str) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False)
+    return path
+
+
 def run_discovery(
     start_year: int,
     end_year: int,
@@ -69,8 +76,8 @@ def run_discovery(
     df = pd.DataFrame(new_movies)
 
     if output_path:
-        df.to_csv(output_path, index=False)
-        logger.info(f"Saved discovery results to: {output_path}")
+        path = _write_csv(df, output_path)
+        logger.info(f"Saved discovery results to: {path}")
 
     return df
 
@@ -114,8 +121,6 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
     """
     column_mapping = {
         "id": "tmdb_id",
-        "vote_average": "rating",
-        "vote_count": "votes",
         "budget": "production_budget",
         "revenue": "worldwide_gross",
         "production_companies": "production_company",
@@ -131,16 +136,11 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
     }
     df = df.rename(columns=rename_map)
 
-    # RAW.BOX_OFFICE_V3 still owns the source column name; dbt exposes
-    # movie_rank at the staging boundary.
     required_cols = [
         "tmdb_id",
         "imdb_id",
-        "rank",
         "title",
         "release_date",
-        "rating",
-        "votes",
         "original_language",
         "production_countries",
         "genres",
@@ -149,7 +149,6 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
         "actors",
         "mpaa",
         "release_type",
-        "franchise_rating",
         "runtime",
         "overview",
         "tagline",
@@ -157,9 +156,6 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
         "ad_budget",
         "production_company",
         "release_year",
-        "release_type_encoded",
-        "production_company_encoded",
-        "mpaa_encoded",
         "worldwide_gross",
     ]
 
@@ -173,24 +169,6 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
             df["release_year"] = pd.to_datetime(
                 df["release_date"], errors="coerce"
             ).dt.year
-
-    # Rank semantic is "1 = highest worldwide gross"; rows missing gross sort
-    # to the bottom.
-    if "rank" in df.columns and df["rank"].isna().all():
-        df = df.sort_values(
-            by="worldwide_gross", ascending=False, na_position="last", kind="mergesort"
-        ).reset_index(drop=True)
-        df["rank"] = range(1, len(df) + 1)
-
-    encoded_defaults = {
-        "release_type_encoded": 1,
-        "mpaa_encoded": 2,
-        "production_company_encoded": 0,
-    }
-    for column, default in encoded_defaults.items():
-        df[column] = (
-            pd.to_numeric(df[column], errors="coerce").fillna(default).astype(int)
-        )
 
     return df[required_cols]
 
@@ -306,7 +284,10 @@ Examples:
     # Generate default output path
     if args.output_csv is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output_csv = f"data/external/tmdb/ingested_movies_{args.start_year}_{args.end_year}_{timestamp}.csv"
+        args.output_csv = (
+            f"data/generated/tmdb/"
+            f"ingested_movies_{args.start_year}_{args.end_year}_{timestamp}.csv"
+        )
 
     logger.info("Movie Data Ingestion Pipeline")
 
@@ -323,8 +304,8 @@ Examples:
             df = pd.read_csv(args.input_csv)
             df = run_enrichment(df, seed=args.seed)
             df = prepare_for_snowflake(df)
-            df.to_csv(args.output_csv, index=False)
-            logger.info(f"Saved enriched data to: {args.output_csv}")
+            path = _write_csv(df, args.output_csv)
+            logger.info(f"Saved enriched data to: {path}")
 
         elif args.discover_only:
             logger.info("Mode: Discovery only")
@@ -365,8 +346,8 @@ Examples:
             logger.info("\n--- Step 3: Prepare for Snowflake ---")
             df = prepare_for_snowflake(df)
 
-            df.to_csv(args.output_csv, index=False)
-            logger.info(f"Saved to: {args.output_csv}")
+            path = _write_csv(df, args.output_csv)
+            logger.info(f"Saved to: {path}")
 
             if args.load_to_snowflake:
                 logger.info("\n--- Step 4: Load to Snowflake ---")

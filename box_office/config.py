@@ -45,14 +45,14 @@ class _SnowflakeView:
 
 @dataclass(frozen=True)
 class _ModelHyperparams:
-    n_estimators: int = 2000
-    learning_rate: float = 0.05
-    max_depth: int = 3
-    min_child_weight: int = 1
+    n_estimators: int = 1500
+    learning_rate: float = 0.04
+    max_depth: int = 4
+    min_child_weight: int = 2
     subsample: float = 0.8
     colsample_bytree: float = 0.8
     reg_alpha: float = 0.01
-    reg_lambda: float = 0.01
+    reg_lambda: float = 0.2
     early_stopping_rounds: int = 50
 
 
@@ -149,10 +149,8 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         """Pre-compute the nested view dataclasses once.
 
-        The views were previously rebuilt on every ``config.aws``,
-        ``config.snowflake``, etc. attribute access. Now they materialise once
-        at ``Settings()`` construction and subsequent reads are pure attribute
-        lookups; ``config.aws is config.aws`` holds.
+        The views materialise at ``Settings()`` construction and subsequent
+        reads are pure attribute lookups; ``config.aws is config.aws`` holds.
         """
         object.__setattr__(
             self,

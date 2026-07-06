@@ -24,24 +24,20 @@ def synthetic_movies() -> pd.DataFrame:
     for year in (2021, 2022, 2023):
         for i in range(20):
             budget = float(rng.uniform(5_000_000, 250_000_000))
-            rating = float(rng.uniform(4.5, 8.5))
-            votes = float(rng.uniform(500, 50_000))
             runtime = float(rng.uniform(80, 180))
             ad_budget = budget * float(rng.uniform(0.3, 0.6))
-            franchise = int(rng.integers(0, 3))
-            # Target is a noisy-nonlinear function of budget+rating, NOT a feature.
+            # Target is a noisy-nonlinear function of budget+runtime, NOT a feature.
             log_gross = (
-                np.log1p(budget) * 0.7 + rating * 0.3 + float(rng.normal(0, 0.5))
+                np.log1p(budget) * 0.7
+                + runtime * 0.015
+                + float(rng.normal(0, 0.5))
             )
             rows.append(
                 {
                     "RELEASE_DATE": f"{year}-{int(rng.integers(1, 13)):02d}-15",
                     "RELEASE_YEAR": year,
-                    "RATING": rating,
-                    "VOTES": votes,
                     "AD_BUDGET": ad_budget,
                     "PRODUCTION_BUDGET": budget,
-                    "FRANCHISE_RATING": franchise,
                     "RUNTIME": runtime,
                     "MPAA": rng.choice(["PG", "PG-13", "R"]),
                     "GENRES": rng.choice(["Action", "Comedy", "Drama"]),
@@ -86,11 +82,23 @@ def test_no_feature_correlates_perfectly_with_target(synthetic_movies):
 
 
 def test_known_leaked_feature_names_absent_from_pipeline(synthetic_movies):
-    """Belt-and-suspenders: the four removed leakage features must not reappear by name."""
+    """Forbidden leakage names must not appear in the feature contract."""
     pre = FeaturePreprocessorHigh().fit(synthetic_movies)
     feature_names = pre.get_feature_names()
     forbidden = {
         "SOCIAL_MEDIA_BUZZ",
+        "RATING",
+        "VOTES",
+        "FRANCHISE_RATING",
+        "RANK",
+        "MOVIE_RANK",
+        "DOMESTIC_GROSS",
+        "BUDGET_TO_VOTES_RATIO",
+        "VOTES_PER_BUDGET",
+        "RATING_PER_BUDGET",
+        "RATING_VOTES_INTERACTION",
+        "YEAR_TO_VOTES_RATIO",
+        "VOTES_ERA_ADJUSTED",
         "SOCIAL_BUZZ_TO_BUDGET",
         "MARKETING_EFFICIENCY",
         "VIRAL_POTENTIAL",

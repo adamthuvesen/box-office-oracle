@@ -15,7 +15,7 @@ class TestFeaturePreprocessor:
 
         preprocessor = FeaturePreprocessorHigh()
         assert preprocessor is not None
-        # Pre-engineered drop + six engineered transformers + raw-column strip.
+        # Pre-engineered drop + five engineered transformers + raw-column strip.
         assert len(preprocessor.pipeline.named_steps) == 8
 
     def test_fit_transform_with_realistic_data(self, sample_movie_data):
@@ -65,12 +65,8 @@ class TestFeaturePreprocessor:
                 "RELEASE_DATE": pd.to_datetime(
                     ["2020-01-01", "2021-01-01", "2022-01-01", "2023-01-01"]
                 ),
-                "RATING": [7.5, None, 8.2, 7.9],
-                "VOTES": [1000, 2000, None, 4000],
                 "AD_BUDGET": [500000, None, 700000, 800000],
                 "PRODUCTION_BUDGET": [1000000, 2000000, 3000000, None],
-                "FRANCHISE_RATING": [7.0, 8.0, None, 7.5],
-                "SOCIAL_MEDIA_BUZZ": [1000, None, 3000, 4000],
                 "RUNTIME": [120, 130, None, 150],
                 "DIRECTOR": ["Dir A", "Dir B", "Dir C", None],
                 "PRODUCTION_COMPANY": ["Company A", None, "Company C", "Company D"],
@@ -103,12 +99,8 @@ class TestFeaturePreprocessor:
             {
                 "RELEASE_YEAR": [2020],
                 "RELEASE_DATE": pd.to_datetime(["2020-01-01"]),
-                "RATING": [7.5],
-                "VOTES": [1000],
                 "AD_BUDGET": [500000],
                 "PRODUCTION_BUDGET": [1000000],
-                "FRANCHISE_RATING": [7.0],
-                "SOCIAL_MEDIA_BUZZ": [1000],
                 "RUNTIME": [120],
                 "DIRECTOR": ["Dir A"],
                 "PRODUCTION_COMPANY": ["Company A"],
@@ -135,7 +127,7 @@ class TestFeatureNameCollision:
 
         preprocessor = FeaturePreprocessorHigh()
 
-        # Inject a step that re-emits a SELECTED feature ('VOTES'). Insert before
+        # Inject a step that re-emits a SELECTED feature ('PRODUCTION_BUDGET'). Insert before
         # the final 'feature_selector' projection so the duplicate survives into
         # fit_transform output and trips the collision guard.
         class CollidingTransformer(BaseEstimator, TransformerMixin):
@@ -144,7 +136,7 @@ class TestFeatureNameCollision:
 
             def transform(self, X):
                 # Concat-with-duplicate-name forces a true duplicate column.
-                dup = pd.DataFrame({"VOTES": [0] * len(X)}, index=X.index)
+                dup = pd.DataFrame({"PRODUCTION_BUDGET": [0] * len(X)}, index=X.index)
                 return pd.concat([X, dup], axis=1)
 
         selector_idx = next(
@@ -160,12 +152,8 @@ class TestFeatureNameCollision:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-06-01", "2021-06-01"]),
-                "RATING": [7.5, 8.0],
-                "VOTES": [1000, 2000],
                 "AD_BUDGET": [500000, 1000000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
-                "FRANCHISE_RATING": [7.0, 7.5],
-                "SOCIAL_MEDIA_BUZZ": [1000, 2000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
                 "PRODUCTION_COMPANY": ["Co A", "Co B"],
@@ -178,7 +166,7 @@ class TestFeatureNameCollision:
         with pytest.raises(FeatureNameCollisionError) as exc:
             preprocessor.fit_transform(df)
 
-        assert "VOTES" in str(exc.value)
+        assert "PRODUCTION_BUDGET" in str(exc.value)
 
     def test_normal_pipeline_columns_are_unique(self, sample_movie_data):
         from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh

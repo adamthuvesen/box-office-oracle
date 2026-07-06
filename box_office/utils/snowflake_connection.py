@@ -217,22 +217,14 @@ def enforce_data_types(df: pd.DataFrame, table_type: str = "training") -> pd.Dat
     numerical_columns = {
         "training": [
             "RELEASE_YEAR",
-            "RATING",
-            "VOTES",
             "AD_BUDGET",
             "PRODUCTION_BUDGET",
-            "FRANCHISE_RATING",
-            "SOCIAL_MEDIA_BUZZ",
             "RUNTIME",
         ],
         "features": [
             "RELEASE_YEAR",
-            "RATING",
-            "VOTES",
             "AD_BUDGET",
             "PRODUCTION_BUDGET",
-            "FRANCHISE_RATING",
-            "SOCIAL_MEDIA_BUZZ",
             "RUNTIME",
             "MPAA_ENCODED",
             "SUPER_GENRE_ENCODED",

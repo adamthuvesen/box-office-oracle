@@ -1,11 +1,11 @@
 """Feature schema version contract between training and inference.
 
-Current runtime schema: v4, the 12-feature ``SELECTED_FEATURES`` contract
-without ``IS_COVID_ERA``. The inference loader rejects artifacts whose metadata
-does not match the runtime schema instead of serving a silent shape mismatch.
+Current runtime schema: v7, the 12-feature pre-release contract.
+The inference loader rejects artifacts whose metadata does not match the
+runtime schema instead of serving a silent shape mismatch.
 """
 
-CURRENT_FEATURE_SCHEMA_VERSION = "4"
+CURRENT_FEATURE_SCHEMA_VERSION = "7"
 SCHEMA_VERSION_METADATA_KEY = "feature_schema_version"
 
 

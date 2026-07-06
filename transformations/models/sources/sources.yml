@@ -9,10 +9,10 @@ sources:
       - name: BOX_OFFICE_V3
         description: >
           Raw movie dataset with box office performance, budgets, and metadata.
-          Duplicate tmdb_id values can occur in this table; stg_box_office deduplicates
-          to one row per TMDB_ID (highest votes, then latest release_date, then
-          lowest tmdb_id as a deterministic tiebreak). No source freshness: RAW has no
-          reliable loaded_at; staging sets loaded_at at transform time.
+          Duplicate tmdb_id values can occur in this table; stg_box_office
+          deduplicates to one row per TMDB_ID by latest release_date, then
+          lowest tmdb_id as a deterministic tiebreak. No source freshness: RAW
+          has no reliable loaded_at; staging sets loaded_at at transform time.
         columns:
           - name: tmdb_id
             description: "The Movie Database (TMDb) unique identifier"
@@ -20,21 +20,12 @@ sources:
           - name: imdb_id
             description: "Internet Movie Database (IMDb) unique identifier"
             data_type: string
-          - name: rank
-            description: "Movie ranking"
-            data_type: number
           - name: title
             description: "Movie title"
             data_type: string
           - name: release_date
             description: "Release date of the movie"
             data_type: date
-          - name: rating
-            description: "Movie rating (e.g., IMDb rating)"
-            data_type: number
-          - name: votes
-            description: "Number of votes/reviews"
-            data_type: number
           - name: original_language
             description: "Original language of the movie"
             data_type: string
@@ -56,15 +47,9 @@ sources:
           - name: mpaa
             description: "MPAA rating (G, PG, PG-13, R, etc.)"
             data_type: string
-          - name: social_media_buzz
-            description: "Social media buzz score"
-            data_type: number
           - name: release_type
             description: "Type of release (wide, limited)"
             data_type: string
-          - name: franchise_rating
-            description: "Franchise rating indicator"
-            data_type: number
           - name: runtime
             description: "Movie runtime in minutes"
             data_type: number
@@ -85,15 +70,6 @@ sources:
             data_type: string
           - name: release_year
             description: "Year the movie was released"
-            data_type: number
-          - name: release_type_encoded
-            description: "Encoded release type for ML model"
-            data_type: number
-          - name: production_company_encoded
-            description: "Encoded production company for ML model"
-            data_type: number
-          - name: mpaa_encoded
-            description: "Encoded MPAA rating for ML model"
             data_type: number
           - name: worldwide_gross
             description: "Worldwide box office gross revenue"

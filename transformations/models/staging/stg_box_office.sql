@@ -8,16 +8,31 @@ deduped AS (
   QUALIFY ROW_NUMBER() OVER (
     PARTITION BY TMDB_ID
     ORDER BY
-      VOTES DESC NULLS LAST,
       RELEASE_DATE DESC NULLS LAST,
       TMDB_ID ASC
   ) = 1
 )
 
 SELECT
-  -- Avoid exposing RANK as a downstream column name because it collides with
-  -- the SQL reserved word.
-  * EXCLUDE (RANK),
-  RANK AS MOVIE_RANK,
+  TMDB_ID,
+  IMDB_ID,
+  TITLE,
+  RELEASE_DATE,
+  ORIGINAL_LANGUAGE,
+  PRODUCTION_COUNTRIES,
+  GENRES,
+  PRODUCTION_BUDGET,
+  DIRECTOR,
+  ACTORS,
+  MPAA,
+  RELEASE_TYPE,
+  RUNTIME,
+  OVERVIEW,
+  TAGLINE,
+  KEYWORDS,
+  AD_BUDGET,
+  PRODUCTION_COMPANY,
+  RELEASE_YEAR,
+  WORLDWIDE_GROSS,
   current_timestamp() AS loaded_at
 FROM deduped

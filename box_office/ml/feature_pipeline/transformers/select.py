@@ -15,11 +15,10 @@ from box_office.ml.feature_pipeline.constants import (
 class _DropPreEngineered(BaseEstimator, TransformerMixin):
     """Strip any pre-existing engineered columns from input.
 
-    The legacy raw schema carries offline-encoded columns (``mpaa_encoded``,
-    ``release_type_encoded``, ``production_company_encoded``) that collide
-    with what the downstream transformers produce. Concatenating the
-    transformer's output back into ``X`` would yield duplicates and trip
-    ``FeaturePreprocessorHigh``'s collision guard.
+    Input snapshots can include offline-encoded columns (``mpaa_encoded``,
+    ``release_type_encoded``, ``production_company_encoded``) that collide with
+    the columns emitted by the pipeline. Dropping them here keeps the final
+    feature contract unique and deterministic.
     """
 
     PRE_ENCODED_COLUMNS: tuple[str, ...] = (

@@ -141,12 +141,8 @@ class TestFeatureAccumulationDuplicateColumns:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-06-15", "2021-12-20"]),
-                "RATING": [7.5, 8.0],
-                "VOTES": [1000, 2000],
                 "AD_BUDGET": [500000, 600000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
-                "FRANCHISE_RATING": [7.0, 8.0],
-                "SOCIAL_MEDIA_BUZZ": [1000, 2000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
                 "PRODUCTION_COMPANY": ["Company A", "Company B"],
@@ -241,12 +237,8 @@ class TestTransformerSanityChecks:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-06-15", "2021-12-20"]),
-                "RATING": [7.5, 8.0],
-                "VOTES": [1000, 2000],
                 "AD_BUDGET": [500000, 600000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
-                "FRANCHISE_RATING": [7.0, 8.0],
-                "SOCIAL_MEDIA_BUZZ": [1000, 2000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
                 "PRODUCTION_COMPANY": ["Company A", "Company B"],
@@ -265,7 +257,7 @@ class TestTransformerSanityChecks:
 
         assert len(result) == 2
         assert "RELEASE_YEAR" in result.columns
-        assert "RATING" in result.columns
+        assert "PRODUCTION_BUDGET" in result.columns
 
     def test_temporal_transformer(self, sample_data):
         from box_office.ml.feature_pipeline import TemporalTransformer
@@ -317,7 +309,7 @@ class TestTransformerSanityChecks:
 
         assert len(result) == 2
         assert "TOTAL_BUDGET" in result.columns
-        assert "BUDGET_TO_VOTES_RATIO" in result.columns
+        assert "AD_TO_PROD_RATIO" in result.columns
 
 
 class TestSharedUtilities:

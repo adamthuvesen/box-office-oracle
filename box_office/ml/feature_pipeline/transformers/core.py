@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class CoreNumericalTransformer(BaseEstimator, TransformerMixin):
-    """Pass-through type-coercion for the 7 core numerical columns.
+    """Pass-through type-coercion for the core numerical columns.
 
     Strict mode (``ML_STRICT_FEATURES=true``) raises ``KeyError`` on any
     missing core column instead of silently filling with zero — keeps an

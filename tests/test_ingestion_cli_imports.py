@@ -1,8 +1,4 @@
-"""Tests for the `ingestion-cli-imports` capability.
-
-Covers task 7.4: confirm the CLI imports tmdb_discovery via the package and
-not via `importlib.util` against a `__file__`-relative path.
-"""
+"""Tests for the package-level TMDB discovery import."""
 
 from __future__ import annotations
 
@@ -12,9 +8,8 @@ import inspect
 def test_cli_does_not_use_importlib_util_for_tmdb_discovery():
     """The CLI source must not contain `importlib.util.spec_from_file_location`.
 
-    The dynamic-import ceremony lives in the dedicated
-    box_office.ingestion.tmdb_discovery module so the CLI stays oblivious to
-    the upstream script's path-on-disk.
+    The CLI imports the package module directly, so discovery code stays inside
+    ``box_office.ingestion``.
     """
     from box_office.ingestion import cli
 

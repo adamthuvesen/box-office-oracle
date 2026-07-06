@@ -33,8 +33,6 @@ class TestNaNPropagation:
                         "2023-08-20",
                     ]
                 ),
-                "RATING": [7.5, 8.2, 7.9, 7.2, 8.0],
-                "VOTES": [50000, 120000, 80000, 40000, 90000],
                 "AD_BUDGET": [5_000_000, 8_000_000, 6_000_000, 4_000_000, 7_000_000],
                 "PRODUCTION_BUDGET": [
                     50_000_000,
@@ -43,8 +41,6 @@ class TestNaNPropagation:
                     45_000_000,
                     80_000_000,
                 ],
-                "FRANCHISE_RATING": [7.0, 8.0, 7.5, 7.1, 7.8],
-                "SOCIAL_MEDIA_BUZZ": [10_000, 25_000, 15_000, 8_000, 20_000],
                 "RUNTIME": [120, 140, 130, 110, 135],
                 "DIRECTOR": ["A", "B", "A", "C", "A"],
                 "PRODUCTION_COMPANY": ["WB", "Disney", "WB", "Universal", "WB"],
@@ -76,8 +72,8 @@ class TestNaNPropagation:
             features.loc[1, "PRODUCTION_BUDGET"] != 0
         ), "Preprocessor silently coerced NaN PRODUCTION_BUDGET to 0"
         assert pd.isna(features.loc[1, "PRODUCTION_BUDGET"]) or pd.isna(
-            features.loc[1, "TOTAL_BUDGET"]
-        ), "NaN should propagate to PRODUCTION_BUDGET or its dependent TOTAL_BUDGET"
+            features.loc[1, "AD_TO_PROD_RATIO"]
+        ), "NaN should propagate to PRODUCTION_BUDGET or a dependent ratio"
 
         # A WARNING with the column name is emitted.
         assert any(
@@ -212,13 +208,11 @@ class TestCVResultKeyAlignment:
     def test_cv_summary_log_uses_cv_scores(self):
         """Spec scenario: CV summary log shows non-empty fold scores.
 
-        Source the cv_folds count via the same code path the trainer now
-        uses (``cv_results.get('cv_scores', [])``). With three folds the
-        fold count must be 3, not the constant zero the legacy
-        ``fold_scores`` read produced.
+        Source the cv_folds count from the actual validator key
+        (``cv_results.get('cv_scores', [])``). With three folds the fold count
+        must be 3.
         """
         cv_results = self._build_cv_results(n_folds=3)
-        # Mirror the post-fix read in model_training.py.
         cv_folds_read = len(cv_results.get("cv_scores", []))
         assert cv_folds_read == 3, (
             "Trainer must read 'cv_scores' (validator's actual key), not "
@@ -262,12 +256,8 @@ class TestMissingCoreColumnSurface:
         df = pd.DataFrame(
             {
                 "RELEASE_YEAR": [2020, 2021],
-                "RATING": [7.5, 8.0],
-                "VOTES": [1000, 2000],
                 "AD_BUDGET": [10, 20],
                 "PRODUCTION_BUDGET": [30, 40],
-                "FRANCHISE_RATING": [7.0, 7.5],
-                "SOCIAL_MEDIA_BUZZ": [5, 10],
                 # RUNTIME deliberately missing
             }
         )
@@ -291,12 +281,8 @@ class TestMissingCoreColumnSurface:
         df = pd.DataFrame(
             {
                 "RELEASE_YEAR": [2020],
-                "RATING": [7.5],
-                "VOTES": [1000],
                 "AD_BUDGET": [10],
                 "PRODUCTION_BUDGET": [30],
-                "FRANCHISE_RATING": [7.0],
-                "SOCIAL_MEDIA_BUZZ": [5],
                 # RUNTIME deliberately missing
             }
         )
@@ -402,9 +388,6 @@ class TestInflationDirection:
                 "RELEASE_YEAR": [year],
                 "PRODUCTION_BUDGET": [prod_budget],
                 "AD_BUDGET": [0.0],
-                "VOTES": [10_000],
-                "RATING": [7.0],
-                "SOCIAL_MEDIA_BUZZ": [1_000],
                 "YEARS_SINCE_2000": [max(0, year - 2000)],
             }
         )
@@ -458,15 +441,15 @@ class TestSnowflakeNaNToNone:
 
 
 # ---------------------------------------------------------------------------
-# Requirement: Ingestion rank SHALL reflect deterministic sort order
+# Requirement: Ingestion SHALL NOT synthesize target-derived rank
 # ---------------------------------------------------------------------------
 
 
-class TestIngestionRankOrdering:
-    """Spec: Ingestion rank SHALL reflect a deterministic sort order."""
+class TestIngestionDoesNotCreateRank:
+    """Spec: Ingestion does not create target-derived rank."""
 
-    def test_highest_grossing_row_receives_rank_1(self):
-        """Spec scenario: Highest-grossing row receives rank 1."""
+    def test_prepare_for_snowflake_does_not_create_rank(self):
+        """Spec scenario: target-derived rank is not produced."""
         from box_office.ingestion.cli import prepare_for_snowflake
 
         df = pd.DataFrame(
@@ -479,25 +462,19 @@ class TestIngestionRankOrdering:
         )
         out = prepare_for_snowflake(df)
 
-        # Rebuild mapping by tmdb_id since prepare_for_snowflake may reorder rows.
-        # The RAW boundary keeps the legacy ``rank`` name (L51 only renames at
-        # the staging layer to avoid forcing a Snowflake ALTER TABLE).
-        rank_by_id = dict(zip(out["tmdb_id"], out["rank"]))
-        assert rank_by_id[2] == 1, "row with gross=200 should rank 1"
-        assert rank_by_id[3] == 2, "row with gross=100 should rank 2"
-        assert rank_by_id[1] == 3, "row with gross=50 should rank 3"
+        assert "rank" not in out.columns
 
 
 # ---------------------------------------------------------------------------
-# Requirement: Per-row defaults SHALL be applied row-by-row, not column-wide
+# Requirement: Encoded defaults SHALL NOT be synthesized
 # ---------------------------------------------------------------------------
 
 
-class TestPerRowReleaseTypeFill:
-    """Spec: Per-row defaults SHALL be applied row-by-row, not column-wide."""
+class TestEncodedColumnsDropped:
+    """Spec: ingestion no longer creates encoded helper columns."""
 
-    def test_mixed_null_and_non_null_column_gets_per_row_fill(self):
-        """Spec scenario: Mixed null and non-null column gets per-row fill."""
+    def test_prepare_for_snowflake_drops_encoded_inputs(self):
+        """Spec scenario: encoded columns stay out of RAW contract."""
         from box_office.ingestion.cli import prepare_for_snowflake
 
         df = pd.DataFrame(
@@ -506,14 +483,10 @@ class TestPerRowReleaseTypeFill:
                 "title": ["A", "B", "C", "D", "E"],
                 "worldwide_gross": [100, 200, 300, 400, 500],
                 "release_type_encoded": [3, np.nan, np.nan, np.nan, np.nan],
+                "mpaa_encoded": [1, 2, 3, 4, 5],
             }
         )
         out = prepare_for_snowflake(df).sort_values("tmdb_id").reset_index(drop=True)
 
-        # The pre-existing populated value survives.
-        assert out.loc[out["tmdb_id"] == 1, "release_type_encoded"].iloc[0] == 3
-        # The four NaN rows receive the documented default (1 = wide release).
-        for tmdb_id in (2, 3, 4, 5):
-            assert (
-                out.loc[out["tmdb_id"] == tmdb_id, "release_type_encoded"].iloc[0] == 1
-            )
+        assert "release_type_encoded" not in out.columns
+        assert "mpaa_encoded" not in out.columns

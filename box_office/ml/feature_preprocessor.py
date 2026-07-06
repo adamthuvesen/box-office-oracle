@@ -34,7 +34,7 @@ class FeatureNameCollisionError(ValueError):
 class FeaturePreprocessorHigh:
     """Coordinator for the engineered feature pipeline.
 
-    Wraps ``build_feature_pipeline()`` with the historical fit / transform /
+    Wraps ``build_feature_pipeline()`` with the fit / transform /
     fit_transform / get_feature_names surface plus the collision and NaN
     guards the orchestration relies on.
     """
@@ -107,11 +107,8 @@ _SCHEMA_FIXTURE = pd.DataFrame(
         {
             "RELEASE_YEAR": 2020,
             "RELEASE_DATE": "2020-06-15",
-            "RATING": 7.0,
-            "VOTES": 1000,
             "AD_BUDGET": 1_000_000,
             "PRODUCTION_BUDGET": 10_000_000,
-            "FRANCHISE_RATING": 0,
             "RUNTIME": 120,
             "MPAA": "PG-13",
             "GENRES": "Action",

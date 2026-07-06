@@ -58,7 +58,7 @@ def _normalize_str_list(value: Any) -> List[str]:
 class PredictionRequest(BaseModel):
     """Input schema for prediction requests."""
 
-    model_config = {"protected_namespaces": ()}
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
 
     # Core movie features
     budget: float = Field(..., ge=0, description="Production budget in USD")
@@ -70,13 +70,6 @@ class PredictionRequest(BaseModel):
     # Optional features with defaults
     ad_budget: Optional[float] = Field(
         default=0, ge=0, description="Advertising budget in USD"
-    )
-    rating: Optional[float] = Field(default=5.0, ge=0, le=10, description="IMDB rating")
-    votes: Optional[float] = Field(
-        default=100, ge=0, description="Number of IMDB votes"
-    )
-    franchise_rating: Optional[float] = Field(
-        default=0, ge=0, description="Franchise rating"
     )
 
     # Categorical features
@@ -220,18 +213,12 @@ class PredictionEngine:
 
         data = {
             "RELEASE_YEAR": request.release_year,
-            "RATING": request.rating,
-            "VOTES": request.votes,
             "AD_BUDGET": request.ad_budget,
             "PRODUCTION_BUDGET": request.budget,
-            "FRANCHISE_RATING": request.franchise_rating,
             "RUNTIME": request.runtime,
             "MPAA": request.mpaa,
-            # Pass genre/actors lists through directly. The preprocessor's
-            # _normalize_to_list helper accepts list inputs and skips
-            # ast.literal_eval entirely. The previous str(list) round-trip
-            # broke on apostrophes (e.g. "Children's") because str([...]) emits
-            # mixed quotes that literal_eval rejects.
+            # Pass genre/actors lists through directly; the preprocessor accepts
+            # list inputs and keeps apostrophes inside names intact.
             "GENRES": list(request.genre) if request.genre else [],
             "RELEASE_DATE": release_date,
             "DIRECTOR": request.director,
