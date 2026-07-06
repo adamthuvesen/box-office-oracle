@@ -28,7 +28,7 @@ dependencies = [
     "botocore==1.42.90",
 
     # Data & Plotting
-    "numpy==1.26.4",
+    "numpy==2.4.6",
     "pandas==2.3.1",
     "scikit-learn==1.7.0",
     "scipy==1.16.0",
