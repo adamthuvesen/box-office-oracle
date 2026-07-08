@@ -1,6 +1,6 @@
 # transformations/ — dbt project
 
-Snowflake dbt project that transforms `RAW.BOX_OFFICE_V3` into the
+Snowflake dbt project that transforms `RAW.BOX_OFFICE_V4` into the
 `STAGING.STG_BOX_OFFICE` table consumed by the ML pipeline.
 
 ## Connection

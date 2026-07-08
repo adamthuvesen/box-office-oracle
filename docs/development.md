@@ -14,6 +14,26 @@ SNOWFLAKE_ROLE=DBT_RUNNER
 
 `SNOWFLAKE_ROLE` is required and must NOT be `ACCOUNTADMIN`. The dbt profile resolves it via `env_var('SNOWFLAKE_ROLE')` and fails fast if unset.
 
+### Which role runs what
+
+| Task                                       | `SNOWFLAKE_ROLE`    |
+| ------------------------------------------ | ------------------- |
+| Pipeline (`box-office-pipeline`) + dbt     | `DBT_RUNNER`        |
+| RAW dataset load (`load_dataset_to_snowflake.py`) | `BOX_OFFICE_LOADER` |
+| Role/permission administration             | `ACCOUNTADMIN`      |
+
+`DBT_RUNNER` owns `STAGING`, `ML_TRAINING`, `FEATURE_STORE` (read-only on `RAW`); `BOX_OFFICE_LOADER` owns `RAW`. Keep `.env` set to `SNOWFLAKE_ROLE=DBT_RUNNER` for normal work; only override it inline when loading RAW:
+
+```bash
+SNOWFLAKE_ROLE=BOX_OFFICE_LOADER uv run python scripts/load_dataset_to_snowflake.py
+```
+
+If a schema/table ever ends up owned by the wrong role (symptom: a runtime role can't recreate an object an old `ACCOUNTADMIN` run created), re-apply the idempotent reconciliation:
+
+```bash
+uv run python scripts/apply_snowflake_grants.py   # connects as ACCOUNTADMIN
+```
+
 ## Test discipline
 
 - Tests live in [`tests/`](../tests) (mirror the `box_office/` package layout) and [`box_office/inference/tests/`](../box_office/inference/tests). Name `test_*.py`.

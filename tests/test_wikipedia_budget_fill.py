@@ -75,6 +75,13 @@ def test_non_usd_is_skipped() -> None:
     assert status == "non_usd"
 
 
+def test_currency_prefixed_dollar_is_not_usd() -> None:
+    for raw in ("A$3 million", "CA$10 million", "NZ$5 million", "HK$40 million"):
+        value, status = wiki.classify_budget_text(raw)
+        assert value is None, raw
+        assert status == "non_usd", raw
+
+
 def test_ambiguous_bare_number_is_rejected() -> None:
     value, status = wiki.classify_budget_text("$12")
     assert value is None

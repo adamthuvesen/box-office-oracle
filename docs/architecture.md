@@ -11,14 +11,14 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 | Transformations     | dbt-core + dbt-snowflake     | `[transformations/](../transformations/)`                                                                           |
 | Feature engineering | scikit-learn + pandas        | Single `Pipeline` built by [`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)                 |
 | Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV                                                                                       |
-| Model registry      | AWS SageMaker Model Registry | manual approval gate at R² ≥ 0.75                                                                                   |
+| Model registry      | AWS SageMaker Model Registry | manual approval gate at R² ≥ 0.55                                                                                   |
 | Inference           | Lambda (container image)     | `[box_office/inference/](../box_office/inference)`                                                                  |
 | Orchestration       | Prefect                      | Three-phase flow in [`box_office/orchestration/flows/ml_pipeline.py`](../box_office/orchestration/flows/ml_pipeline.py) |
 | Infra               | Terraform                    | `[infrastructure/terraform/](../infrastructure/terraform)`                                                          |
 | CI/CD               | GitHub Actions               | OIDC → AWS, key-pair → Snowflake                                                                                    |
 
 
-Operational cost: ~$50/month. Training run: 2-5 min on ~2,400 movies. The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) and is the public performance artifact for the pre-release feature contract (currently v9).
+Operational cost: ~$50/month. Training run: 2-5 min on ~6,080 movies (kept from 6,152 in the 1980-2026 dataset). The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) and is the public performance artifact for the pre-release feature contract (currently v9); the committed run is [`results/local_retrain/iteration_report.md`](../results/local_retrain/iteration_report.md).
 
 ## Data flow
 
@@ -38,7 +38,7 @@ ingestion (TMDB/IMDb) → Snowflake RAW
                   SageMaker training (XGBoost)
                             ↓
                   SageMaker Model Registry
-                            ↓ (R² ≥ 0.75 gate)
+                            ↓ (R² ≥ 0.55 gate)
                        Approved
                             ↓
                 Lambda inference (loads from registry)
@@ -96,7 +96,7 @@ Per-fold failures are caught and logged; the loop raises `CrossValidationFailed`
 Production model lifecycle:
 
 1. **Development** — newly registered, `PendingManualApproval`
-2. **Validation** — R² ≥ 0.75 OOF threshold
+2. **Validation** — R² ≥ 0.55 OOF threshold, calibrated against the leakage-free local backtest ([results/local_retrain/iteration_report.md](../results/local_retrain/iteration_report.md))
 3. **Promotion** — automated approval if validation passes
 4. **Production** — Lambda loads latest `Approved` package on cold start
 
@@ -109,7 +109,7 @@ CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../box_office/ml/
 ```
 BOX_OFFICE database
 ├── RAW              (source data ingested via box_office.ingestion)
-│   └── BOX_OFFICE_V3
+│   └── BOX_OFFICE_V4
 ├── STAGING          (dbt-transformed)
 │   └── STG_BOX_OFFICE
 ├── ML_TRAINING      (processed datasets)
@@ -118,7 +118,19 @@ BOX_OFFICE database
 └── FEATURE_STORE    (feature metadata + lineage)
 ```
 
-dbt runs as a least-privilege `DBT_RUNNER` role (not `ACCOUNTADMIN`). The role owns the `STAGING` and `ML_TRAINING` schemas so it can recreate dbt models; it has read-only access to `RAW`.
+### Which role runs what
+
+Three roles, no `ACCOUNTADMIN` at runtime:
+
+| Role                | Owns                                      | Used by                                            |
+| ------------------- | ----------------------------------------- | -------------------------------------------------- |
+| `DBT_RUNNER`        | `STAGING`, `ML_TRAINING`, `FEATURE_STORE` | `box-office-pipeline` + dbt; read-only on `RAW`    |
+| `BOX_OFFICE_LOADER` | `RAW`                                     | `scripts/load_dataset_to_snowflake.py` (RAW loads) |
+| `ACCOUNTADMIN`      | —                                         | administration only, never in the runtime path     |
+
+`DBT_RUNNER` owns the three transform/feature schemas (with schema-level future grants) so it can recreate every dbt model and pipeline table it produces, and reads `RAW` through `SELECT` (present + future). `BOX_OFFICE_LOADER` owns `RAW` so a dataset load never needs `ACCOUNTADMIN`.
+
+Ownership and grants are reconciled by an idempotent script — `scripts/snowflake_role_grants.sql`, applied via `scripts/apply_snowflake_grants.py` (the one path that runs as `ACCOUNTADMIN`). Re-run it if a table ever ends up owned by the wrong role again (the failure mode: an object created by an old `ACCOUNTADMIN` run that a runtime role then can't replace).
 
 ## Configuration
 
@@ -136,7 +148,7 @@ from box_office.config import config
 config.aws.region                          # eu-north-1
 config.snowflake.database                  # BOX_OFFICE
 config.snowflake.schemas.staging           # STAGING
-config.model.promotion_threshold           # 0.75
+config.model.promotion_threshold           # 0.55
 config.model.hyperparameters.n_estimators  # 1500
 ```
 
@@ -158,7 +170,7 @@ The FastAPI `/predict` handler runs CPU-bound `PredictionEngine.predict` in **`a
 
 ## Security posture
 
-- **No `ACCOUNTADMIN`** for runtime: dbt uses `DBT_RUNNER` with scoped grants.
+- **No `ACCOUNTADMIN`** for runtime: dbt + pipeline use `DBT_RUNNER`, RAW loads use `BOX_OFFICE_LOADER`, both with scoped grants (see "Which role runs what" above).
 - **No `AmazonSageMakerFullAccess`** on the SageMaker execution role: scoped inline policy only.
 - **No IAM mutation** in the GitHub Actions role: any IAM change must come from a manual elevated apply.
 - **Manifest verification**: every `pickle.load` is preceded by SHA256 check against the trusted Model Package metadata.

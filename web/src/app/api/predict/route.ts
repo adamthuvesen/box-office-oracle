@@ -40,7 +40,7 @@ async function proxyPredict(
 ): Promise<Response> {
   let upstream: Response;
   try {
-    upstream = await fetch(`${apiUrl}predict`, {
+    upstream = await fetch(`${apiUrl.replace(/\/$/, "")}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
       body: JSON.stringify(body),

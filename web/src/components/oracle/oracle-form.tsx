@@ -269,7 +269,7 @@ export function OracleForm({ pending, onAsk }: OracleFormProps) {
   );
 }
 
-/** Below this the ad-budget slider snaps to $0 — a log scale can't reach zero. */
+/** Below this a zero-allowing slider snaps to $0 — a log scale can't reach zero. */
 const ZERO_FLOOR = 100_000;
 
 interface DollarSliderProps {

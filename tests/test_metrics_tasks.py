@@ -30,7 +30,7 @@ def test_log_pipeline_completion_metrics_builds_summary(monkeypatch):
         },
         "model_promotion_validation": {
             "promote": True,
-            "validation_details": {"r2_score": 0.82, "min_required": 0.75},
+            "validation_details": {"r2_score": 0.82, "min_required": 0.55},
         },
         "aws_promotion": {"status": "success", "promotion_time_seconds": 3.5},
     }

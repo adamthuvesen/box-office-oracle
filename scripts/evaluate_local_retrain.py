@@ -404,7 +404,7 @@ def main() -> None:
     end_eval_year = CONFIRM_END_YEAR if args.confirm else ITERATION_END_YEAR
     mode = "confirm" if args.confirm else "iteration"
 
-    for path in (FRAME_PATH, DROPPED_PATH, FLAGGED_PATH, OLD_TABLE_PATH):
+    for path in (FRAME_PATH, DROPPED_PATH, FLAGGED_PATH):
         if not path.exists():
             raise SystemExit(
                 f"missing input: {path}. Run scripts/prepare_training_frame.py first."
@@ -420,10 +420,14 @@ def main() -> None:
     recent_summary = pooled_window_metrics(headline, RECENT_WINDOW_START, end_eval_year)
     full_summary = pooled_window_metrics(headline, START_EVAL_YEAR, end_eval_year)
 
-    old_table = pd.read_json(OLD_TABLE_PATH)
-    delta_table = build_delta_table(full_table, old_table)
+    old_table = pd.read_json(OLD_TABLE_PATH) if OLD_TABLE_PATH.exists() else None
+    delta_table = (
+        build_delta_table(full_table, old_table) if old_table is not None else None
+    )
 
-    overlap_mask = overlap_mask_from_old_snapshot(frame)
+    overlap_mask = (
+        overlap_mask_from_old_snapshot(frame) if old_table is not None else None
+    )
     overlap_table = None
     if overlap_mask is None:
         overlap_note = (
@@ -466,6 +470,30 @@ def main() -> None:
 
     dropped_md, dropped_json = dropped_rows_summary()
 
+    old_model_section: list[str] = []
+    if delta_table is not None:
+        old_model_section = [
+            "## Delta vs the committed old-model table (results/per_year_table.md)",
+            "",
+            "Positive ΔR²/Δρ and negative ΔAPE mean the new run is better. The eval "
+            "population changed (old ~2.7k-row snapshot vs the new $5M+ frame), so "
+            "this table confounds model and population — judge on the overlap view. "
+            "The old table also predates the leakage fix.",
+            "",
+            render_delta_markdown(delta_table),
+            "",
+            "## Overlap view (eval restricted to movies in the old snapshot)",
+            "",
+            overlap_note,
+            "",
+            (
+                render_overlap_markdown(overlap_table, old_table)
+                if overlap_table is not None and not overlap_table.empty
+                else "_No overlap rows with OOF predictions._"
+            ),
+            "",
+        ]
+
     report = [
         "# Local retrain evaluation — 1980-2026 TMDB dataset",
         "",
@@ -493,25 +521,7 @@ def main() -> None:
         "",
         full_md.rstrip(),
         "",
-        "## Delta vs the committed old-model table (results/per_year_table.md)",
-        "",
-        "Positive ΔR²/Δρ and negative ΔAPE mean the new run is better. The eval "
-        "population changed (old ~2.7k-row snapshot vs the new $5M+ frame), so "
-        "this table confounds model and population — judge on the overlap view. "
-        "The old table also predates the leakage fix.",
-        "",
-        render_delta_markdown(delta_table),
-        "",
-        "## Overlap view (eval restricted to movies in the old snapshot)",
-        "",
-        overlap_note,
-        "",
-        (
-            render_overlap_markdown(overlap_table, old_table)
-            if overlap_table is not None and not overlap_table.empty
-            else "_No overlap rows with OOF predictions._"
-        ),
-        "",
+        *old_model_section,
         "## Pre-leakage-fix history: variant comparison",
         "",
         pre_fix_history_section(full_table),
@@ -545,7 +555,11 @@ def main() -> None:
         "std_cv_mae_log": float(cv_results["std_cv_mae"]),
         "mean_cv_rmsle": float(cv_results["mean_cv_rmsle"]),
         "per_year": json.loads(full_table.to_json(orient="records")),
-        "delta_vs_committed": json.loads(delta_table.to_json(orient="records")),
+        "delta_vs_committed": (
+            json.loads(delta_table.to_json(orient="records"))
+            if delta_table is not None
+            else None
+        ),
         "overlap_per_year": (
             json.loads(overlap_table.to_json(orient="records"))
             if overlap_table is not None

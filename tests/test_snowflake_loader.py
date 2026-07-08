@@ -211,7 +211,7 @@ class TestSQLInjectionPrevention:
     @pytest.mark.parametrize(
         "valid_name",
         [
-            "BOX_OFFICE_V3",
+            "BOX_OFFICE_V4",
             "my_table",
             "_private_table",
             "Table123",
@@ -273,7 +273,7 @@ class TestLoadModes:
         ]
         assert len(merge_calls) > 0
         merge_sql = str(merge_calls[0])
-        assert "BOX_OFFICE_V3" in merge_sql, "MERGE must target the BOX_OFFICE_V3 table"
+        assert "BOX_OFFICE_V4" in merge_sql, "MERGE must target the BOX_OFFICE_V4 table"
         assert "TMDB_ID" in merge_sql, "MERGE must key on TMDB_ID"
 
     @patch("snowflake.connector.pandas_tools.write_pandas")

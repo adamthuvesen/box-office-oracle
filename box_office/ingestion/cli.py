@@ -80,7 +80,7 @@ def run_discovery(
 
 def run_snowflake_load(
     csv_path: str,
-    table_name: str = "BOX_OFFICE_V3",
+    table_name: str = "BOX_OFFICE_V4",
     schema: str = "RAW",
     mode: str = "merge",
 ) -> dict:
@@ -220,8 +220,8 @@ Examples:
     )
     parser.add_argument(
         "--table",
-        default="BOX_OFFICE_V3",
-        help="Target Snowflake table (default: BOX_OFFICE_V3)",
+        default="BOX_OFFICE_V4",
+        help="Target Snowflake table (default: BOX_OFFICE_V4)",
     )
     parser.add_argument(
         "--schema",

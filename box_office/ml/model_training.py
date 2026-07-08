@@ -8,6 +8,7 @@ import pickle
 import time
 
 import boto3
+import joblib
 import numpy as np
 import pandas as pd
 
@@ -16,6 +17,7 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.model import (
     BoxOfficeXGBoostModel,
     ModelEvaluator,
@@ -116,9 +118,12 @@ def load_data(train_path):
             f"Required columns '{date_col}' or '{target_col}' not in dataset."
         )
 
-    dates = data[date_col]
+    dates = data[date_col].copy()
     y_train_log = data[target_col]
-    X_train = data.drop([target_col, date_col], axis=1)
+    # RELEASE_YEAR stays in X: it is a v9 feature (SELECTED_FEATURES) as well as
+    # the chronological CV key. The uploaded frame is the RAW preprocessor
+    # input, so the per-fold FeaturePreprocessorHigh consumes RELEASE_YEAR here.
+    X_train = data.drop([target_col], axis=1)
 
     logger.info(f"Features shape: {X_train.shape}")
     logger.info(f"Target shape: {y_train_log.shape}")
@@ -158,8 +163,69 @@ def train_final_model(X_train, y_train_log, cv_results, args):
     return model
 
 
-def save_results(model, cv_results, oof_results, args):
-    """Save model artifacts and evaluation metrics."""
+def load_preprocessing_artifacts(args):
+    """Download the pipeline-fitted preprocessor + scaler from S3 into model_dir.
+
+    These were fit on all training rows in the data phase; the container reuses
+    them (not a fresh fit) so the deployed model's features match inference
+    exactly. Returns the loaded objects and their on-disk paths (the paths are
+    already inside ``model_dir``, so they ship in the model tarball).
+    """
+    if not (args.processor_s3_uri and args.scaler_s3_uri):
+        raise FileNotFoundError(
+            "No S3 URIs provided for preprocessing artifacts. "
+            "Set processor_s3_uri and scaler_s3_uri environment variables."
+        )
+
+    os.makedirs(args.model_dir, exist_ok=True)
+    logger.info("Downloading fitted preprocessing artifacts from S3...")
+    aws_region = resolve_aws_region()
+    s3_client = boto3.client("s3", region_name=aws_region)
+
+    try:
+        processor_bucket, processor_key = parse_s3_uri(args.processor_s3_uri)
+        processor_path = os.path.join(args.model_dir, FEATURE_PREPROCESSOR_PKL)
+        s3_client.download_file(processor_bucket, processor_key, processor_path)
+
+        scaler_bucket, scaler_key = parse_s3_uri(args.scaler_s3_uri)
+        scaler_path = os.path.join(args.model_dir, FEATURE_SCALER_PKL)
+        s3_client.download_file(scaler_bucket, scaler_key, scaler_path)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to download preprocessing artifacts: {e}. "
+            f"Ensure artifacts exist at processor_s3_uri={args.processor_s3_uri} "
+            f"and scaler_s3_uri={args.scaler_s3_uri}"
+        ) from e
+
+    logger.info("Loaded fitted preprocessing artifacts from training pipeline")
+    return (
+        joblib.load(processor_path),
+        joblib.load(scaler_path),
+        processor_path,
+        scaler_path,
+    )
+
+
+def transform_for_final_fit(X_raw, preprocessor, scaler):
+    """Engineer + scale the raw frame with the pipeline-fitted artifacts.
+
+    NaN-aware: StandardScaler uses nanmean/nanvar, so missing budgets stay NaN
+    (never imputed to 0), matching scripts/train_local.py.
+    """
+    X_processed = preprocessor.transform(X_raw)
+    return pd.DataFrame(
+        scaler.transform(X_processed),
+        columns=X_processed.columns,
+        index=X_processed.index,
+    )
+
+
+def save_results(model, cv_results, oof_results, args, processor_path, scaler_path):
+    """Save model artifacts and evaluation metrics.
+
+    ``processor_path`` / ``scaler_path`` were downloaded into ``model_dir`` by
+    ``load_preprocessing_artifacts`` and are already staged for the tarball.
+    """
 
     os.makedirs(args.model_dir, exist_ok=True)
     os.makedirs(args.output_data_dir, exist_ok=True)
@@ -169,36 +235,7 @@ def save_results(model, cv_results, oof_results, args):
     with open(model_path, "wb") as f:
         pickle.dump(model, f)
     logger.info(f"Final model saved to: {model_path}")
-
-    # Save preprocessing artifacts for inference consistency.
-    if not (args.processor_s3_uri and args.scaler_s3_uri):
-        raise FileNotFoundError(
-            "No S3 URIs provided for preprocessing artifacts. "
-            "Set processor_s3_uri and scaler_s3_uri environment variables."
-        )
-
-    logger.info("Downloading fitted preprocessing artifacts from S3...")
-    aws_region = resolve_aws_region()
-    s3_client = boto3.client("s3", region_name=aws_region)
-
-    try:
-        processor_bucket, processor_key = parse_s3_uri(args.processor_s3_uri)
-        processor_path = os.path.join(args.model_dir, FEATURE_PREPROCESSOR_PKL)
-        s3_client.download_file(processor_bucket, processor_key, processor_path)
-        logger.info(f"Downloaded fitted preprocessor: {processor_path}")
-
-        scaler_bucket, scaler_key = parse_s3_uri(args.scaler_s3_uri)
-        scaler_path = os.path.join(args.model_dir, FEATURE_SCALER_PKL)
-        s3_client.download_file(scaler_bucket, scaler_key, scaler_path)
-        logger.info(f"Downloaded fitted scaler: {scaler_path}")
-
-        logger.info("Using fitted preprocessing artifacts from training pipeline")
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to download preprocessing artifacts: {e}. "
-            f"Ensure artifacts exist at processor_s3_uri={args.processor_s3_uri} "
-            f"and scaler_s3_uri={args.scaler_s3_uri}"
-        ) from e
+    logger.info(f"Bundled preprocessing artifacts: {processor_path}, {scaler_path}")
 
     def convert_for_json(obj):
         if isinstance(obj, (np.integer, np.int64)):
@@ -380,7 +417,7 @@ def save_results(model, cv_results, oof_results, args):
 
     # 5. Performance summary
     logger.info("TRAINING PERFORMANCE SUMMARY:")
-    logger.info(f"Model Quality: R² = {oof_r2:.3f} (Target: > 0.75)")
+    logger.info(f"Model Quality: R² = {oof_r2:.3f} (Target: > 0.55)")
     logger.info(f"Prediction Error: ${oof_mae / 1e6:.1f}M average error")
     logger.info(f"Cross-Validation Stability: MAE std = ±{cv_mae_std:.3f}")
     logger.info(f"Training Efficiency: {mean_best_iteration:.0f} avg iterations")
@@ -436,19 +473,32 @@ def train(args):
         "random_state": 42,
     }
 
+    # Leakage-free CV: each fold fits a fresh FeaturePreprocessorHigh on
+    # train-years rows only, so frequency encodings can't see the eval year
+    # (matches scripts/train_local.py). X_train is the RAW preprocessor input.
     cv_results = cv.cross_validate(
         model_class=BoxOfficeXGBoostModel,
         X_train=X_train,
         y_train_log=y_train_log,
         dates=dates,
+        preprocessor_factory=FeaturePreprocessorHigh,
         **model_kwargs,
     )
 
     oof_results = ModelEvaluator.evaluate_oof_performance(cv_results, y_train_log)
 
-    final_model = train_final_model(X_train, y_train_log, cv_results, args)
+    # Final model trains on the full frame engineered + scaled with the
+    # pipeline-fitted artifacts (correct for serving: at prediction time every
+    # training row is legitimately past).
+    preprocessor, scaler, processor_path, scaler_path = load_preprocessing_artifacts(
+        args
+    )
+    X_train_scaled = transform_for_final_fit(X_train, preprocessor, scaler)
+    final_model = train_final_model(X_train_scaled, y_train_log, cv_results, args)
 
-    save_results(final_model, cv_results, oof_results, args)
+    save_results(
+        final_model, cv_results, oof_results, args, processor_path, scaler_path
+    )
 
     logger.info("Training script completed successfully!")
 

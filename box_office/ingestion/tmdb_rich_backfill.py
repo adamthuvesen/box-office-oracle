@@ -133,7 +133,7 @@ def auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
 
-def load_existing_movies_from_web(path: Path) -> tuple[set[int], set[str]]:
+def load_existing_movies_from_web(path: Path) -> tuple[set[int], set[tuple[str, int]]]:
     if not path.exists():
         logger.warning("Existing web data not found: %s", path)
         return set(), set()
@@ -143,7 +143,7 @@ def load_existing_movies_from_web(path: Path) -> tuple[set[int], set[str]]:
         raise ValueError(f"Expected {path} to contain a JSON list.")
 
     ids: set[int] = set()
-    titles: set[str] = set()
+    title_years: set[tuple[str, int]] = set()
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -151,9 +151,10 @@ def load_existing_movies_from_web(path: Path) -> tuple[set[int], set[str]]:
         if tmdb_id is not None:
             ids.add(int(tmdb_id))
         title = row.get("title")
-        if title:
-            titles.add(str(title).strip().lower())
-    return ids, titles
+        year = row.get("release_year")
+        if title and year is not None:
+            title_years.add((str(title).strip().lower(), int(year)))
+    return ids, title_years
 
 
 def load_existing_flat_from_web(path: Path, config: BackfillConfig) -> pd.DataFrame:
@@ -539,7 +540,7 @@ def year_stats(state: BackfillState, year: int) -> dict[str, int]:
 
 def run_backfill(config: BackfillConfig) -> BackfillState:
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    existing_ids, existing_titles = load_existing_movies_from_web(
+    existing_ids, existing_title_years = load_existing_movies_from_web(
         config.existing_web_data
     )
     raw_ids = load_raw_tmdb_ids(config.raw_jsonl_path)
@@ -621,7 +622,8 @@ def run_backfill(config: BackfillConfig) -> BackfillState:
                     stats["skipped_language"] += 1
                     continue
                 title = str(payload.get("title") or "").strip().lower()
-                if title and title in existing_titles:
+                title_year = (title, year)
+                if title and title_year in existing_title_years:
                     state.skipped_existing_count += 1
                     stats["skipped_existing"] += 1
                     skipped_ids.add(tmdb_id)
@@ -640,7 +642,7 @@ def run_backfill(config: BackfillConfig) -> BackfillState:
                 write_jsonl_record(config.raw_jsonl_path, record)
                 skipped_ids.add(tmdb_id)
                 if title:
-                    existing_titles.add(title)
+                    existing_title_years.add(title_year)
                 state.accepted_count += 1
                 stats["accepted"] += 1
                 page_accepted += 1
@@ -654,7 +656,10 @@ def run_backfill(config: BackfillConfig) -> BackfillState:
                 len(results),
             )
 
-            if page_accepted == 0:
+            # A page is only terminal when the API returned no results. A page
+            # whose movies were all skipped (already present, remake title
+            # match, below revenue) still means the year has more to scan.
+            if not results:
                 empty_pages += 1
             else:
                 empty_pages = 0

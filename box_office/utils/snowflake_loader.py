@@ -76,8 +76,10 @@ def fully_qualified_name(database: str, schema: str, table: str) -> str:
 
 logger = logging.getLogger(__name__)
 
-# Expected columns for BOX_OFFICE_V3: keep in sync with
-# transformations/models/sources/sources.yml (RAW.BOX_OFFICE_V3).
+# Expected columns for the CSV load path into BOX_OFFICE_V4. The RAW source
+# (RAW.BOX_OFFICE_V4 in transformations/models/sources/sources.yml) carries the
+# wider 1980-2026 parquet schema; the parquet load path is
+# scripts/load_dataset_to_snowflake.py.
 EXPECTED_COLUMNS = [
     "tmdb_id",
     "imdb_id",
@@ -167,7 +169,7 @@ class SnowflakeLoader:
     def load_csv_to_raw(
         self,
         csv_path: str,
-        table_name: str = "BOX_OFFICE_V3",
+        table_name: str = "BOX_OFFICE_V4",
         mode: Literal["merge", "overwrite"] = "merge",
         dry_run: bool = False,
     ) -> dict:
@@ -354,7 +356,7 @@ class SnowflakeLoader:
                 "table": full_target,
             }
 
-    def get_current_count(self, table_name: str = "BOX_OFFICE_V3") -> int:
+    def get_current_count(self, table_name: str = "BOX_OFFICE_V4") -> int:
         """Get current row count in target table.
 
         Returns 0 only when the table genuinely does not exist (Snowflake errno
@@ -376,7 +378,7 @@ class SnowflakeLoader:
                 return 0
             raise
 
-    def get_existing_tmdb_ids(self, table_name: str = "BOX_OFFICE_V3") -> set:
+    def get_existing_tmdb_ids(self, table_name: str = "BOX_OFFICE_V4") -> set:
         """Get set of existing TMDB IDs in target table.
 
         Returns ``set()`` only when the table genuinely does not exist.

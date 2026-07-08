@@ -46,6 +46,9 @@ DEFAULT_OUTPUT_DIR = Path("data/generated/ip")
 NOMINAL_IP_TIER = 4
 NO_IP_TIER = 5
 SOURCE_WORK_TIER = 3
+# Every source_works rule is a bestselling book/novel/memoir, so a source-work
+# match without a source_mappings hit still has book provenance.
+SOURCE_WORK_ORIGIN = "book"
 
 OUTPUT_COLUMNS = [
     "tmdb_id",
@@ -231,7 +234,7 @@ def load_raw_movie_metadata(path: Path = DEFAULT_RAW_JSONL_PATH) -> pd.DataFrame
     refetch parquet and manual overrides when present — see
     ``box_office.franchise_history.collection_memberships``).
     """
-    rows: list[dict[str, Any]] = []
+    wikidata_by_id: dict[int, Any] = {}
     with path.open() as file:
         for line_number, line in enumerate(file, start=1):
             if not line.strip():
@@ -246,21 +249,26 @@ def load_raw_movie_metadata(path: Path = DEFAULT_RAW_JSONL_PATH) -> pd.DataFrame
                 raise ValueError(f"Missing payload object at {path}:{line_number}")
 
             external_ids = payload.get("external_ids") or {}
-            rows.append(
-                {
-                    "tmdb_id": int(payload.get("id") or record["tmdb_id"]),
-                    "wikidata_id": external_ids.get("wikidata_id"),
-                }
+            wikidata_by_id[int(payload.get("id") or record["tmdb_id"])] = (
+                external_ids.get("wikidata_id")
             )
-    frame = pd.DataFrame(rows)
+
+    # Collection links come from the merged sources, so include tmdb_ids the
+    # refetch parquet / overrides link even when the raw JSONL has no row.
     memberships = collection_memberships(path)
-    frame["collection_id"] = frame["tmdb_id"].map(
-        {tmdb_id: cid for tmdb_id, (cid, _) in memberships.items()}
+    tmdb_ids = sorted(set(wikidata_by_id) | set(memberships))
+    rows = [
+        {
+            "tmdb_id": tmdb_id,
+            "collection_id": memberships.get(tmdb_id, (None, None))[0],
+            "collection_name": memberships.get(tmdb_id, (None, None))[1],
+            "wikidata_id": wikidata_by_id.get(tmdb_id),
+        }
+        for tmdb_id in tmdb_ids
+    ]
+    return pd.DataFrame(
+        rows, columns=["tmdb_id", "collection_id", "collection_name", "wikidata_id"]
     )
-    frame["collection_name"] = frame["tmdb_id"].map(
-        {tmdb_id: name for tmdb_id, (_, name) in memberships.items()}
-    )
-    return frame[["tmdb_id", "collection_id", "collection_name", "wikidata_id"]]
 
 
 def classify_movies(
@@ -269,6 +277,11 @@ def classify_movies(
     rules: IpRules,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     normalized = _normalize_columns(movies)
+    # The source parquet may carry materialized collection columns; the
+    # merged metadata (JSONL + refetch + overrides) is canonical here.
+    normalized = normalized.drop(
+        columns=["collection_id", "collection_name"], errors="ignore"
+    )
     metadata = raw_metadata.drop_duplicates("tmdb_id")
     df = normalized.merge(metadata, on="tmdb_id", how="left")
     collection_counts = _collection_movie_counts(df)
@@ -573,7 +586,7 @@ def _classify_row(
             "prior_franchise_film_count": prior_count,
             "tier_basis": tier_basis,
         }
-        if row.get("collection_name"):
+        if pd.notna(row.get("collection_name")):
             evidence["collection_name"] = row.get("collection_name")
             evidence["collection_id"] = _optional_int(row.get("collection_id"))
         return Classification(
@@ -644,7 +657,12 @@ def _classify_row(
                 },
             )
         tier, tier_basis = resolve(None)
-        source_type = source_match[0].source_type if source_match else None
+        if source_match:
+            source_type = source_match[0].source_type
+        elif source_work:
+            source_type = SOURCE_WORK_ORIGIN
+        else:
+            source_type = None
         evidence = {
             "prior_franchise_gross": prior_gross,
             "tier_basis": tier_basis,
@@ -812,7 +830,7 @@ def _sub_ip_name(brand_name: str, row: dict[str, Any]) -> str | None:
 def _brand_scope(rule: BrandRule, row: dict[str, Any]) -> str:
     if rule.rights_status == "public_domain":
         return "public_domain"
-    if row.get("collection_name"):
+    if pd.notna(row.get("collection_name")):
         return "umbrella_inherited"
     return "brand_origin"
 

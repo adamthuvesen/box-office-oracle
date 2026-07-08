@@ -119,6 +119,67 @@ def test_run_backfill_filters_and_writes_raw_jsonl(tmp_path, monkeypatch):
     assert state.skipped_language_count == 1
 
 
+def test_remake_with_matching_title_but_new_year_is_accepted(tmp_path, monkeypatch):
+    web_data = tmp_path / "web" / "movies.json"
+    _write_web_data(
+        web_data,
+        [{"tmdb_id": 1, "title": "The Lion King", "release_year": 1994}],
+    )
+    config = rich.BackfillConfig(
+        start_year=2019,
+        end_year=2019,
+        min_revenue=5_000_000,
+        page_limit=1,
+        base_sleep_seconds=0,
+        existing_web_data=web_data,
+        output_dir=tmp_path / "out",
+    )
+    payloads = {2: _payload(2, title="The Lion King")}
+
+    def fake_request_json(session, url, *, params, config, state):
+        if url.endswith("/discover/movie"):
+            return {"results": [{"id": 2}], "total_pages": 1}
+        return payloads[int(url.rsplit("/", 1)[1])]
+
+    monkeypatch.setattr(rich, "request_json", fake_request_json)
+    state = rich.run_backfill(config)
+
+    raw_rows = list(rich.iter_raw_records(config.raw_jsonl_path))
+    assert state.accepted_count == 1
+    assert raw_rows[0]["tmdb_id"] == 2
+
+
+def test_scan_continues_past_page_of_only_skipped_movies(tmp_path, monkeypatch):
+    web_data = tmp_path / "web" / "movies.json"
+    _write_web_data(web_data, [{"tmdb_id": 1, "title": "Existing", "release_year": 2020}])
+    config = rich.BackfillConfig(
+        start_year=2020,
+        end_year=2020,
+        min_revenue=5_000_000,
+        page_limit=2,
+        base_sleep_seconds=0,
+        stop_after_consecutive_empty_pages=1,
+        existing_web_data=web_data,
+        output_dir=tmp_path / "out",
+    )
+    payloads = {2: _payload(2, title="Fresh Movie")}
+
+    def fake_request_json(session, url, *, params, config, state):
+        if url.endswith("/discover/movie"):
+            if params["page"] == 1:
+                # Every movie on page 1 is already present -> zero accepted,
+                # but the page is not empty and the scan must reach page 2.
+                return {"results": [{"id": 1}], "total_pages": 2}
+            return {"results": [{"id": 2}], "total_pages": 2}
+        return payloads[int(url.rsplit("/", 1)[1])]
+
+    monkeypatch.setattr(rich, "request_json", fake_request_json)
+    rich.run_backfill(config)
+
+    raw_rows = list(rich.iter_raw_records(config.raw_jsonl_path))
+    assert [row["tmdb_id"] for row in raw_rows] == [2]
+
+
 def test_flat_outputs_include_rich_fields_and_50m_subset(tmp_path):
     web_data = tmp_path / "web" / "movies.json"
     _write_web_data(
