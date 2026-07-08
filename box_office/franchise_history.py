@@ -72,6 +72,18 @@ def collection_memberships(
     return mapping
 
 
+def load_collection_overrides(path: Path = DEFAULT_OVERRIDES_PATH) -> list[dict]:
+    """Public reader for ``data/collection_overrides.yml``.
+
+    Returns ``[]`` when the file is absent so callers can layer overrides on
+    top of any collection-link base (raw JSONL offline, staging columns in
+    production). Malformed entries raise loudly.
+    """
+    if not path.exists():
+        return []
+    return _load_overrides(path)
+
+
 def _load_overrides(path: Path) -> list[dict]:
     raw = yaml.safe_load(path.read_text()) or {}
     entries = raw.get("overrides") or []
