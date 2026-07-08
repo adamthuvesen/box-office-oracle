@@ -67,7 +67,10 @@ post-release field names from entering the feature contract.
 On a leakage-free expanding-window backtest (each fold refits its preprocessor
 on train-year rows only), the pre-release model beats a log-budget baseline
 on log R² in every fold from 2015-2023. Pooled over 2015-2023 (1,159 movies):
-median APE 51.8%, mean log-R² 0.603.
+median APE 51.8%, mean log-R² 0.603. Sorted into the nine revenue classes
+standard in the box-office literature (flop to blockbuster), the model hits
+the exact class 33% of the time and lands within one class 70% of the time,
+out of sample.
 
 ## Configuration
 
