@@ -163,3 +163,6 @@ web/.next/
 # Local model/data artifacts
 data/generated/
 artifacts/local/
+
+# Internal docs (evaluation reports, experiment logs, real infra values)
+docs/internal/

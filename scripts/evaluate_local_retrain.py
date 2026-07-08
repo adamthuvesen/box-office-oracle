@@ -8,7 +8,8 @@ Confirmation discipline: iterate against eval years <= 2023; touch 2024-2025
 only for a final confirmation run.
 
 - Default (iteration mode): eval years 2015-2023. Writes
-  ``results/local_retrain/iteration_report.md`` + ``iteration_results.json``.
+  ``docs/internal/experiments/local_retrain/iteration_report.md`` +
+  ``iteration_results.json``.
 - ``--confirm``: adds 2024-2025 and writes the frozen-confirmation
   ``report.md`` / ``results.json`` / ``per_year_table.{md,json}``. For the
   v9 contract 2024-2025 are SPENT (v8's frozen confirmation stands; 2026
@@ -48,7 +49,7 @@ DROPPED_PATH = Path("data/generated/training/dropped_rows_1980_2026.csv")
 FLAGGED_PATH = Path("data/generated/training/flagged_kept_rows_1980_2026.csv")
 OLD_TABLE_PATH = Path("results/per_year_table.json")
 OLD_SNAPSHOT_X = Path("analysis/datasets_high/X_train.csv")
-OUTPUT_DIR = Path("results/local_retrain")
+OUTPUT_DIR = Path("docs/internal/experiments/local_retrain")
 
 PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
     "RELEASE_YEAR",

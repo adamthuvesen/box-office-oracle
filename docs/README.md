@@ -4,3 +4,5 @@
 - **Day-to-day dev** (Snowflake env, tests, commands, style, git): [development.md](development.md).
 - **Non-negotiable rules** for automation: [AGENTS.md](../AGENTS.md).
 - **Human quick-start**: [README.md](../README.md).
+
+Detailed evaluation notes, per-year tables, and real infra values live locally in `docs/internal/` (gitignored, not pushed).

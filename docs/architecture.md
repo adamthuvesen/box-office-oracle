@@ -18,7 +18,7 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 | CI/CD               | GitHub Actions               | OIDC → AWS, key-pair → Snowflake                                                                                    |
 
 
-Operational cost: ~$50/month. Training run: 2-5 min on ~6,080 movies (kept from 6,152 in the 1980-2026 dataset). The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) and is the public performance artifact for the pre-release feature contract (currently v9); the committed run is [`results/local_retrain/iteration_report.md`](../results/local_retrain/iteration_report.md).
+Operational cost: ~$50/month. Training run: 2-5 min on ~6,080 movies (kept from 6,152 in the 1980-2026 dataset). The backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) beats a log-budget baseline on log R² in every fold from 2015-2023 (headline numbers in [README.md](../README.md)).
 
 ## Data flow
 
@@ -96,7 +96,7 @@ Per-fold failures are caught and logged; the loop raises `CrossValidationFailed`
 Production model lifecycle:
 
 1. **Development** — newly registered, `PendingManualApproval`
-2. **Validation** — R² ≥ 0.55 OOF threshold, calibrated against the leakage-free local backtest ([results/local_retrain/iteration_report.md](../results/local_retrain/iteration_report.md))
+2. **Validation** — R² ≥ 0.55 OOF threshold, calibrated against the leakage-free local backtest
 3. **Promotion** — automated approval if validation passes
 4. **Production** — Lambda loads latest `Approved` package on cold start
 

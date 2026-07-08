@@ -42,7 +42,7 @@ from box_office.movie_data_quality import (
 
 # The local-retrain track is canonical (v9 contract); its per-year backtest
 # table is the one the current schema version is stamped against.
-DEFAULT_PER_YEAR_TABLE = Path("results/local_retrain/per_year_table.json")
+DEFAULT_PER_YEAR_TABLE = Path("docs/internal/experiments/local_retrain/per_year_table.json")
 
 DEFAULT_INPUT = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/"

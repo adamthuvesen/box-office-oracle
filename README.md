@@ -64,30 +64,10 @@ post-release field names from entering the feature contract.
 
 ## Evaluation
 
-The pre-release model beats a log-budget baseline on log R² in every fold. Over
-the data-rich 2015-2019 window, dollar-space R² lands at `0.64-0.72`; on the log
-scale used for training, the per-year gain over the baseline is `+0.14` to
-`+0.28` R². 2020 is the COVID low point (dollar-space R² `0.46`).
-
-The table below is the leakage-free v9 backtest on the 1980-2026 dataset:
-expanding-window CV where each fold refits its preprocessor on train-year rows
-only. It is an artifact, not a promise that the private training run can be
-reproduced without the production data and services. Full record:
-[`results/local_retrain/iteration_report.md`](results/local_retrain/iteration_report.md).
-
-| Year | n | Model R² (log) | Baseline R² (log) | Gain (log) | Model ρ | Baseline ρ | Model R² ($) | Median APE |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 2015 | 158 | 0.676 | 0.393 | +0.283 | 0.797 | 0.695 | 0.660 | 46.2% |
-| 2016 | 181 | 0.634 | 0.497 | +0.137 | 0.781 | 0.734 | 0.669 | 50.5% |
-| 2017 | 165 | 0.655 | 0.432 | +0.224 | 0.767 | 0.654 | 0.643 | 54.5% |
-| 2018 | 163 | 0.659 | 0.438 | +0.221 | 0.779 | 0.694 | 0.722 | 46.5% |
-| 2019 | 134 | 0.655 | 0.435 | +0.220 | 0.764 | 0.662 | 0.653 | 45.1% |
-| 2020 | 53 | 0.437 | 0.174 | +0.263 | 0.684 | 0.558 | 0.457 | 60.5% |
-| 2021 | 89 | 0.508 | 0.284 | +0.224 | 0.683 | 0.553 | 0.407 | 58.7% |
-| 2022 | 100 | 0.583 | 0.425 | +0.157 | 0.725 | 0.670 | 0.422 | 62.3% |
-| 2023 | 116 | 0.621 | 0.405 | +0.216 | 0.786 | 0.655 | 0.252 | 52.5% |
-
-Pooled over 2015-2023 (1,159 movies): median APE 51.8%, mean log-R² 0.603.
+On a leakage-free expanding-window backtest (each fold refits its preprocessor
+on train-year rows only), the pre-release model beats a log-budget baseline
+on log R² in every fold from 2015-2023. Pooled over 2015-2023 (1,159 movies):
+median APE 51.8%, mean log-R² 0.603.
 
 ## Configuration
 
