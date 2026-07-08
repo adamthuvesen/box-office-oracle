@@ -24,6 +24,9 @@ USE ROLE ACCOUNTADMIN;
 CREATE ROLE IF NOT EXISTS BOX_OFFICE_LOADER
     COMMENT = 'Owns BOX_OFFICE.RAW. Used only by scripts/load_dataset_to_snowflake.py for dataset loads.';
 
+CREATE ROLE IF NOT EXISTS DBT_RUNNER
+    COMMENT = 'Owns BOX_OFFICE.STAGING, ML_TRAINING, FEATURE_STORE; read-only on RAW. Runs box-office-pipeline and dbt.';
+
 -- Role hierarchy + who can assume the runtime roles.
 GRANT ROLE BOX_OFFICE_LOADER TO ROLE SYSADMIN;
 GRANT ROLE DBT_RUNNER        TO ROLE SYSADMIN;

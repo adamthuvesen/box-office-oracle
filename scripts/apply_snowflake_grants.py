@@ -32,8 +32,20 @@ def split_statements(sql: str) -> list[str]:
     Strips ``--`` line comments and blank lines, then splits on ``;``. The
     grants script contains no strings with embedded semicolons, so a plain
     split is correct here.
+
+    A line carrying both a ``'`` and a ``--`` is refused: a ``--`` inside a
+    string literal is not a comment, and blindly stripping it would silently
+    corrupt the value. Such a line has to be reformatted so the comment (if
+    any) lives on its own line.
     """
-    lines = [line.split("--", 1)[0] for line in sql.splitlines()]
+    lines: list[str] = []
+    for line in sql.splitlines():
+        if "'" in line and "--" in line:
+            raise ValueError(
+                f"cannot safely strip a comment from a line with a string "
+                f"literal: {line!r}"
+            )
+        lines.append(line.split("--", 1)[0])
     body = "\n".join(lines)
     return [stmt.strip() for stmt in body.split(";") if stmt.strip()]
 

@@ -9,9 +9,9 @@ The canonical source is
    absence breaks ``PRIOR_FRANCHISE_GROSS`` for later Marvel films, which read
    the collection link from the raw JSONL payload
    (``box_office.franchise_history.collection_memberships``).
-2. ``ad_budget_original`` / ``ad_budget_source`` are leftovers from a legacy
-   merge. The repo-wide ad-budget strip removed every code reference; these
-   two columns are the last breadcrumbs and must go.
+2. ``ad_budget_original`` / ``ad_budget_source`` are unused columns that no
+   code reads. They are dropped so the parquet carries only columns the
+   pipeline consumes.
 
 This script also sweeps a hand-picked list of the highest-grossing films
 1980-2025 and adds any that are missing *and* clear the dataset's inclusion
@@ -166,7 +166,7 @@ def build_flat_row(
         budget = int(documented_budget)
         flat["production_budget"] = float(budget)
         flat["production_budget_original"] = budget
-        flat["production_budget_source"] = "tmdb"
+        flat["production_budget_source"] = "documented"
         flat["production_budget_was_missing"] = False
     else:
         flat["production_budget"] = None

@@ -106,7 +106,7 @@ def test_build_flat_row_documented_budget_fallback() -> None:
         _raw(24428, budget=0), _target_columns(), documented_budget=220_000_000
     )
     assert row["production_budget"] == 220_000_000.0
-    assert row["production_budget_source"] == "tmdb"
+    assert row["production_budget_source"] == "documented"
     assert row["production_budget_was_missing"] is False
 
 

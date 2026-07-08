@@ -15,23 +15,27 @@ from scripts.load_dataset_to_snowflake import (
     read_source_frame,
     snowflake_column_type,
     spot_check_mismatches,
+    staging_columns_from_sources,
+    validate_columns,
 )
 
 
 @pytest.fixture
 def source_frame() -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "tmdb_id": [597, 19995, 999],
-            "imdb_id": ["tt0120338", "tt0499549", "tt0000000"],
-            "title": ["Titanic", "Avatar", "No Budget"],
-            "release_year": [1997, 2009, 2001],
-            "production_budget": [200000000.0, 237000000.0, np.nan],
-            "production_budget_source": ["wikidata", "wikidata", None],
-            "worldwide_gross": [2264162353.0, 2923706026.0, 100.0],
-            "adult": [False, False, True],
-        }
-    )
+    # Full RAW.BOX_OFFICE_V4 column contract (from sources.yml) so the frame
+    # passes read_source_frame's column check; only the columns the tests read
+    # carry meaningful values, the rest are null placeholders.
+    columns = staging_columns_from_sources()
+    data: dict[str, list] = {col: [None, None, None] for col in columns}
+    data["tmdb_id"] = [597, 19995, 999]
+    data["imdb_id"] = ["tt0120338", "tt0499549", "tt0000000"]
+    data["title"] = ["Titanic", "Avatar", "No Budget"]
+    data["release_year"] = [1997, 2009, 2001]
+    data["production_budget"] = [200000000.0, 237000000.0, np.nan]
+    data["production_budget_source"] = ["wikidata", "wikidata", None]
+    data["worldwide_gross"] = [2264162353.0, 2923706026.0, 100.0]
+    data["adult"] = [False, False, True]
+    return pd.DataFrame(data, columns=columns)
 
 
 def _write_parquet(df: pd.DataFrame, tmp_path) -> "object":
@@ -75,6 +79,46 @@ def test_read_source_frame_rejects_duplicate_tmdb_id(source_frame, tmp_path):
     path = _write_parquet(dup, tmp_path)
     with pytest.raises(ValueError, match="duplicate tmdb_id"):
         read_source_frame(path)
+
+
+def test_read_source_frame_rejects_extra_column(source_frame, tmp_path):
+    path = _write_parquet(source_frame.assign(surprise=[1, 2, 3]), tmp_path)
+    with pytest.raises(ValueError, match="extra=\\['surprise'\\]"):
+        read_source_frame(path)
+
+
+def test_read_source_frame_rejects_missing_contract_column(source_frame, tmp_path):
+    path = _write_parquet(source_frame.drop(columns=["collection_name"]), tmp_path)
+    with pytest.raises(ValueError, match="missing=\\['collection_name'\\]"):
+        read_source_frame(path)
+
+
+# --- column contract from sources.yml ----------------------------------------
+
+
+def test_staging_columns_from_sources_returns_contract():
+    columns = staging_columns_from_sources()
+    assert columns == [c.lower() for c in columns]  # all lowercased
+    assert {"tmdb_id", "production_budget", "collection_name"} <= set(columns)
+    assert len(columns) == len(set(columns))  # no duplicates
+
+
+def test_validate_columns_accepts_matching(source_frame):
+    validate_columns(source_frame, staging_columns_from_sources())
+
+
+def test_validate_columns_reports_missing_and_extra(source_frame):
+    frame = source_frame.drop(columns=["title"]).assign(bogus=[1, 2, 3])
+    with pytest.raises(ValueError) as exc:
+        validate_columns(frame, staging_columns_from_sources())
+    message = str(exc.value)
+    assert "missing=['title']" in message
+    assert "extra=['bogus']" in message
+
+
+def test_staging_columns_from_sources_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        staging_columns_from_sources(tmp_path / "nope.yml")
 
 
 # --- null handling -----------------------------------------------------------

@@ -5,6 +5,7 @@ from typing import Any
 
 from prefect import get_run_logger, task
 
+from box_office.config import config
 from box_office.ml.metrics_models import (
     DataProcessingMetrics,
     FeatureEngineeringMetrics,
@@ -284,7 +285,7 @@ def _log_validation_r2(logger: Any, details: dict[str, Any]) -> None:
     if "r2_score" not in details:
         return
     logger.info(
-        f"R² Score: {safe_format(details.get('r2_score', 'N/A'), '.4f')} (threshold: {details.get('min_required', 0.75)})"
+        f"R² Score: {safe_format(details.get('r2_score', 'N/A'), '.4f')} (threshold: {details.get('min_required', config.model.promotion_threshold)})"
     )
 
 

@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 
 from box_office.config import config
 from box_office.utils.snowflake_connection import create_snowflake_connection
@@ -50,6 +51,14 @@ logger = logging.getLogger("load_dataset_to_snowflake")
 DEFAULT_PARQUET = (
     Path("data/generated/tmdb/rich_backfill_1980_2026")
     / "tmdb_budget_wikipedia_5m_1980_2026.parquet"
+)
+
+SOURCES_YML = (
+    Path(__file__).resolve().parent.parent
+    / "transformations"
+    / "models"
+    / "sources"
+    / "sources.yml"
 )
 
 TARGET_TABLE = "BOX_OFFICE_V4"
@@ -74,12 +83,56 @@ SPOT_CHECK_COLUMNS: tuple[str, ...] = (
 # --- pure logic (unit-tested without a live Snowflake) -----------------------
 
 
+def staging_columns_from_sources(sources_path: Path = SOURCES_YML) -> list[str]:
+    """Return the RAW.BOX_OFFICE_V4 column names from the dbt sources.yml.
+
+    The column contract lives in one place (sources.yml); parsing it at runtime
+    keeps the load-time check in sync automatically instead of duplicating the
+    list here. Names are lowercased to match the parquet after
+    ``read_source_frame`` normalizes casing.
+    """
+    if not sources_path.exists():
+        raise FileNotFoundError(f"dbt sources.yml not found: {sources_path}")
+
+    doc = yaml.safe_load(sources_path.read_text())
+    for source in doc.get("sources", []):
+        if source.get("name") != "RAW":
+            continue
+        for table in source.get("tables", []):
+            if table.get("name") != TARGET_TABLE:
+                continue
+            columns = [col["name"].lower() for col in table.get("columns", [])]
+            if not columns:
+                raise ValueError(
+                    f"sources.yml lists no columns for RAW.{TARGET_TABLE}"
+                )
+            return columns
+
+    raise ValueError(
+        f"sources.yml has no RAW.{TARGET_TABLE} table definition: {sources_path}"
+    )
+
+
+def validate_columns(df: pd.DataFrame, expected: list[str]) -> None:
+    """Fail loudly when the parquet columns don't match the staging contract."""
+    actual = set(df.columns)
+    expected_set = set(expected)
+    missing = sorted(expected_set - actual)
+    extra = sorted(actual - expected_set)
+    if missing or extra:
+        raise ValueError(
+            f"Source parquet columns do not match the RAW.{TARGET_TABLE} "
+            f"contract in sources.yml: missing={missing}, extra={extra}"
+        )
+
+
 def read_source_frame(parquet_path: Path) -> pd.DataFrame:
     """Read the parquet, lowercase columns, and reject a malformed source.
 
-    Loud validation: an empty frame, a missing ``tmdb_id``/budget column, or
-    duplicate ``tmdb_id`` values all raise here rather than producing a silently
-    wrong table.
+    Loud validation: an empty frame, a missing ``tmdb_id``/budget column, a
+    column set that doesn't match the RAW.BOX_OFFICE_V4 contract in sources.yml,
+    or duplicate ``tmdb_id`` values all raise here rather than producing a
+    silently wrong table.
     """
     if not parquet_path.exists():
         raise FileNotFoundError(f"Source parquet not found: {parquet_path}")
@@ -95,6 +148,8 @@ def read_source_frame(parquet_path: Path) -> pd.DataFrame:
             raise ValueError(
                 f"Source parquet missing required column {required!r}: {parquet_path}"
             )
+
+    validate_columns(df, staging_columns_from_sources())
 
     duplicate_ids = int(df["tmdb_id"].duplicated().sum())
     if duplicate_ids:
