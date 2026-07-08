@@ -22,19 +22,14 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 
 ## Quick Start
 
-Public demo boundary:
-
-- The production pipeline needs private or external services: Snowflake, AWS SageMaker/S3/Lambda, Prefect, and TMDB credentials.
-- The checked-in repo does not include the private warehouse snapshot, trained model artifacts, or cloud resources.
-- Public users can run the no-secret smoke path below and inspect the committed backtest result table.
-- Do not treat AWS, Snowflake, TMDB, or headline metric reproduction as public unless you have the same services and data.
+The full pipeline needs private services — Snowflake, AWS, and TMDB
+credentials — and the repo ships no warehouse data or model artifacts. The
+test suite runs without any of them:
 
 ```bash
 make install-dev
 make test
 ```
-
-The smoke path is local and hermetic. It does not call AWS, Snowflake, or TMDB.
 
 Run the pipeline (requires AWS and Snowflake credentials in `.env`):
 
@@ -85,7 +80,7 @@ AWS_REGION, SAGEMAKER_ROLE_ARN, AWS_S3_BUCKET
 TMDB_API_TOKEN
 ```
 
-*Note: `SNOWFLAKE_ROLE` must be a least-privilege role (e.g., `DBT_RUNNER`), not `ACCOUNTADMIN`.*
+`SNOWFLAKE_ROLE` is a least-privilege role (`DBT_RUNNER` for the pipeline), not `ACCOUNTADMIN`.
 
 ## Schema Versioning
 
@@ -95,14 +90,6 @@ rejected at cold start with `FeatureSchemaVersionMismatch` rather than served wi
 shape mismatch; retraining is required. The same load path verifies a SHA256
 manifest against the artifact tarball *before* unpickling, so a bucket write can't turn into
 remote code execution.
-
-## Local Data
-
-CSVs and Parquet snapshots under `analysis/datasets_*/` are git-ignored. Pull fresh data from Snowflake:
-
-```bash
-make datasets
-```
 
 ## Web App
 
