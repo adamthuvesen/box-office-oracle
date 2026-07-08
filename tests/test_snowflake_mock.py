@@ -39,7 +39,6 @@ class TestEnforceDataTypes:
         df = pd.DataFrame(
             {
                 "RELEASE_YEAR": ["2020", "2021", "2022"],
-                "AD_BUDGET": [500000.0, 600000.0, 700000.0],
                 "PRODUCTION_BUDGET": ["1000000", "2000000", "1500000"],
                 "RUNTIME": ["120", "130", "110"],
                 "GENRE_ACTION": ["1", "0", "1"],
@@ -50,7 +49,6 @@ class TestEnforceDataTypes:
         result = enforce_data_types(df, table_type="training")
 
         assert pd.api.types.is_numeric_dtype(result["RELEASE_YEAR"])
-        assert pd.api.types.is_numeric_dtype(result["AD_BUDGET"])
         assert pd.api.types.is_numeric_dtype(result["PRODUCTION_BUDGET"])
         assert pd.api.types.is_numeric_dtype(result["RUNTIME"])
 

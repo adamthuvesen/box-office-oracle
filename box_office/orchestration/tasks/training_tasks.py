@@ -1,19 +1,20 @@
-from prefect import task, get_run_logger
+import json
+import time
+from datetime import UTC, datetime
+
+import boto3
+import pandas as pd
+from botocore.exceptions import ClientError
+from prefect import get_run_logger, task
 from prefect.cache_policies import NONE as NO_CACHE
 from prefect.tasks import exponential_backoff
-import json
-import boto3
-from botocore.exceptions import ClientError
-import time
-from datetime import datetime, timezone
-import pandas as pd
 
 from box_office.config import config
-from box_office.sagemaker import sagemaker_train_job
 from box_office.ml.model_registry.aws_model_registry import (
     AWSModelRegistry,
     ModelRegistryRegistrationError,
 )
+from box_office.sagemaker import sagemaker_train_job
 from box_office.utils.aws_helpers import BOTO3_CONFIG
 from box_office.utils.format_helpers import safe_format
 
@@ -134,12 +135,12 @@ def train_model(
     # Log post-training metrics
     logger.info("Post-Training Metrics:")
     logger.info(
-        f"Total training time: {training_duration:.2f} seconds ({training_duration/60:.2f} minutes)"
+        f"Total training time: {training_duration:.2f} seconds ({training_duration / 60:.2f} minutes)"
     )
     logger.info(f"Job name: {estimator.latest_training_job.name}")
     logger.info(f"Model artifacts: {estimator.model_data}")
     logger.info(
-        f"Estimated cost: ~${(training_duration/3600) * 0.269:.4f} ({config.sagemaker.instance_type})"
+        f"Estimated cost: ~${(training_duration / 3600) * 0.269:.4f} ({config.sagemaker.instance_type})"
     )
 
     return estimator
@@ -180,7 +181,7 @@ def download_and_analyze_results(estimator, sagemaker_client):
         logger.info(f"Mean CV MAE: {safe_format(cv.get('mean_cv_mae', 'N/A'), '.4f')}")
         if "cv_scores" in cv:
             for i, score in enumerate(cv["cv_scores"]):
-                logger.info(f"Fold {i+1}: {score:.4f}")
+                logger.info(f"Fold {i + 1}: {score:.4f}")
 
     if "oof_results" in performance_metrics:
         oof = performance_metrics["oof_results"]
@@ -189,7 +190,7 @@ def download_and_analyze_results(estimator, sagemaker_client):
 
     if performance_metrics.get("training_duration_seconds"):
         duration = performance_metrics["training_duration_seconds"]
-        logger.info(f"Duration: {duration:.0f} seconds ({duration/60:.2f} minutes)")
+        logger.info(f"Duration: {duration:.0f} seconds ({duration / 60:.2f} minutes)")
 
     logger.info("Training metrics extraction finished (see job logs and S3 artifacts).")
     return performance_metrics
@@ -457,7 +458,7 @@ def promote_model_in_aws_registry(model_package_arn, approval_description=None):
             model_package_arn=model_package_arn,
             approval_status="Approved",
             approval_description=approval_description
-            or f"Automatically approved based on performance criteria - {datetime.now(timezone.utc).isoformat()}",
+            or f"Automatically approved based on performance criteria - {datetime.now(UTC).isoformat()}",
         )
 
         promotion_time = time.time() - start_time

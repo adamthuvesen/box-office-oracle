@@ -3,9 +3,6 @@ FastAPI application for serverless ML inference.
 Optimized for AWS Lambda with container support.
 """
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import asyncio
 import json
 import logging
@@ -13,16 +10,22 @@ import os
 import sys
 import time
 import warnings
-from datetime import datetime, timezone
-from typing import Dict, Any, NoReturn
+from datetime import UTC, datetime
+from typing import Any, NoReturn
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from .config import get_settings
-from .predictor import PredictionResponse
-from .model_loader import ModelLoadError
-from .integrity import ArtifactIntegrityError
-from .runtime import get_runtime
+
 from box_office.ml.registry_constants import FeatureSchemaVersionMismatch
 from box_office.ml.text_utils import LiteralEvalTooLarge
+
+from .config import get_settings
+from .integrity import ArtifactIntegrityError
+from .model_loader import ModelLoadError
+from .predictor import PredictionResponse
+from .runtime import get_runtime
 
 MAX_REQUEST_BODY_BYTES = 1024 * 1024  # 1 MiB
 
@@ -39,8 +42,8 @@ def _error_detail(
     message: str,
     correlation_id: str | None = None,
     details: Any | None = None,
-) -> Dict[str, Any]:
-    detail: Dict[str, Any] = {
+) -> dict[str, Any]:
+    detail: dict[str, Any] = {
         "error": error,
         "message": message,
     }
@@ -48,7 +51,7 @@ def _error_detail(
         detail["details"] = details
     if correlation_id is not None:
         detail["correlation_id"] = correlation_id
-    detail["timestamp"] = datetime.now(timezone.utc).isoformat()
+    detail["timestamp"] = datetime.now(UTC).isoformat()
     return detail
 
 
@@ -56,7 +59,7 @@ def _auth_error_response(
     status_code: int,
     error: str,
     message: str,
-    headers: Dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
@@ -97,8 +100,7 @@ def _check_content_length_limit(request: Request, correlation_id: str) -> None:
         return
 
     logger.warning(
-        f"Request body too large (Content-Length={content_length}) "
-        f"- {correlation_id}"
+        f"Request body too large (Content-Length={content_length}) - {correlation_id}"
     )
     _raise_prediction_error(
         status_code=413,
@@ -110,7 +112,7 @@ def _check_content_length_limit(request: Request, correlation_id: str) -> None:
 
 async def _read_json_object_body(
     request: Request, correlation_id: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     _check_content_length_limit(request, correlation_id)
 
     raw_body = await request.body()
@@ -271,7 +273,7 @@ async def log_requests(request: Request, call_next):
 
 
 @app.get("/health", tags=["health"])
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """Health check endpoint for service monitoring."""
     lambda_context = {
         "memory_limit": os.getenv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE"),
@@ -281,9 +283,9 @@ async def health_check() -> Dict[str, Any]:
     }
     lambda_context = {k: v for k, v in lambda_context.items() if v is not None}
 
-    health_data: Dict[str, Any] = {
+    health_data: dict[str, Any] = {
         "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "service": "serverless-inference-api",
         "version": settings.api_version,
         "environment": settings.environment,
@@ -297,7 +299,7 @@ async def health_check() -> Dict[str, Any]:
 
 
 @app.get("/", tags=["info"])
-async def root() -> Dict[str, str]:
+async def root() -> dict[str, str]:
     """Root endpoint with basic API information."""
     return {
         "message": settings.api_title,
@@ -307,7 +309,7 @@ async def root() -> Dict[str, str]:
         "health": "/health",
         "predict": "/predict",
         "model_info": "/model/info",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -397,8 +399,7 @@ async def predict(request: Request) -> PredictionResponse:
                 status_code=500,
                 error="PREDICTION_FAILED",
                 message=(
-                    f"Prediction failed; check logs for correlation_id "
-                    f"{correlation_id}"
+                    f"Prediction failed; check logs for correlation_id {correlation_id}"
                 ),
                 correlation_id=correlation_id,
             )
@@ -408,7 +409,7 @@ async def predict(request: Request) -> PredictionResponse:
 
 
 @app.get("/model/info", tags=["model"])
-async def get_model_info() -> Dict[str, Any]:
+async def get_model_info() -> dict[str, Any]:
     """Get information about the currently loaded model."""
     try:
         runtime = get_runtime()
@@ -423,7 +424,7 @@ async def get_model_info() -> Dict[str, Any]:
                     detail={
                         "error": "NO_MODEL_AVAILABLE",
                         "message": "No approved model available",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                     },
                 )
 
@@ -434,7 +435,7 @@ async def get_model_info() -> Dict[str, Any]:
                 "created_at": model_info.created_at.isoformat(),
                 "metrics": model_info.metrics,
                 "loaded": False,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
 
         model_info = engine.get_model_info()
@@ -446,7 +447,7 @@ async def get_model_info() -> Dict[str, Any]:
             "metrics": model_info.metrics,
             "framework": model_info.framework,
             "loaded": True,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     except HTTPException:

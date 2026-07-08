@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import pandas as pd
 from pandas.tseries.holiday import USMemorialDay, USThanksgivingDay
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class TemporalTransformer(BaseEstimator, TransformerMixin):
     """Time-based features: seasonality, market timing, era indicators."""
 
-    def fit(self, X: pd.DataFrame, y=None) -> "TemporalTransformer":
+    def fit(self, X: pd.DataFrame, y=None) -> TemporalTransformer:
         self.is_fitted_ = True
         return self
 
@@ -30,7 +30,7 @@ class TemporalTransformer(BaseEstimator, TransformerMixin):
         new_cols = pd.DataFrame(feats.tolist(), index=X.index)
         return pd.concat([X, new_cols], axis=1)
 
-    def _extract_date_features(self, date_obj) -> Dict[str, Any]:
+    def _extract_date_features(self, date_obj) -> dict[str, Any]:
         if pd.isna(date_obj):
             return _DEFAULT_DATE_FEATURES.copy()
 
@@ -64,7 +64,7 @@ class TemporalTransformer(BaseEstimator, TransformerMixin):
         }
 
 
-_DEFAULT_DATE_FEATURES: Dict[str, int] = {
+_DEFAULT_DATE_FEATURES: dict[str, int] = {
     "RELEASE_MONTH": 0,
     "RELEASE_WEEK": 0,
     "RELEASE_QUARTER": 0,

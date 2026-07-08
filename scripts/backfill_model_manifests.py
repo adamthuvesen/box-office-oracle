@@ -22,8 +22,8 @@ import hashlib
 import logging
 import sys
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import boto3
 from botocore.exceptions import ClientError
@@ -59,8 +59,7 @@ def parse_s3_url(url: str) -> tuple[str, str]:
 def iter_packages(sagemaker, group_name: str) -> Iterable[dict]:
     paginator = sagemaker.get_paginator("list_model_packages")
     for page in paginator.paginate(ModelPackageGroupName=group_name):
-        for summary in page.get("ModelPackageSummaryList", []):
-            yield summary
+        yield from page.get("ModelPackageSummaryList", [])
 
 
 def backfill_one(

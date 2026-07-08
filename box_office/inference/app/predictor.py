@@ -4,28 +4,29 @@ Handles feature preprocessing, input validation, and model inference.
 """
 
 import ast
+import json
 import logging
+from datetime import UTC, datetime
+from typing import Any
+
+import joblib
 import numpy as np
 import pandas as pd
-import joblib
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Union
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationError,
     field_serializer,
     field_validator,
-    ValidationError,
 )
-import json
 
 from box_office.ml.feature_schema import FeatureContractMismatch
 
 logger = logging.getLogger(__name__)
 
 
-def _parse_json_or_python_repr_str_list(raw: str) -> List[str]:
+def _parse_json_or_python_repr_str_list(raw: str) -> list[str]:
     """Parse a JSON array or Python repr list string (e.g. \"['a','b']\") into strings."""
     s = raw.strip()
     if s == "" or s == "[]":
@@ -47,7 +48,7 @@ def _parse_json_or_python_repr_str_list(raw: str) -> List[str]:
     return [s]
 
 
-def _normalize_str_list(value: Any) -> List[str]:
+def _normalize_str_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return _parse_json_or_python_repr_str_list(value)
     if isinstance(value, list):
@@ -63,30 +64,46 @@ class PredictionRequest(BaseModel):
     # Core movie features
     budget: float = Field(..., ge=0, description="Production budget in USD")
     runtime: float = Field(..., ge=1, le=500, description="Movie runtime in minutes")
-    genre: Union[str, List[str]] = Field(..., description="Movie genre(s)")
+    genre: str | list[str] = Field(..., description="Movie genre(s)")
     release_month: int = Field(..., ge=1, le=12, description="Release month (1-12)")
     release_year: int = Field(..., ge=1900, le=2030, description="Release year")
 
-    # Optional features with defaults
-    ad_budget: Optional[float] = Field(
-        default=0, ge=0, description="Advertising budget in USD"
-    )
-
     # Categorical features
-    mpaa: Optional[str] = Field(default="Not Rated", description="MPAA rating")
-    director: Optional[str] = Field(default="Unknown", description="Director name")
-    actors: Optional[Union[str, List[str]]] = Field(
+    mpaa: str | None = Field(default="Not Rated", description="MPAA rating")
+    director: str | None = Field(default="Unknown", description="Director name")
+    actors: str | list[str] | None = Field(
         default=[], description="List of main actors"
     )
-    production_company: Optional[str] = Field(
+    production_company: str | None = Field(
         default="Unknown", description="Production company"
     )
 
+    # Pre-release IP/franchise strength (defaults describe an original movie
+    # with no pre-sold IP and no earlier films in its collection).
+    ip_tier: int = Field(
+        default=5,
+        ge=1,
+        le=5,
+        description="Pre-sold IP tier at release (1 = strongest, 5 = no IP)",
+    )
+    prior_franchise_gross: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "Sum of worldwide gross (USD) of strictly-earlier films in the "
+            "same collection; 0 for a first film or no collection"
+        ),
+    )
+    is_franchise_followup: bool = Field(
+        default=False,
+        description="Whether any strictly-earlier film exists in the collection",
+    )
+
     # Additional options
-    return_confidence: Optional[bool] = Field(
+    return_confidence: bool | None = Field(
         default=True, description="Return confidence interval"
     )
-    model_version: Optional[str] = Field(
+    model_version: str | None = Field(
         default=None, description="Specific model version to use"
     )
 
@@ -109,7 +126,7 @@ class PredictionResponse(BaseModel):
     prediction: float = Field(..., description="Predicted box office gross in USD")
     model_id: str = Field(..., description="Model identifier used for prediction")
     model_version: int = Field(..., description="Model version used")
-    prediction_interval_heuristic: Optional[List[float]] = Field(
+    prediction_interval_heuristic: list[float] | None = Field(
         default=None,
         description=(
             "Heuristic interval (lower, upper) around the point prediction. "
@@ -139,12 +156,11 @@ class ModelInfo(BaseModel):
     version: int
     status: str
     created_at: str
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
     framework: str = "scikit-learn"
 
 
 class PredictionEngine:
-
     def __init__(self):
         self.model = None
         self.preprocessor = None
@@ -157,7 +173,7 @@ class PredictionEngine:
         model_path: str,
         preprocessor_path: str,
         scaler_path: str,
-        model_metadata: Dict[str, Any],
+        model_metadata: dict[str, Any],
     ):
         try:
             logger.info(f"Loading model artifacts from {model_path}")
@@ -176,7 +192,7 @@ class PredictionEngine:
                 version=model_metadata.get("version", 1),
                 status=model_metadata.get("status", "unknown"),
                 created_at=model_metadata.get(
-                    "created_at", datetime.now(timezone.utc).isoformat()
+                    "created_at", datetime.now(UTC).isoformat()
                 ),
                 metrics=model_metadata.get("metrics", {}),
                 framework=model_metadata.get("framework", "scikit-learn"),
@@ -189,7 +205,7 @@ class PredictionEngine:
 
         except Exception as e:
             logger.error(f"Failed to load model artifacts: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Model loading failed: {str(e)}")
+            raise RuntimeError(f"Model loading failed: {str(e)}") from e
 
     def is_loaded(self) -> bool:
         """Check if model is loaded and ready for predictions."""
@@ -197,11 +213,11 @@ class PredictionEngine:
             self._is_loaded and self.model is not None and self.preprocessor is not None
         )
 
-    def get_model_info(self) -> Optional[ModelInfo]:
+    def get_model_info(self) -> ModelInfo | None:
         """Get current model information."""
         return self.model_info
 
-    def validate_input(self, request_data: Dict[str, Any]) -> PredictionRequest:
+    def validate_input(self, request_data: dict[str, Any]) -> PredictionRequest:
         try:
             return PredictionRequest(**request_data)
         except ValidationError as e:
@@ -213,7 +229,6 @@ class PredictionEngine:
 
         data = {
             "RELEASE_YEAR": request.release_year,
-            "AD_BUDGET": request.ad_budget,
             "PRODUCTION_BUDGET": request.budget,
             "RUNTIME": request.runtime,
             "MPAA": request.mpaa,
@@ -224,6 +239,12 @@ class PredictionEngine:
             "DIRECTOR": request.director,
             "PRODUCTION_COMPANY": request.production_company,
             "ACTORS": list(request.actors) if request.actors else [],
+            "IP_TIER": float(request.ip_tier),
+            # Training stores this column already log1p-transformed
+            # (scripts/prepare_training_frame.py); the request carries raw
+            # dollars, so apply the same log1p here.
+            "PRIOR_FRANCHISE_GROSS_LOG": float(np.log1p(request.prior_franchise_gross)),
+            "IS_FRANCHISE_FOLLOWUP": 1.0 if request.is_franchise_followup else 0.0,
         }
 
         df = pd.DataFrame([data])
@@ -242,7 +263,11 @@ class PredictionEngine:
         actual = list(features.columns)
         if actual != expected:
             divergence = next(
-                (f"{a!r}!={e!r}" for a, e in zip(actual, expected) if a != e),
+                (
+                    f"{a!r}!={e!r}"
+                    for a, e in zip(actual, expected, strict=True)
+                    if a != e
+                ),
                 "<length>",
             )
             raise FeatureContractMismatch(
@@ -279,13 +304,13 @@ class PredictionEngine:
             raise
         except Exception as e:
             logger.error(f"Feature preprocessing failed: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Feature preprocessing failed: {str(e)}")
+            raise RuntimeError(f"Feature preprocessing failed: {str(e)}") from e
 
     def predict(self, request: PredictionRequest) -> PredictionResponse:
         if not self.is_loaded():
             raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
 
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
 
         try:
             features = self.preprocess_features(request)
@@ -300,16 +325,14 @@ class PredictionEngine:
                     prediction_value
                 )
 
-            processing_time = (
-                datetime.now(timezone.utc) - start_time
-            ).total_seconds() * 1000
+            processing_time = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
             response = PredictionResponse(
                 prediction=float(prediction_value),
                 model_id=self.model_info.model_id,
                 model_version=self.model_info.version,
                 prediction_interval_heuristic=prediction_interval_heuristic,
-                timestamp=datetime.now(timezone.utc).isoformat() + "Z",
+                timestamp=datetime.now(UTC).isoformat() + "Z",
                 processing_time_ms=processing_time,
             )
 
@@ -320,10 +343,10 @@ class PredictionEngine:
 
         except Exception as e:
             logger.error(f"Prediction failed: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Prediction failed: {str(e)}")
+            raise RuntimeError(f"Prediction failed: {str(e)}") from e
 
     @staticmethod
-    def _prediction_interval_heuristic(prediction_value: float) -> List[float]:
+    def _prediction_interval_heuristic(prediction_value: float) -> list[float]:
         std_error = prediction_value * (0.20 if prediction_value < 1000000 else 0.15)
         return [
             max(0, prediction_value - 1.96 * std_error),

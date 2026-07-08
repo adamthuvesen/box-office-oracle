@@ -42,12 +42,6 @@ models:
         data_type: string
         tests:
           - not_null
-      - name: ad_budget
-        description: "Advertising budget"
-        data_type: float
-        tests:
-          - dbt_utils.accepted_range:
-              min_value: 0
       - name: production_budget
         description: "Production budget"
         data_type: float

@@ -83,6 +83,8 @@ data/interim/*.csv
 # Belt-and-braces: never commit any dataset CSV/Parquet under data/
 data/**/*.csv
 data/**/*.parquet
+data/**/*.json
+data/**/*.jsonl
 # Keep README files in data directories
 !data/**/README.md
 
@@ -152,3 +154,12 @@ analysis/datasets_*/
 analysis/*.csv
 analysis/*.pkl
 analysis/reports/*.csv
+
+# Web frontend (generated data snapshots + build output)
+web/data/
+web/node_modules/
+web/.next/
+
+# Local model/data artifacts
+data/generated/
+artifacts/local/

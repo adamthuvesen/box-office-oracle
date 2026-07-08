@@ -8,18 +8,19 @@ and error handling with comprehensive mocking.
 import os
 import pickle
 import tempfile
+from unittest.mock import Mock
+
 import numpy as np
 import pandas as pd
-from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
 # Import the module under test
 from box_office.inference.app.predictor import (
+    ModelInfo,
     PredictionEngine,
     PredictionRequest,
     PredictionResponse,
-    ModelInfo,
 )
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 
@@ -80,9 +81,35 @@ class TestPredictionRequest:
         assert request.genre == ["Action"]  # Should be converted to list
         assert request.release_month == 6
         assert request.release_year == 2024
-        # Check defaults
-        assert request.ad_budget == 0
         assert request.return_confidence is True
+        # IP/franchise defaults describe an original movie with no pre-sold IP.
+        assert request.ip_tier == 5
+        assert request.prior_franchise_gross == 0.0
+        assert request.is_franchise_followup is False
+
+    def test_ip_franchise_fields(self):
+        """Optional IP/franchise fields validate range and pass through."""
+        base = {
+            "budget": 50000000,
+            "runtime": 120,
+            "genre": "Action",
+            "release_month": 6,
+            "release_year": 2024,
+        }
+
+        request = PredictionRequest(
+            **base,
+            ip_tier=1,
+            prior_franchise_gross=2_000_000_000,
+            is_franchise_followup=True,
+        )
+        assert request.ip_tier == 1
+        assert request.prior_franchise_gross == 2_000_000_000
+        assert request.is_franchise_followup is True
+
+        for bad in ({"ip_tier": 0}, {"ip_tier": 6}, {"prior_franchise_gross": -1}):
+            with pytest.raises(ValidationError):
+                PredictionRequest(**base, **bad)
 
     def test_valid_request_full(self):
         """Test valid request with all fields."""
@@ -92,7 +119,6 @@ class TestPredictionRequest:
             "genre": ["Action", "Adventure"],
             "release_month": 12,
             "release_year": 2024,
-            "ad_budget": 25000000,
             "mpaa": "PG-13",
             "director": "Christopher Nolan",
             "actors": ["Tom Hardy", "Anne Hathaway"],
@@ -104,7 +130,6 @@ class TestPredictionRequest:
         request = PredictionRequest(**request_data)
 
         assert request.budget == 100000000
-        assert request.ad_budget == 25000000
         assert request.genre == ["Action", "Adventure"]
         assert request.actors == ["Tom Hardy", "Anne Hathaway"]
         assert request.director == "Christopher Nolan"
@@ -351,7 +376,6 @@ class TestPredictionEngine:
             genre=["Action"],
             release_month=6,
             release_year=2024,
-            ad_budget=10000000,
             mpaa="PG-13",
             director="Test Director",
             actors=["Actor 1", "Actor 2"],
@@ -474,7 +498,6 @@ class TestPredictionEngine:
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 1
         assert "RELEASE_YEAR" in df.columns
-        assert "AD_BUDGET" in df.columns
         assert "PRODUCTION_BUDGET" in df.columns
         assert "RATING" not in df.columns
         assert "VOTES" not in df.columns
@@ -491,12 +514,34 @@ class TestPredictionEngine:
         # Check values
         assert df.iloc[0]["RELEASE_YEAR"] == 2024
         assert df.iloc[0]["PRODUCTION_BUDGET"] == 50000000
-        assert df.iloc[0]["AD_BUDGET"] == 10000000
         assert df.iloc[0]["RELEASE_DATE"] == "2024-06-01"
         # Lists are passed through directly instead of round-tripping through
         # str(list) and ast.literal_eval.
         assert df.iloc[0]["GENRES"] == ["Action"]
         assert df.iloc[0]["ACTORS"] == ["Actor 1", "Actor 2"]
+        # IP/franchise defaults: original movie, no prior franchise history.
+        assert df.iloc[0]["IP_TIER"] == 5.0
+        assert df.iloc[0]["PRIOR_FRANCHISE_GROSS_LOG"] == 0.0
+        assert df.iloc[0]["IS_FRANCHISE_FOLLOWUP"] == 0.0
+
+    def test_prepare_dataframe_logs_prior_franchise_gross(self, prediction_engine):
+        """The request carries raw dollars; the frame carries log1p(dollars)."""
+        request = PredictionRequest(
+            budget=50_000_000,
+            runtime=120,
+            genre="Action",
+            release_month=6,
+            release_year=2024,
+            ip_tier=2,
+            prior_franchise_gross=1_000_000_000,
+            is_franchise_followup=True,
+        )
+        df = prediction_engine._prepare_dataframe(request)
+        assert df.iloc[0]["IP_TIER"] == 2.0
+        assert df.iloc[0]["PRIOR_FRANCHISE_GROSS_LOG"] == pytest.approx(
+            np.log1p(1_000_000_000)
+        )
+        assert df.iloc[0]["IS_FRANCHISE_FOLLOWUP"] == 1.0
 
     def test_preprocess_features_success(
         self,
@@ -669,9 +714,9 @@ class TestPredictionEngine:
 
         response = prediction_engine.predict(sample_request)
         assert isinstance(response, PredictionResponse)
-        assert pd.isna(
-            response.prediction
-        ), f"Expected NaN propagation, got {response.prediction!r}"
+        assert pd.isna(response.prediction), (
+            f"Expected NaN propagation, got {response.prediction!r}"
+        )
 
 
 class TestRuntimeEngine:
@@ -775,7 +820,6 @@ class TestPredictionEngineIntegration:
                 "genre": ["Action", "Adventure"],
                 "release_month": 6,
                 "release_year": 2024,
-                "ad_budget": 50000000,
                 "mpaa": "PG-13",
                 "director": "Christopher Nolan",
                 "actors": ["Christian Bale", "Tom Hardy"],

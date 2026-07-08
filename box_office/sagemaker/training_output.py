@@ -8,7 +8,7 @@ import os
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -23,9 +23,9 @@ _S3_NOT_FOUND_CODES = frozenset({"NoSuchKey", "404", "NoSuchBucket"})
 _SAGEMAKER_VALIDATION_CODE = "ValidationException"
 
 
-def parse_training_output_tarball(tarball_path: Path) -> Dict[str, Any]:
+def parse_training_output_tarball(tarball_path: Path) -> dict[str, Any]:
     """Extract CV and OOF metrics from a SageMaker ``output.tar.gz``."""
-    metrics: Dict[str, Any] = {}
+    metrics: dict[str, Any] = {}
 
     with tempfile.TemporaryDirectory() as extract_dir:
         with tarfile.open(tarball_path, "r:gz") as tar:
@@ -67,9 +67,7 @@ def parse_training_output_tarball(tarball_path: Path) -> Dict[str, Any]:
     return metrics
 
 
-def fetch_training_job_duration(
-    job_name: str, region: str
-) -> Optional[Dict[str, float]]:
+def fetch_training_job_duration(job_name: str, region: str) -> dict[str, float] | None:
     """Return training duration fields from ``describe_training_job``."""
     sagemaker_boto = boto3.client("sagemaker", region_name=region, config=BOTO3_CONFIG)
     try:
@@ -99,7 +97,7 @@ def download_and_parse_training_output(
     bucket: str,
     output_tarball_key: str,
     region: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Download output tarball from S3 and parse metrics (raises on missing S3 if not benign)."""
     s3_client = boto3.client("s3", region_name=region, config=BOTO3_CONFIG)
     tarball_path = None
@@ -130,8 +128,8 @@ def build_training_metrics(
     region: str,
     bucket: str,
     output_prefix: str,
-    model_data_url: Optional[str],
-) -> Dict[str, Any]:
+    model_data_url: str | None,
+) -> dict[str, Any]:
     """Full metrics dict for registry tasks."""
     output_tarball_key = f"{output_prefix}/{job_name}/output/output.tar.gz"
     performance = download_and_parse_training_output(bucket, output_tarball_key, region)

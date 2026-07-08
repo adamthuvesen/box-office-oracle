@@ -18,8 +18,8 @@ from box_office.ml.artifacts import (
 )
 from box_office.ml.model import (
     BoxOfficeXGBoostModel,
-    TimeSeriesCrossValidator,
     ModelEvaluator,
+    TimeSeriesCrossValidator,
 )
 from box_office.utils.aws_helpers import parse_s3_uri, resolve_aws_region
 
@@ -381,7 +381,7 @@ def save_results(model, cv_results, oof_results, args):
     # 5. Performance summary
     logger.info("TRAINING PERFORMANCE SUMMARY:")
     logger.info(f"Model Quality: R² = {oof_r2:.3f} (Target: > 0.75)")
-    logger.info(f"Prediction Error: ${oof_mae/1e6:.1f}M average error")
+    logger.info(f"Prediction Error: ${oof_mae / 1e6:.1f}M average error")
     logger.info(f"Cross-Validation Stability: MAE std = ±{cv_mae_std:.3f}")
     logger.info(f"Training Efficiency: {mean_best_iteration:.0f} avg iterations")
 

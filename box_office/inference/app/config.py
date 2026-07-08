@@ -1,10 +1,9 @@
 """Configuration management for the serverless inference API."""
 
-from typing import Optional
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
 from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings
 
 from box_office.shared.names import model_registry_group_name
 
@@ -28,10 +27,10 @@ class Settings(BaseSettings):
 
     # AWS Configuration
     aws_region: str = Field(default="eu-north-1", description="AWS region")
-    aws_account_id: Optional[str] = Field(default=None, description="AWS account ID")
+    aws_account_id: str | None = Field(default=None, description="AWS account ID")
 
     # Model Registry Configuration
-    model_registry_group_name: Optional[str] = Field(
+    model_registry_group_name: str | None = Field(
         default=None,
         description="SageMaker Model Registry group name. Composed from project_name and environment when unset.",
     )
@@ -58,7 +57,7 @@ class Settings(BaseSettings):
     enable_api_key_auth: bool = Field(
         default=True, description="Enable API key authentication"
     )
-    api_key: Optional[str] = Field(
+    api_key: str | None = Field(
         default=None,
         description="API key for authentication (from API_KEY env var)",
     )
@@ -100,7 +99,7 @@ class Settings(BaseSettings):
         return self
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached application settings instance."""
     return Settings()

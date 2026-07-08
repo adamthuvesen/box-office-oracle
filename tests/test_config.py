@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from box_office.config import Settings
 
-
 # Mirrors the env vars the README documents. The startup test below asserts
 # that every entry maps to a defined Settings field — that's our contract
 # with users who follow the README to populate `.env`.

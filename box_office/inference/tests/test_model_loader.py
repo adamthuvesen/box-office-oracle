@@ -7,21 +7,22 @@ functionality with comprehensive mocking for AWS services.
 
 import os
 import pickle
-import tempfile
 import tarfile
-from datetime import datetime, timedelta, timezone
+import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
+
 import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 from sklearn.base import BaseEstimator
 
 # Import the module under test
 from box_office.inference.app.model_loader import (
-    RegistryModelInfo,
     ModelLoader,
     ModelLoadError,
     ModelValidationError,
+    RegistryModelInfo,
 )
 
 
@@ -96,7 +97,7 @@ class TestModelLoader:
             "ModelPackageStatus": "Completed",
             "ModelPackageGroupName": "test-group",
             "ModelPackageVersion": 1,
-            "CreationTime": datetime.now(timezone.utc),
+            "CreationTime": datetime.now(UTC),
             "ModelApprovalStatus": "Approved",
         }
 
@@ -124,7 +125,7 @@ class TestModelLoader:
             "CustomerMetadataProperties": {
                 "sha256": "placeholder-overridden-by-tests-that-actually-download",
                 "size_bytes": "0",
-                "feature_schema_version": "7",
+                "feature_schema_version": "9",
             },
         }
 
@@ -259,7 +260,7 @@ class TestModelLoader:
             details["CustomerMetadataProperties"] = {
                 "sha256": digest,
                 "size_bytes": str(Path(tar_path).stat().st_size),
-                "feature_schema_version": "7",
+                "feature_schema_version": "9",
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -303,7 +304,7 @@ class TestModelLoader:
             details["CustomerMetadataProperties"] = {
                 "sha256": "0" * 64,
                 "size_bytes": "0",
-                "feature_schema_version": "7",
+                "feature_schema_version": "9",
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -530,9 +531,7 @@ class TestModelLoader:
             "_generate_cache_key",
             "_remove_cache_files",
         ):
-            assert not hasattr(
-                loader, attr
-            ), f"{attr} should not exist on ModelLoader"
+            assert not hasattr(loader, attr), f"{attr} should not exist on ModelLoader"
 
     def test_clear_cache_removes_sha_dirs(self, mock_aws_clients, temp_cache_dir):
         mock_s3, mock_sagemaker = mock_aws_clients
@@ -587,7 +586,7 @@ class TestModelLoader:
         loader = ModelLoader(
             "test-group", cache_dir=temp_cache_dir, cache_ttl_seconds=1
         )
-        loader._last_load_time = datetime.now(timezone.utc) - timedelta(seconds=2)
+        loader._last_load_time = datetime.now(UTC) - timedelta(seconds=2)
 
         assert loader.is_model_cache_valid() is False
 
@@ -598,7 +597,7 @@ class TestModelLoader:
         loader = ModelLoader(
             "test-group", cache_dir=temp_cache_dir, cache_ttl_seconds=3600
         )
-        loader._last_load_time = datetime.now(timezone.utc)
+        loader._last_load_time = datetime.now(UTC)
 
         assert loader.is_model_cache_valid() is True
 
@@ -655,7 +654,7 @@ class TestModelLoader:
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._current_model_info = sample_model_info
-        loader._last_load_time = datetime.now(timezone.utc)
+        loader._last_load_time = datetime.now(UTC)
 
         with patch.object(
             loader, "_get_latest_approved_model_info", return_value=sample_model_info
@@ -670,7 +669,7 @@ class TestModelLoader:
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._current_model_info = sample_model_info
-        loader._last_load_time = datetime.now(timezone.utc)
+        loader._last_load_time = datetime.now(UTC)
 
         new_model_info = sample_model_info.copy()
         new_model_info["ModelPackageArn"] = (
@@ -736,7 +735,7 @@ class TestModelLoaderIntegration:
             "CustomerMetadataProperties": {
                 "sha256": digest,
                 "size_bytes": str(tar_file.stat().st_size),
-                "feature_schema_version": "7",
+                "feature_schema_version": "9",
             },
         }
 

@@ -11,14 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from box_office.utils.safe_tarfile import extractall_data_filter
-
 from box_office.inference.app.integrity import (
     ArtifactIntegrityError,
     compute_sha256,
     reset_verified_cache,
     verify_artifact,
 )
+from box_office.utils.safe_tarfile import extractall_data_filter
 
 
 @pytest.fixture(autouse=True)

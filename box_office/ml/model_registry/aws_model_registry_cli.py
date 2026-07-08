@@ -11,20 +11,18 @@ To list all models in the registry:
 import argparse
 import logging
 import sys
-from datetime import datetime, timezone
-from typing import Dict
+from datetime import UTC, datetime
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.config import config
+from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.utils.cli_prompts import confirm
-
 
 logger = logging.getLogger(__name__)
 
 
-def load_config() -> Dict[str, str]:
+def load_config() -> dict[str, str]:
     """Load AWS configuration from config system."""
     return {"aws_region": config.aws.region}
 
@@ -167,7 +165,7 @@ def cmd_promote_model(args: argparse.Namespace) -> None:
             model_package_arn=args.model_arn,
             approval_status="Approved",
             approval_description=args.description
-            or f"Manual promotion via CLI - {datetime.now(timezone.utc).isoformat()}",
+            or f"Manual promotion via CLI - {datetime.now(UTC).isoformat()}",
         )
 
         if result["status"] == "success":

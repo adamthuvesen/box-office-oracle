@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import numpy as np
 import pandas as pd
 
@@ -16,8 +14,8 @@ class DataSplitter:
         df: pd.DataFrame,
         target_column: str,
         test_size: float = 0.2,
-        date_column: Optional[str] = None,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+        date_column: str | None = None,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
         """Sort by date and take the bottom ``1 - test_size`` quantile as train.
 
         Every validation row's date is greater than or equal to every training
@@ -66,5 +64,5 @@ class TargetTransformer:
     @staticmethod
     def log_transform(
         y_train: pd.Series, y_val: pd.Series
-    ) -> Tuple[pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series]:
         return np.log1p(y_train), np.log1p(y_val)

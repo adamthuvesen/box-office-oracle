@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from box_office.config import config
 from box_office.orchestration.phases.data_phase import (
@@ -22,7 +22,7 @@ from box_office.sagemaker import sagemaker_train_job
 
 @dataclass
 class TrainPhaseResult:
-    training_metrics: Dict[str, Any]
+    training_metrics: dict[str, Any]
     estimator: Any
 
 

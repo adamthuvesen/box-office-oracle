@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -22,7 +23,7 @@ class CoreNumericalTransformer(BaseEstimator, TransformerMixin):
     upstream typo from masquerading as a real prediction.
     """
 
-    def fit(self, X: pd.DataFrame, y=None) -> "CoreNumericalTransformer":
+    def fit(self, X: pd.DataFrame, y=None) -> CoreNumericalTransformer:
         self.is_fitted_ = True
         return self
 

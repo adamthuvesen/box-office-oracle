@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from botocore.exceptions import ClientError
 
-
 # --------------------------------------------------------------------------- #
 # 1.8 — _parse_s3_uri
 # --------------------------------------------------------------------------- #

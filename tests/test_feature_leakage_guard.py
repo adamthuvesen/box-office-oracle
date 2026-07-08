@@ -11,7 +11,6 @@ import pytest
 
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 
-
 LEAKAGE_THRESHOLD = 0.99
 MIN_ROWS_PER_YEAR = 8
 
@@ -25,18 +24,14 @@ def synthetic_movies() -> pd.DataFrame:
         for i in range(20):
             budget = float(rng.uniform(5_000_000, 250_000_000))
             runtime = float(rng.uniform(80, 180))
-            ad_budget = budget * float(rng.uniform(0.3, 0.6))
             # Target is a noisy-nonlinear function of budget+runtime, NOT a feature.
             log_gross = (
-                np.log1p(budget) * 0.7
-                + runtime * 0.015
-                + float(rng.normal(0, 0.5))
+                np.log1p(budget) * 0.7 + runtime * 0.015 + float(rng.normal(0, 0.5))
             )
             rows.append(
                 {
                     "RELEASE_DATE": f"{year}-{int(rng.integers(1, 13)):02d}-15",
                     "RELEASE_YEAR": year,
-                    "AD_BUDGET": ad_budget,
                     "PRODUCTION_BUDGET": budget,
                     "RUNTIME": runtime,
                     "MPAA": rng.choice(["PG", "PG-13", "R"]),

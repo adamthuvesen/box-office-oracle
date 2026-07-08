@@ -62,9 +62,6 @@ sources:
           - name: keywords
             description: "Movie keywords/tags"
             data_type: string
-          - name: ad_budget
-            description: "Advertising budget"
-            data_type: number
           - name: production_company
             description: "Production company"
             data_type: string

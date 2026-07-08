@@ -9,7 +9,6 @@ shape must stay stable.
 """
 
 import logging
-from typing import List, Optional
 
 import pandas as pd
 
@@ -41,7 +40,7 @@ class FeaturePreprocessorHigh:
 
     def __init__(self):
         self.pipeline = build_feature_pipeline()
-        self._feature_names: Optional[List[str]] = None
+        self._feature_names: list[str] | None = None
 
     def fit(self, X: pd.DataFrame) -> "FeaturePreprocessorHigh":
         # Capture column names from a single fit_transform pass; the transformed
@@ -87,7 +86,7 @@ class FeaturePreprocessorHigh:
 
         return out
 
-    def get_feature_names(self) -> List[str]:
+    def get_feature_names(self) -> list[str]:
         """Return engineered column names; lazily fits on a synthetic schema
         fixture if the caller hasn't fit on real data yet (model registry,
         dbt feature metadata, etc.).
@@ -107,7 +106,6 @@ _SCHEMA_FIXTURE = pd.DataFrame(
         {
             "RELEASE_YEAR": 2020,
             "RELEASE_DATE": "2020-06-15",
-            "AD_BUDGET": 1_000_000,
             "PRODUCTION_BUDGET": 10_000_000,
             "RUNTIME": 120,
             "MPAA": "PG-13",
@@ -115,6 +113,9 @@ _SCHEMA_FIXTURE = pd.DataFrame(
             "DIRECTOR": "Director",
             "PRODUCTION_COMPANY": "Studio",
             "ACTORS": "Actor",
+            "IP_TIER": 5,
+            "PRIOR_FRANCHISE_GROSS_LOG": 0.0,
+            "IS_FRANCHISE_FOLLOWUP": 0.0,
         }
     ]
 )

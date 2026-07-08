@@ -9,7 +9,7 @@ path from being a DoS surface.
 from __future__ import annotations
 
 import ast
-from typing import Any, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -26,7 +26,7 @@ class LiteralEvalTooLarge(ValueError):
     """
 
 
-def process_text_list(value: Any) -> List[str]:
+def process_text_list(value: Any) -> list[str]:
     """Normalize a text-list field to a clean lower-cased ``list[str]``.
 
     Accepts None/NaN, empty strings, JSON-like strings, Python lists, and

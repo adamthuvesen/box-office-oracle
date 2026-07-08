@@ -48,7 +48,6 @@ class TestFeaturePreprocessorErrors:
             {
                 "RELEASE_YEAR": [],
                 "RELEASE_DATE": pd.to_datetime([]),
-                "AD_BUDGET": [],
                 "PRODUCTION_BUDGET": [],
                 "RUNTIME": [],
                 "DIRECTOR": [],
@@ -81,7 +80,6 @@ class TestFeaturePreprocessorErrors:
             {
                 "RELEASE_YEAR": [2023],
                 "RELEASE_DATE": pd.to_datetime(["2023-06-15"]),
-                "AD_BUDGET": [500000],
                 "PRODUCTION_BUDGET": [1000000],
                 "RUNTIME": [120],
                 "DIRECTOR": ["Director A"],
@@ -107,7 +105,6 @@ class TestFeaturePreprocessorErrors:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-01-01", "2021-01-01"]),
-                "AD_BUDGET": [500000, 600000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
@@ -215,7 +212,6 @@ class TestDataValidation:
         data = pd.DataFrame(
             {
                 "RELEASE_YEAR": [2020, 2021, 2022],
-                "AD_BUDGET": [1000000, -500000, 2000000],
                 "PRODUCTION_BUDGET": [5000000, 3000000, -1000000],
                 "RUNTIME": [120, 130, 140],
                 "IS_SUMMER_RELEASE": [1, 0, 1],
@@ -231,4 +227,4 @@ class TestDataValidation:
         result = transformer.transform(data)
         assert isinstance(result, pd.DataFrame)
         assert result.shape[0] == 3
-        assert "TOTAL_BUDGET" in result.columns
+        assert "LOG_PRODUCTION_BUDGET" in result.columns

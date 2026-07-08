@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -17,7 +17,7 @@ class TableOperation:
     table_name: str
     schema: str
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -29,17 +29,17 @@ class TableSaveSpec:
 
 @dataclass
 class TableSaveReport:
-    operations: List[TableOperation]
-    results: Dict[str, bool]
+    operations: list[TableOperation]
+    results: dict[str, bool]
 
 
 def save_tables(
-    specs: List[TableSaveSpec],
+    specs: list[TableSaveSpec],
     save_fn: Callable[[pd.DataFrame, str, str], bool],
 ) -> TableSaveReport:
     """Save multiple tables, collecting per-table success/failure."""
-    operations: List[TableOperation] = []
-    results: Dict[str, bool] = {}
+    operations: list[TableOperation] = []
+    results: dict[str, bool] = {}
 
     for spec in specs:
         try:
@@ -67,7 +67,7 @@ def save_tables(
     return TableSaveReport(operations=operations, results=results)
 
 
-def log_table_operations_summary(operations: List[TableOperation], logger) -> None:
+def log_table_operations_summary(operations: list[TableOperation], logger) -> None:
     """Log table operations as a single summary."""
     if not operations:
         logger.info("No table operations to report")

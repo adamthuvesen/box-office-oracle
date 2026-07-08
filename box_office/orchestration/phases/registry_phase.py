@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 from box_office.config import config
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
@@ -16,12 +16,12 @@ from box_office.orchestration.tasks.training_tasks import (
 
 @dataclass
 class RegistryPhaseResult:
-    registration_result: Dict[str, Any]
-    promotion_result: Optional[Dict[str, Any]]
-    aws_promotion_result: Optional[Dict[str, Any]]
+    registration_result: dict[str, Any]
+    promotion_result: dict[str, Any] | None
+    aws_promotion_result: dict[str, Any] | None
 
     @property
-    def model_registry_metrics(self) -> Dict[str, Any]:
+    def model_registry_metrics(self) -> dict[str, Any]:
         return {
             "model_registration": self.registration_result,
             "model_promotion_validation": self.promotion_result,
@@ -30,7 +30,7 @@ class RegistryPhaseResult:
 
 
 def run_registry_phase(
-    training_metrics: Dict[str, Any],
+    training_metrics: dict[str, Any],
     environment: str,
     logger,
 ) -> RegistryPhaseResult:

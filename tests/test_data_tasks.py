@@ -2,8 +2,8 @@
 Essential tests for orchestration data tasks.
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 
@@ -85,6 +85,7 @@ class TestFeatureScaling:
 
     def test_scale_features(self, sample_features_data, monkeypatch):
         from unittest.mock import MagicMock
+
         import box_office.orchestration.tasks.data_tasks as data_tasks
         from box_office.orchestration.tasks.data_tasks import scale_features
 
@@ -111,6 +112,7 @@ class TestFeatureScaling:
 class TestFeatureMetadata:
     def test_create_feature_metadata(self, monkeypatch):
         from unittest.mock import MagicMock
+
         import box_office.orchestration.tasks.data_tasks as data_tasks
         from box_office.orchestration.tasks.data_tasks import create_feature_metadata
 

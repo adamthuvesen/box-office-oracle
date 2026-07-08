@@ -9,9 +9,9 @@ import cleanly without contacting any service.
 class TestPipelineImports:
     def test_ml_pipeline_imports(self):
         from box_office.orchestration.flows.ml_pipeline import (
+            get_logger,
             ml_pipeline,
             run_ml_pipeline_logic,
-            get_logger,
         )
 
         assert ml_pipeline is not None
@@ -20,13 +20,13 @@ class TestPipelineImports:
 
     def test_data_tasks_imports(self):
         from box_office.orchestration.tasks.data_tasks import (
-            load_staging_box_office_from_snowflake,
-            split_data,
             apply_feature_engineering,
-            scale_features,
-            transform_targets,
+            load_staging_box_office_from_snowflake,
             save_artifacts,
             save_dataset_to_snowflake_impl,
+            scale_features,
+            split_data,
+            transform_targets,
         )
 
         assert load_staging_box_office_from_snowflake is not None
@@ -39,9 +39,9 @@ class TestPipelineImports:
 
     def test_training_tasks_imports(self):
         from box_office.orchestration.tasks.training_tasks import (
-            upload_processed_data_to_s3,
-            train_model,
             download_and_analyze_results,
+            train_model,
+            upload_processed_data_to_s3,
         )
 
         assert upload_processed_data_to_s3 is not None
@@ -50,11 +50,11 @@ class TestPipelineImports:
 
     def test_metrics_tasks_imports(self):
         from box_office.orchestration.tasks.metrics_tasks import (
-            log_pipeline_start_metrics,
             log_data_processing_metrics,
             log_feature_engineering_metrics,
             log_model_training_summary,
             log_pipeline_completion_metrics,
+            log_pipeline_start_metrics,
         )
 
         assert log_pipeline_start_metrics is not None
@@ -109,13 +109,13 @@ class TestModelRegistry:
 
 class TestFeatureEngineering:
     def test_all_transformers_importable(self):
-        from box_office.ml.feature_pipeline import CoreNumericalTransformer
-        from box_office.ml.feature_pipeline import TemporalTransformer
-        from box_office.ml.feature_pipeline import GenreTransformer
-        from box_office.ml.feature_pipeline import IndustryTransformer
-        from box_office.ml.feature_pipeline import FinancialTransformer
         from box_office.ml.feature_pipeline import (
+            CoreNumericalTransformer,
             FeatureSelector,
+            FinancialTransformer,
+            GenreTransformer,
+            IndustryTransformer,
+            TemporalTransformer,
         )
 
         assert CoreNumericalTransformer is not None
@@ -187,8 +187,8 @@ class TestPipelineTasks:
     def test_tasks_are_decorated(self):
         """split_data and apply_feature_engineering carry @task wrappers."""
         from box_office.orchestration.tasks.data_tasks import (
-            split_data,
             apply_feature_engineering,
+            split_data,
         )
 
         assert hasattr(split_data, "fn") or hasattr(split_data, "__wrapped__")
@@ -208,8 +208,9 @@ class TestPipelineFlow:
         )
 
     def test_pipeline_has_parameters(self):
-        from box_office.orchestration.flows.ml_pipeline import ml_pipeline
         import inspect
+
+        from box_office.orchestration.flows.ml_pipeline import ml_pipeline
 
         sig = inspect.signature(ml_pipeline)
 

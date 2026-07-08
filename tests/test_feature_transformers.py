@@ -1,7 +1,8 @@
 """Smoke tests for the consolidated feature pipeline."""
 
-import pandas as pd
 import unittest
+
+import pandas as pd
 
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 
@@ -16,7 +17,6 @@ class TestCoreNumericalTransformer(unittest.TestCase):
         data = pd.DataFrame(
             {
                 "RELEASE_YEAR": [2020, 2021],
-                "AD_BUDGET": [500000, 600000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
                 "RUNTIME": [120, 135],
             }
@@ -109,7 +109,6 @@ class TestFinancialTransformer(unittest.TestCase):
         data = pd.DataFrame(
             {
                 "RELEASE_YEAR": [2023],
-                "AD_BUDGET": [10_000_000],
                 "PRODUCTION_BUDGET": [50_000_000],
                 "IS_BLOCKBUSTER_SEASON": [1],
                 "IS_MEMORIAL_DAY_WEEKEND": [0],
@@ -132,13 +131,13 @@ class TestFinancialTransformer(unittest.TestCase):
 
         expected = {
             "LOG_PRODUCTION_BUDGET",
-            "LOG_TOTAL_BUDGET_X_ADVENTURE",
+            "LOG_BUDGET_X_ADVENTURE",
             "DIRECTOR_BUDGET_CONFIDENCE",
             "CREATIVE_FREQ_SCORE",
             "BLOCKBUSTER_BUDGET_MULTIPLIER",
             "LOG1P_LEAD_ACTOR_FREQ",
-            "LOG_TOTAL_BUDGET_X_COMPANY_FREQ",
-            "LOG_TOTAL_BUDGET_X_SUMMER",
+            "LOG_BUDGET_X_COMPANY_FREQ",
+            "LOG_BUDGET_X_SUMMER",
         }
         self.assertTrue(expected <= set(out.columns))
         self.assertGreater(out["BLOCKBUSTER_BUDGET_MULTIPLIER"].iloc[0], 0)
@@ -175,7 +174,6 @@ class TestFeaturePipeline(unittest.TestCase):
                     "2022-12-25",
                     "2023-05-26",
                 ],
-                "AD_BUDGET": [1e6, 2e6, 5e5, 1.5e6],
                 "PRODUCTION_BUDGET": [1e7, 2e7, 5e6, 1.5e7],
                 "RUNTIME": [120, 130, 95, 105],
                 "MPAA": ["PG-13", "R", "G", "PG"],
@@ -201,7 +199,6 @@ class TestFeaturePipeline(unittest.TestCase):
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": ["2020-06-15", "2021-07-04"],
-                "AD_BUDGET": [1e6, 2e6],
                 "PRODUCTION_BUDGET": [1e7, 2e7],
                 "RUNTIME": [120, 130],
                 "MPAA": ["PG-13", "R"],

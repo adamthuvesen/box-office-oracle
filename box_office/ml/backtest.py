@@ -9,8 +9,8 @@ module owns the honest reporting.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -43,7 +43,7 @@ class LogBudgetBaseline:
         self._model = LinearRegression()
         self._fallback_log_pred: float = 0.0
 
-    def fit(self, budget: pd.Series, target_log: pd.Series) -> "LogBudgetBaseline":
+    def fit(self, budget: pd.Series, target_log: pd.Series) -> LogBudgetBaseline:
         budget = pd.to_numeric(budget, errors="coerce")
         target_log = pd.to_numeric(target_log, errors="coerce")
 

@@ -5,10 +5,9 @@ import time
 
 import boto3
 import pandas as pd
-
 import sagemaker
-from sagemaker.xgboost.estimator import XGBoost
 from sagemaker.inputs import TrainingInput
+from sagemaker.xgboost.estimator import XGBoost
 
 from box_office.config import config
 from box_office.utils.aws_helpers import BOTO3_CONFIG
@@ -79,7 +78,9 @@ def load_processed_data_from_snowflake():
                 # interpolates an unvalidated identifier.
                 database = config.snowflake.database
                 schema = config.snowflake.schemas.ml_training
-                x_train_scaled = fully_qualified_name(database, schema, "X_TRAIN_SCALED")
+                x_train_scaled = fully_qualified_name(
+                    database, schema, "X_TRAIN_SCALED"
+                )
                 x_train = fully_qualified_name(database, schema, "X_TRAIN")
                 y_train_log = fully_qualified_name(database, schema, "Y_TRAIN_LOG")
 

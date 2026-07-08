@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-unit test-integration lint format clean docker-build docker-test setup datasets
+.PHONY: help install install-dev test test-unit test-integration lint format clean docker-build docker-test setup datasets web-data
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -36,14 +36,13 @@ test-coverage: setup ## Run tests with coverage
 	uv run pytest tests/ box_office/inference/tests/ --cov=box_office --cov-report=xml --cov-report=term-missing
 
 lint: install-dev ## Run linting checks
-	uv run flake8 box_office tests
-	uv run mypy box_office
+	uv run ruff check box_office tests scripts
 
-format: setup ## Format code with black
-	uvx black==26.3.1 box_office tests
+format: install-dev ## Format code with ruff
+	uv run ruff format box_office tests scripts
 
-format-check: setup ## Check code formatting without making changes
-	uvx black==26.3.1 --check box_office tests
+format-check: install-dev ## Check formatting without making changes
+	uv run ruff format --check box_office tests scripts
 
 clean: ## Clean build artifacts and caches
 	rm -rf .pytest_cache
@@ -72,6 +71,9 @@ docker-test: docker-build ## Test Docker image
 
 pipeline-run: install-dev ## Run ML pipeline (requires environment variables)
 	uv run box-office-pipeline --environment dev --experiment-name "box-office-predictions"
+
+web-data: install-dev ## Export web/data JSON snapshots for the Next.js app (local dataset, no Snowflake)
+	uv run python scripts/export_web_data.py
 
 datasets: install-dev ## Regenerate analysis/datasets_* from Snowflake (requires Snowflake creds)
 	@echo "Pulling raw box-office snapshot from Snowflake into analysis/datasets_raw/"

@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _CrossValidationState:
     oof_preds: np.ndarray
-    oof_indices: List[int] = field(default_factory=list)
-    oof_records: List[Dict[str, Any]] = field(default_factory=list)
+    oof_indices: list[int] = field(default_factory=list)
+    oof_records: list[dict[str, Any]] = field(default_factory=list)
     oof_seen_keys: set[tuple[int, int]] = field(default_factory=set)
-    cv_scores: List[float] = field(default_factory=list)
-    cv_rmsle_scores: List[float] = field(default_factory=list)
-    best_iterations: List[int] = field(default_factory=list)
-    fold_importances: List[Any] = field(default_factory=list)
-    fold_results: List[Dict[str, Any]] = field(default_factory=list)
-    last_fold_exception: Optional[BaseException] = None
+    cv_scores: list[float] = field(default_factory=list)
+    cv_rmsle_scores: list[float] = field(default_factory=list)
+    best_iterations: list[int] = field(default_factory=list)
+    fold_importances: list[Any] = field(default_factory=list)
+    fold_results: list[dict[str, Any]] = field(default_factory=list)
+    last_fold_exception: BaseException | None = None
 
     @classmethod
     def for_row_count(cls, row_count: int) -> "_CrossValidationState":
@@ -36,7 +36,7 @@ class _CrossValidationState:
         self.oof_preds[val_indices] = y_pred
         self.oof_indices.extend(val_indices)
 
-        for idx, pred in zip(val_indices, y_pred):
+        for idx, pred in zip(val_indices, y_pred, strict=True):
             key = (fold_number, int(idx))
             if key in self.oof_seen_keys:
                 raise OOFIndexCollision(f"Duplicate (fold, idx) pair detected: {key}")
@@ -50,8 +50,8 @@ class _CrossValidationState:
             )
 
     def build_results(
-        self, feature_names: List[str], model_kwargs: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, feature_names: list[str], model_kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
         return {
             "mean_cv_mae": np.mean(self.cv_scores),
             "std_cv_mae": np.std(self.cv_scores),
@@ -66,7 +66,9 @@ class _CrossValidationState:
             ),
             "oof_predictions": {
                 str(idx): pred
-                for idx, pred in zip(self.oof_indices, self.oof_preds[self.oof_indices])
+                for idx, pred in zip(
+                    self.oof_indices, self.oof_preds[self.oof_indices], strict=True
+                )
             },
             "oof_records": self.oof_records,
             "feature_importances": (
@@ -96,10 +98,10 @@ class TimeSeriesCrossValidator:
 
     def _log_cv_summary(
         self,
-        fold_results: List[Dict],
-        cv_scores: List[float],
-        cv_rmsle_scores: List[float],
-        best_iterations: List[int],
+        fold_results: list[dict],
+        cv_scores: list[float],
+        cv_rmsle_scores: list[float],
+        best_iterations: list[int],
     ) -> None:
         """Log CV results as single summary instead of per-fold."""
         successful_folds = [r for r in fold_results if r["error"] is None]
@@ -140,9 +142,23 @@ class TimeSeriesCrossValidator:
                 )
 
     def cross_validate(
-        self, model_class, X_train, y_train_log, dates, **model_kwargs
-    ) -> Dict[str, Any]:
-        """Perform time series cross-validation with forward chaining."""
+        self,
+        model_class,
+        X_train,
+        y_train_log,
+        dates,
+        preprocessor_factory=None,
+        **model_kwargs,
+    ) -> dict[str, Any]:
+        """Perform time series cross-validation with forward chaining.
+
+        When ``preprocessor_factory`` is given (a callable returning a fresh,
+        unfitted preprocessor with fit_transform/transform), ``X_train`` is the
+        RAW frame: each fold fits the preprocessor on train-years rows only and
+        transforms both splits, so frequency encodings cannot see the eval
+        year. When omitted, ``X_train`` is already engineered and behavior is
+        unchanged.
+        """
         logger.info("Starting time series cross-validation with RMSLE objective...")
 
         # Reset indices to ensure positional alignment with numpy arrays
@@ -157,6 +173,9 @@ class TimeSeriesCrossValidator:
         dates_sorted = dates.iloc[sort_indices]
 
         state = _CrossValidationState.for_row_count(len(X_train))
+        # With a preprocessor_factory the raw columns are not the model's
+        # features; each fold overwrites this with the engineered names.
+        feature_names = X_train.columns.tolist()
 
         unique_years = sorted(dates_sorted.unique())
         logger.info(
@@ -186,6 +205,12 @@ class TimeSeriesCrossValidator:
             y_fold_train, y_fold_val = y_sorted[train_mask], y_sorted[val_mask]
 
             try:
+                if preprocessor_factory is not None:
+                    fold_preprocessor = preprocessor_factory()
+                    X_fold_train = fold_preprocessor.fit_transform(X_fold_train)
+                    X_fold_val = fold_preprocessor.transform(X_fold_val)
+                    feature_names = X_fold_train.columns.tolist()
+
                 state.fold_results.append(
                     self._run_fold(
                         fold_number=i + 1,
@@ -234,7 +259,7 @@ class TimeSeriesCrossValidator:
         )
 
         if state.cv_scores:
-            return state.build_results(X_train.columns.tolist(), model_kwargs)
+            return state.build_results(feature_names, model_kwargs)
 
         attempted = len(state.fold_results)
         failed = sum(1 for r in state.fold_results if r["error"] is not None)
@@ -259,9 +284,9 @@ class TimeSeriesCrossValidator:
         X_fold_val: Any,
         y_fold_train: Any,
         y_fold_val: Any,
-        model_kwargs: Dict[str, Any],
+        model_kwargs: dict[str, Any],
         state: _CrossValidationState,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         model_kwargs_with_early_stopping = {
             **model_kwargs,
             "early_stopping_rounds": self.early_stopping_rounds,
@@ -340,11 +365,10 @@ class TimeSeriesCrossValidator:
 
 
 class ModelEvaluator:
-
     @staticmethod
     def evaluate_oof_performance(
-        cv_results: Dict[str, Any], y_train_log
-    ) -> Dict[str, float]:
+        cv_results: dict[str, Any], y_train_log
+    ) -> dict[str, float]:
         """Evaluate out-of-fold predictions."""
         logger.info("Evaluating out-of-fold performance...")
 
