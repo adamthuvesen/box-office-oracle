@@ -76,8 +76,7 @@ dev = [
     "pytest==9.0.3",
     "pytest-asyncio>=1.0",
     "pytest-cov==7.1.0",
-    "flake8==7.3.0",
-    "mypy==1.13.0",
+    "ruff==0.15.20",
     "pip-tools==7.5.3",
     "pre-commit>=3.0.0",
 
@@ -155,26 +154,30 @@ exclude = ["tests*", "analysis*", "artifacts*", "docs*", "infrastructure*", "tra
 "*" = ["*.yml", "*.yaml", "*.sql", "*.json", "*.txt"]
 "box_office.inference" = ["**/*.txt", "**/*.json"]
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ["py311"]
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | transformations/target
-  | transformations/dbt_packages
-)/
-'''
+target-version = "py311"
+exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    ".venv",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "transformations/target",
+    "transformations/dbt_packages",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
@@ -191,31 +194,3 @@ markers = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
-[[tool.mypy.overrides]]
-module = [
-    "snowflake.*",
-    "sagemaker.*",
-    "prefect.*",
-    "boto3.*",
-    "botocore.*",
-    "xgboost.*",
-    "optuna.*",
-    "catboost.*",
-]
-ignore_missing_imports = true
