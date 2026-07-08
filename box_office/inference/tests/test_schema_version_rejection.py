@@ -7,8 +7,8 @@ import pytest
 from box_office.inference.app.model_loader import ModelLoader
 from box_office.ml.feature_schema import (
     CURRENT_FEATURE_SCHEMA_VERSION,
-    FeatureSchemaVersionMismatch,
     SCHEMA_VERSION_METADATA_KEY,
+    FeatureSchemaVersionMismatch,
 )
 
 
@@ -54,6 +54,6 @@ def test_rejects_artifact_with_old_schema_version():
         loader._download_and_load_model({"ModelPackageArn": "arn:aws:test"})
 
 
-def test_current_schema_version_is_v7():
-    """Belt-and-suspenders: the contract is v7 (pre-release feature set)."""
-    assert CURRENT_FEATURE_SCHEMA_VERSION == "7"
+def test_current_schema_version_is_v9():
+    """Belt-and-suspenders: the contract is v9 (13-feature pre-release set)."""
+    assert CURRENT_FEATURE_SCHEMA_VERSION == "9"

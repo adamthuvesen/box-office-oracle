@@ -35,9 +35,14 @@ RAW_INPUT_COLUMNS_TO_DROP: tuple[str, ...] = (
 
 CORE_NUMERICAL_FEATURES: tuple[str, ...] = (
     "RELEASE_YEAR",
-    "AD_BUDGET",
     "PRODUCTION_BUDGET",
     "RUNTIME",
+    # Pre-computed IP/franchise inputs (offline join in
+    # scripts/prepare_training_frame.py; explicit request fields at serving).
+    # Static numeric inputs like RUNTIME: type-coerced and passed through.
+    "IP_TIER",
+    "PRIOR_FRANCHISE_GROSS_LOG",
+    "IS_FRANCHISE_FOLLOWUP",
 )
 
 # Canonical feature contract enforced by ``FeatureSelector`` (the final pipeline
@@ -51,14 +56,16 @@ SELECTED_FEATURES: tuple[str, ...] = (
     "GENRE_drama",
     "RELEASE_YEAR",
     # Budget x genre interactions
-    "LOG_TOTAL_BUDGET_X_HORROR",
+    "LOG_BUDGET_X_HORROR",
     "SUPER_GENRE_ENCODED",
     "LOG1P_LEAD_ACTOR_FREQ",
-    "AD_TO_PROD_RATIO",
     "RUNTIME",
-    "LOG_TOTAL_BUDGET_X_COMEDY",
-    "AD_BUDGET",
+    "LOG_BUDGET_X_COMEDY",
     "COMPANY_FREQ",
+    # Pre-release IP/franchise strength (v9)
+    "IP_TIER",
+    "PRIOR_FRANCHISE_GROSS_LOG",
+    "IS_FRANCHISE_FOLLOWUP",
 )
 
 GENRE_VOCABULARY: tuple[str, ...] = (

@@ -2,8 +2,8 @@
 Essential tests for feature preprocessor.
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 
@@ -28,9 +28,9 @@ class TestFeaturePreprocessor:
 
         assert isinstance(X_transformed, pd.DataFrame)
         assert len(X_transformed) == 10
-        assert (
-            not X_transformed.isnull().any().any()
-        ), "Transformed data contains NaN values"
+        assert not X_transformed.isnull().any().any(), (
+            "Transformed data contains NaN values"
+        )
         assert X_transformed.dtypes.apply(
             lambda x: np.issubdtype(x, np.number)
         ).all(), "Not all features are numeric"
@@ -48,9 +48,9 @@ class TestFeaturePreprocessor:
 
         actual_features = X_transformed.shape[1]
 
-        assert (
-            actual_features == expected_feature_count
-        ), f"Expected {expected_feature_count} features, got {actual_features}"
+        assert actual_features == expected_feature_count, (
+            f"Expected {expected_feature_count} features, got {actual_features}"
+        )
 
         # Verify get_feature_names matches
         feature_names = preprocessor.get_feature_names()
@@ -65,7 +65,6 @@ class TestFeaturePreprocessor:
                 "RELEASE_DATE": pd.to_datetime(
                     ["2020-01-01", "2021-01-01", "2022-01-01", "2023-01-01"]
                 ),
-                "AD_BUDGET": [500000, None, 700000, 800000],
                 "PRODUCTION_BUDGET": [1000000, 2000000, 3000000, None],
                 "RUNTIME": [120, 130, None, 150],
                 "DIRECTOR": ["Dir A", "Dir B", "Dir C", None],
@@ -99,7 +98,6 @@ class TestFeaturePreprocessor:
             {
                 "RELEASE_YEAR": [2020],
                 "RELEASE_DATE": pd.to_datetime(["2020-01-01"]),
-                "AD_BUDGET": [500000],
                 "PRODUCTION_BUDGET": [1000000],
                 "RUNTIME": [120],
                 "DIRECTOR": ["Dir A"],
@@ -118,12 +116,12 @@ class TestFeatureNameCollision:
     """Duplicate column names raise loudly instead of silently deduping."""
 
     def test_duplicate_columns_raise_collision_error(self):
-        from box_office.ml.feature_preprocessor import (
-            FeaturePreprocessorHigh,
-            FeatureNameCollisionError,
-        )
-
         from sklearn.base import BaseEstimator, TransformerMixin
+
+        from box_office.ml.feature_preprocessor import (
+            FeatureNameCollisionError,
+            FeaturePreprocessorHigh,
+        )
 
         preprocessor = FeaturePreprocessorHigh()
 
@@ -152,7 +150,6 @@ class TestFeatureNameCollision:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-06-01", "2021-06-01"]),
-                "AD_BUDGET": [500000, 1000000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
