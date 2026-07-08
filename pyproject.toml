@@ -138,6 +138,7 @@ box-office-pipeline = "box_office.orchestration.flows.ml_pipeline:main"
 box-office-api = "box_office.inference.app.main:cli_main"
 box-office-ingest = "box_office.ingestion.cli:main"
 box-office-rich-backfill = "box_office.ingestion.tmdb_rich_backfill:main"
+box-office-wikipedia-budget-fill = "box_office.ingestion.wikipedia_budget_fill:main"
 
 [project.urls]
 Homepage = "https://github.com/adamthuvesen/box-office-oracle"
