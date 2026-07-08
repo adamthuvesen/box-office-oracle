@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -106,9 +107,9 @@ def test_terraform_state_bucket_has_no_account_id_default() -> None:
         "it must be supplied per environment via tfvars."
     )
     # No 12-digit AWS account-ID strings anywhere as a default value.
-    assert not re.search(
-        r"default\s*=\s*\".*\d{12}.*\"", text
-    ), "No AWS account ID should appear as a default in variables.tf."
+    assert not re.search(r"default\s*=\s*\".*\d{12}.*\"", text), (
+        "No AWS account ID should appear as a default in variables.tf."
+    )
 
 
 def test_tfvars_set_terraform_state_bucket_name() -> None:
@@ -158,9 +159,9 @@ def test_prod_alarm_sns_topic_arn_is_clean() -> None:
     )
     assert m is not None, "prod.tfvars must declare alarm_sns_topic_arn"
     arn = m.group("arn")
-    assert arn == "" or (
-        arn.startswith("arn:aws:sns:") and "<" not in arn
-    ), "alarm_sns_topic_arn must be empty or a real SNS ARN with no <placeholder>."
+    assert arn == "" or (arn.startswith("arn:aws:sns:") and "<" not in arn), (
+        "alarm_sns_topic_arn must be empty or a real SNS ARN with no <placeholder>."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -240,12 +241,12 @@ def test_ml_pipeline_training_is_manual_only() -> None:
     triggers = data.get("on") or data.get(True)
 
     assert isinstance(triggers, dict), "ml-pipeline.yml must declare workflow triggers"
-    assert (
-        "workflow_dispatch" in triggers
-    ), "Full SageMaker training must stay available as a manual workflow."
-    assert (
-        "push" not in triggers
-    ), "Full SageMaker training must not run automatically on main pushes."
+    assert "workflow_dispatch" in triggers, (
+        "Full SageMaker training must stay available as a manual workflow."
+    )
+    assert "push" not in triggers, (
+        "Full SageMaker training must not run automatically on main pushes."
+    )
     assert "schedule" not in triggers, (
         "Full SageMaker training must not run on a schedule without fresh-data "
         "automation."
@@ -256,17 +257,19 @@ def test_cd_infrastructure_deploy_is_manual_only() -> None:
     data = yaml.safe_load(CD_INFRA_YML.read_text())
     triggers = data.get("on") or data.get(True)
 
-    assert isinstance(
-        triggers, dict
-    ), "cd-infrastructure.yml must declare workflow triggers"
-    assert (
-        "workflow_dispatch" in triggers
-    ), "Infrastructure deploy must stay available as a manual workflow."
+    assert isinstance(triggers, dict), (
+        "cd-infrastructure.yml must declare workflow triggers"
+    )
+    assert "workflow_dispatch" in triggers, (
+        "Infrastructure deploy must stay available as a manual workflow."
+    )
     assert "push" not in triggers, (
         "Infrastructure deploy must not run automatically on main pushes in a "
         "public repo."
     )
-    assert "schedule" not in triggers, "Infrastructure deploy must not run on a schedule."
+    assert "schedule" not in triggers, (
+        "Infrastructure deploy must not run on a schedule."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -275,13 +278,13 @@ def test_cd_infrastructure_deploy_is_manual_only() -> None:
 
 
 def test_check_model_script_exists_and_writes_github_output_correctly() -> None:
-    assert (
-        CHECK_MODEL_PY.exists()
-    ), "Release hardening M12: scripts/check_model.py must exist."
+    assert CHECK_MODEL_PY.exists(), (
+        "Release hardening M12: scripts/check_model.py must exist."
+    )
     text = CHECK_MODEL_PY.read_text()
-    assert (
-        'f"{key}={value}\\n"' in text or "f'{key}={value}\\n'" in text
-    ), "scripts/check_model.py must write GITHUB_OUTPUT in key=value\\n format."
+    assert 'f"{key}={value}\\n"' in text or "f'{key}={value}\\n'" in text, (
+        "scripts/check_model.py must write GITHUB_OUTPUT in key=value\\n format."
+    )
 
 
 # scripts/check_model.py currently has no caller; kept for the next
@@ -327,9 +330,9 @@ def test_save_dataset_to_snowflake_validates_identifier() -> None:
         'validate_sql_identifier(table_name, "table") before write_pandas.'
     )
     assert write_idx != -1, "write_pandas call missing"
-    assert (
-        validate_idx < write_idx
-    ), "validate_sql_identifier(table_name, ...) must precede write_pandas."
+    assert validate_idx < write_idx, (
+        "validate_sql_identifier(table_name, ...) must precede write_pandas."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -365,12 +368,12 @@ def test_check_model_decide_deploy_writes_correct_outputs(
 def test_check_model_decide_deploy_recent_model() -> None:
     """The decide function returns deploy_model=true for a fresh model."""
     import sys
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     sys.path.insert(0, str(REPO_ROOT))
     from scripts import check_model  # type: ignore[import-not-found]
 
-    now = datetime(2026, 4, 27, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 27, 12, 0, 0, tzinfo=UTC)
     fake_creation = now - timedelta(minutes=10)
 
     class FakeSageMaker:
@@ -399,12 +402,12 @@ def test_check_model_decide_deploy_recent_model() -> None:
 def test_check_model_decide_deploy_stale_model() -> None:
     """A model older than the threshold yields deploy_model=false."""
     import sys
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     sys.path.insert(0, str(REPO_ROOT))
     from scripts import check_model  # type: ignore[import-not-found]
 
-    now = datetime(2026, 4, 27, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 27, 12, 0, 0, tzinfo=UTC)
     fake_creation = now - timedelta(hours=5)
 
     class FakeSageMaker:

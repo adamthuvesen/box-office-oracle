@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import importlib
 import hashlib
+import importlib
 import tarfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
 
 # --------------------------------------------------------------------------- #
 # 2.1 — MAX_LITERAL_EVAL_BYTES bound is enforced
@@ -24,8 +23,8 @@ class TestLiteralEvalBound:
 
     def test_oversize_input_raises_typed_error(self):
         from box_office.ml.text_utils import (
-            LiteralEvalTooLarge,
             MAX_LITERAL_EVAL_BYTES,
+            LiteralEvalTooLarge,
             process_text_list,
         )
 
@@ -168,7 +167,9 @@ class TestSingleSlotCacheCleanup:
         new_sha = "1" * 64
         # Point at a non-existent tar so tarfile.open raises before any
         # rename happens. The sibling slot must still be intact.
-        with pytest.raises(Exception):
+        from box_office.inference.app.model_loader import ModelLoadError
+
+        with pytest.raises(ModelLoadError):
             loader._extract_and_load_model_with_cache(
                 "/tmp/does-not-exist.tar.gz",
                 model_package_arn="arn:aws:sagemaker:eu-north-1:123:model-package/foo/2",

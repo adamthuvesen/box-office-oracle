@@ -1,8 +1,9 @@
-from prefect import task, get_run_logger
 import json
 import time
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
+
+from prefect import get_run_logger, task
 
 from box_office.ml.metrics_models import (
     DataProcessingMetrics,
@@ -59,7 +60,7 @@ def log_data_processing_metrics(
 
 
 @task
-def log_feature_engineering_metrics(processor, feature_names: List[str]):
+def log_feature_engineering_metrics(processor, feature_names: list[str]):
     """Log detailed feature engineering metrics."""
     logger = get_run_logger()
 
@@ -98,7 +99,9 @@ def log_feature_engineering_metrics(processor, feature_names: List[str]):
             if len(features) <= 5:
                 logger.info(f"{', '.join(features)}")
             else:
-                logger.info(f"{', '.join(features[:3])} ... (+{len(features)-3} more)")
+                logger.info(
+                    f"{', '.join(features[:3])} ... (+{len(features) - 3} more)"
+                )
 
     return FeatureEngineeringMetrics(
         total_features=len(feature_names),
@@ -108,7 +111,7 @@ def log_feature_engineering_metrics(processor, feature_names: List[str]):
 
 
 @task()
-def log_model_training_summary(training_metrics: Dict[str, Any]):
+def log_model_training_summary(training_metrics: dict[str, Any]):
     """Log comprehensive model training summary."""
     logger = get_run_logger()
 
@@ -135,7 +138,7 @@ def log_model_training_summary(training_metrics: Dict[str, Any]):
     if "training_time" in training_metrics:
         duration = training_metrics["training_time"]
         logger.info(
-            f"Training duration: {duration:.2f} seconds ({duration/60:.2f} minutes)"
+            f"Training duration: {duration:.2f} seconds ({duration / 60:.2f} minutes)"
         )
 
     if "estimated_cost" in training_metrics:
@@ -146,12 +149,12 @@ def log_model_training_summary(training_metrics: Dict[str, Any]):
 
 @task
 def log_pipeline_completion_metrics(
-    pipeline_start_metrics: Dict[str, Any],
-    data_metrics: Dict[str, Any],
-    feature_metrics: Dict[str, Any],
-    training_metrics: Dict[str, Any],
-    model_registry_metrics: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    pipeline_start_metrics: dict[str, Any],
+    data_metrics: dict[str, Any],
+    feature_metrics: dict[str, Any],
+    training_metrics: dict[str, Any],
+    model_registry_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Log comprehensive pipeline completion summary."""
     logger = get_run_logger()
 
@@ -162,7 +165,7 @@ def log_pipeline_completion_metrics(
     logger.info("ML PIPELINE EXECUTION COMPLETED")
     logger.info("FINAL PIPELINE SUMMARY:")
     logger.info(
-        f"Total duration: {total_duration:.2f} seconds ({total_duration/60:.2f} minutes)"
+        f"Total duration: {total_duration:.2f} seconds ({total_duration / 60:.2f} minutes)"
     )
     logger.info(f"Completion time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"Pipeline ID: {pipeline_start_metrics['pipeline_id']}")
@@ -183,7 +186,7 @@ def log_pipeline_completion_metrics(
 
 
 def _log_completion_data_summary(
-    logger: Any, data_metrics: Dict[str, Any], feature_metrics: Dict[str, Any]
+    logger: Any, data_metrics: dict[str, Any], feature_metrics: dict[str, Any]
 ) -> None:
     logger.info("\n DATA PROCESSING SUMMARY:")
     logger.info(f"Training samples: {data_metrics['training_samples']:,}")
@@ -193,7 +196,7 @@ def _log_completion_data_summary(
 
 
 def _log_completion_training_summary(
-    logger: Any, training_metrics: Dict[str, Any]
+    logger: Any, training_metrics: dict[str, Any]
 ) -> None:
     logger.info("\n MODEL PERFORMANCE SUMMARY:")
     if "cv_results" in training_metrics:
@@ -221,7 +224,7 @@ def _log_completion_training_summary(
 
 
 def _log_model_registry_summary(
-    logger: Any, model_registry_metrics: Dict[str, Any] | None
+    logger: Any, model_registry_metrics: dict[str, Any] | None
 ) -> None:
     if model_registry_metrics:
         logger.info("\n MODEL REGISTRY SUMMARY:")
@@ -233,7 +236,7 @@ def _log_model_registry_summary(
 
 
 def _log_model_registration(
-    logger: Any, model_registry_metrics: Dict[str, Any]
+    logger: Any, model_registry_metrics: dict[str, Any]
 ) -> None:
     if "model_registration" not in model_registry_metrics:
         return
@@ -262,7 +265,7 @@ def _log_model_registration(
 
 
 def _log_promotion_validation(
-    logger: Any, model_registry_metrics: Dict[str, Any]
+    logger: Any, model_registry_metrics: dict[str, Any]
 ) -> None:
     if "model_promotion_validation" not in model_registry_metrics:
         return
@@ -277,7 +280,7 @@ def _log_promotion_validation(
         _log_validation_r2(logger, promo_result["validation_details"])
 
 
-def _log_validation_r2(logger: Any, details: Dict[str, Any]) -> None:
+def _log_validation_r2(logger: Any, details: dict[str, Any]) -> None:
     if "r2_score" not in details:
         return
     logger.info(
@@ -285,7 +288,7 @@ def _log_validation_r2(logger: Any, details: Dict[str, Any]) -> None:
     )
 
 
-def _log_aws_promotion(logger: Any, model_registry_metrics: Dict[str, Any]) -> None:
+def _log_aws_promotion(logger: Any, model_registry_metrics: dict[str, Any]) -> None:
     if (
         "aws_promotion" not in model_registry_metrics
         or model_registry_metrics["aws_promotion"] is None
@@ -305,7 +308,7 @@ def _log_aws_promotion(logger: Any, model_registry_metrics: Dict[str, Any]) -> N
 
 
 def _log_production_readiness(
-    logger: Any, model_registry_metrics: Dict[str, Any] | None
+    logger: Any, model_registry_metrics: dict[str, Any] | None
 ) -> None:
     if (
         model_registry_metrics
@@ -342,14 +345,14 @@ def _log_production_readiness(
 
 
 def _build_pipeline_execution_summary(
-    pipeline_start_metrics: Dict[str, Any],
-    data_metrics: Dict[str, Any],
-    feature_metrics: Dict[str, Any],
-    training_metrics: Dict[str, Any],
-    model_registry_metrics: Dict[str, Any] | None,
+    pipeline_start_metrics: dict[str, Any],
+    data_metrics: dict[str, Any],
+    feature_metrics: dict[str, Any],
+    training_metrics: dict[str, Any],
+    model_registry_metrics: dict[str, Any] | None,
     end_time: datetime,
     total_duration: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     final_summary = PipelineExecutionSummary(
         pipeline_id=pipeline_start_metrics["pipeline_id"],
         execution_time={
@@ -369,7 +372,7 @@ def _build_pipeline_execution_summary(
 
 @task
 def save_metrics_to_json(
-    metrics_summary: Dict[str, Any], output_path: str = "pipeline_metrics.json"
+    metrics_summary: dict[str, Any], output_path: str = "pipeline_metrics.json"
 ):
     """Save comprehensive metrics summary to JSON file."""
     logger = get_run_logger()

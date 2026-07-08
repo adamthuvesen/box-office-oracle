@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import CountVectorizer
@@ -43,7 +41,7 @@ _SINGLE_GENRE_LABELS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _pipe_split(s: str) -> List[str]:
+def _pipe_split(s: str) -> list[str]:
     """Module-level tokenizer for ``CountVectorizer`` so artifacts can pickle.
 
     ``lambda s: s.split("|")`` worked for in-process fitting but pickle can't
@@ -66,10 +64,10 @@ class GenreTransformer(BaseEstimator, TransformerMixin):
             token_pattern=None,
             lowercase=True,
         )
-        self.super_genre_map: Dict[str, int] = {}
+        self.super_genre_map: dict[str, int] = {}
         self.super_genre_other_val = -1
 
-    def fit(self, X: pd.DataFrame, y=None) -> "GenreTransformer":
+    def fit(self, X: pd.DataFrame, y=None) -> GenreTransformer:
         genre_lists = X["GENRES"].apply(_split_genre_field)
         genre_texts = genre_lists.apply(
             lambda g: "|".join(g).lower() if g else "unknown"
@@ -98,9 +96,9 @@ class GenreTransformer(BaseEstimator, TransformerMixin):
         return pd.concat([X, new], axis=1)
 
 
-def _split_genre_field(value) -> List[str]:
+def _split_genre_field(value) -> list[str]:
     """Lowercase + canonicalize multi-word genres to underscored tokens."""
-    out: List[str] = []
+    out: list[str] = []
     for tok in process_text_list(value):
         for piece in tok.replace("|", ",").split(","):
             piece = piece.strip().lower()

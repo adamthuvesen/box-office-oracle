@@ -37,8 +37,8 @@ import pandas as pd
 from box_office.ml.backtest import render_metrics_table_markdown
 from box_office.ml.backtest_report import build_report
 from box_office.ml.cv import TimeSeriesCrossValidator
-from box_office.ml.feature_pipeline.cpi import CPI_ANCHOR_YEAR, CPI_BY_YEAR
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
+from box_office.ml.feature_pipeline.cpi import CPI_ANCHOR_YEAR, CPI_BY_YEAR
 from box_office.ml.model import BoxOfficeXGBoostModel
 
 DATA_DIR = Path("analysis/datasets_high")
@@ -100,38 +100,32 @@ def add_snapshot_contract_features(X: pd.DataFrame) -> pd.DataFrame:
     """
     out = X.copy()
     prod = _numeric(out, "production_budget").clip(lower=0)
-    ad = _numeric(out, "ad_budget").clip(lower=0)
-    total = prod + ad
-    log_total = np.log1p(total)
+    log_budget = np.log1p(prod)
 
-    out["log_production_budget"] = np.log1p(prod)
+    out["log_production_budget"] = log_budget
 
     anchor_cpi = CPI_BY_YEAR[CPI_ANCHOR_YEAR]
     year = _numeric(out, "release_year").fillna(CPI_ANCHOR_YEAR).astype(int)
     row_cpi = year.map(CPI_BY_YEAR).fillna(anchor_cpi)
-    out["budget_inflation_adjusted"] = total * (anchor_cpi / row_cpi)
+    out["budget_inflation_adjusted"] = prod * (anchor_cpi / row_cpi)
 
     director_freq = _numeric(out, "director_freq")
     company_freq = _numeric(out, "company_freq")
     lead_actor_freq = _numeric(out, "lead_actor_freq")
     max_actor_freq = _numeric(out, "max_actor_freq")
 
-    out["director_budget_confidence"] = director_freq * log_total
+    out["director_budget_confidence"] = director_freq * log_budget
     out["creative_freq_score"] = (
         np.log1p(director_freq.clip(lower=0))
         + np.log1p(company_freq.clip(lower=0))
         + np.log1p(max_actor_freq.clip(lower=0))
     )
     out["log1p_lead_actor_freq"] = np.log1p(lead_actor_freq.clip(lower=0))
-    out["log_total_budget_x_horror"] = log_total * _numeric(out, "genre_horror")
-    out["log_total_budget_x_adventure"] = log_total * _numeric(
-        out, "genre_adventure"
-    )
-    out["log_total_budget_x_comedy"] = log_total * _numeric(out, "genre_comedy")
-    out["log_total_budget_x_summer"] = log_total * _numeric(out, "is_summer_release")
-    out["log_total_budget_x_company_freq"] = log_total * np.log1p(
-        company_freq.clip(lower=0)
-    )
+    out["log_budget_x_horror"] = log_budget * _numeric(out, "genre_horror")
+    out["log_budget_x_adventure"] = log_budget * _numeric(out, "genre_adventure")
+    out["log_budget_x_comedy"] = log_budget * _numeric(out, "genre_comedy")
+    out["log_budget_x_summer"] = log_budget * _numeric(out, "is_summer_release")
+    out["log_budget_x_company_freq"] = log_budget * np.log1p(company_freq.clip(lower=0))
 
     holiday_score = (
         _numeric(out, "is_blockbuster_season")
@@ -140,7 +134,7 @@ def add_snapshot_contract_features(X: pd.DataFrame) -> pd.DataFrame:
         + 1.5 * _numeric(out, "is_thanksgiving_week")
         + 1.5 * _numeric(out, "is_christmas_week")
     )
-    out["blockbuster_budget_multiplier"] = total * holiday_score
+    out["blockbuster_budget_multiplier"] = prod * holiday_score
     return out
 
 

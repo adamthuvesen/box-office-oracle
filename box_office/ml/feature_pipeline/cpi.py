@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict
-
 # CPI-U All Urban Consumers, annual average (1982-84=100). Source: BLS series CUUR0000SA0.
-CPI_BY_YEAR: Dict[int, float] = {
+CPI_BY_YEAR: dict[int, float] = {
     1980: 82.4,
     1981: 90.9,
     1982: 96.5,

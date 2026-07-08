@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 from unittest.mock import patch
 
-
 from box_office.utils.cli_prompts import confirm
 
 

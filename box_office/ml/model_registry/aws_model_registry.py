@@ -3,9 +3,9 @@
 import logging
 import re
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -43,7 +43,7 @@ class ModelRegistryRegistrationError(RuntimeError):
     """Creating or registering a SageMaker model package or group failed."""
 
 
-def _compute_sha256_of_s3_object(s3_client, model_data_url: str) -> Tuple[str, int]:
+def _compute_sha256_of_s3_object(s3_client, model_data_url: str) -> tuple[str, int]:
     """Download the object at ``model_data_url`` to a temp file and stream-hash it."""
     bucket, key = parse_s3_uri(model_data_url)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
@@ -83,7 +83,7 @@ class AWSModelRegistry:
 
     def create_model_package_group(
         self, group_name: str, description: str | None = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create the package group, or return ``status="exists"`` if it already does.
 
         Stays idempotent on purpose so callers can use it as "ensure exists",
@@ -126,11 +126,11 @@ class AWSModelRegistry:
         framework: str = "XGBOOST",
         framework_version: str = "1.7-1",
         model_approval_status: str = "PendingManualApproval",
-        inference_specification: Dict[str, Any] | None = None,
-        metrics: Dict[str, float] | None = None,
-        metadata: Dict[str, Any] | None = None,
+        inference_specification: dict[str, Any] | None = None,
+        metrics: dict[str, float] | None = None,
+        metadata: dict[str, Any] | None = None,
         training_job_name: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Register a model package in the AWS Model Registry.
 
@@ -162,7 +162,7 @@ class AWSModelRegistry:
             "ModelPackageGroupName": model_package_group_name,
             "ModelApprovalStatus": model_approval_status,
             "InferenceSpecification": inference_specification,
-            "ModelPackageDescription": f"Box office prediction model - {datetime.now(timezone.utc).isoformat()}",
+            "ModelPackageDescription": f"Box office prediction model - {datetime.now(UTC).isoformat()}",
         }
 
         # Optionally link back to the training job so the Studio UI shows the connection.
@@ -232,9 +232,9 @@ class AWSModelRegistry:
 
             framework_info = f"{framework}_{framework_version}"
             if len(framework_info) <= 250:
-                model_package_request["CustomerMetadataProperties"][
-                    "framework"
-                ] = framework_info
+                model_package_request["CustomerMetadataProperties"]["framework"] = (
+                    framework_info
+                )
 
         # Compute SHA256 + size_bytes of the uploaded model artifact and store
         # them in CustomerMetadataProperties. The inference loader verifies
@@ -286,7 +286,7 @@ class AWSModelRegistry:
         model_package_arn: str,
         approval_status: str,
         approval_description: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update the approval status of a model package.
 
@@ -345,7 +345,7 @@ class AWSModelRegistry:
         model_package_group_name: str | None = None,
         approval_status: str | None = None,
         max_results: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
 
         try:
             list_request = {
@@ -370,7 +370,7 @@ class AWSModelRegistry:
 
     def get_latest_approved_model(
         self, model_package_group_name: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
 
         approved_models = self.list_model_packages(
             model_package_group_name=model_package_group_name,
@@ -382,7 +382,7 @@ class AWSModelRegistry:
 
     def _get_default_inference_spec(
         self, framework: str, framework_version: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build a default inference spec via SageMaker SDK image-URI lookup, with an ECR-URL fallback."""
         try:
             from sagemaker import image_uris
@@ -421,7 +421,7 @@ class AWSModelRegistry:
             "SupportedResponseMIMETypes": ["text/csv", "application/json"],
         }
 
-    def get_training_job_metrics(self, training_job_name: str) -> Dict[str, float]:
+    def get_training_job_metrics(self, training_job_name: str) -> dict[str, float]:
         try:
             response = self.sagemaker_client.describe_training_job(
                 TrainingJobName=training_job_name

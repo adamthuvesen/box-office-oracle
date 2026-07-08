@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -18,12 +18,12 @@ from box_office.inference.app.config import get_settings
 _settings = get_settings()
 _settings.enable_api_key_auth = False
 
+from box_office.inference.app.integrity import ArtifactIntegrityError  # noqa: E402
 from box_office.inference.app.main import MAX_REQUEST_BODY_BYTES, app  # noqa: E402
 from box_office.inference.app.model_loader import (  # noqa: E402
-    ModelLoadError,
     ModelLoader,
+    ModelLoadError,
 )
-from box_office.inference.app.integrity import ArtifactIntegrityError  # noqa: E402
 from box_office.inference.app.predictor import PredictionResponse  # noqa: E402
 from box_office.ml.registry_constants import FeatureSchemaVersionMismatch  # noqa: E402
 
@@ -280,7 +280,7 @@ class TestMaxStaleTTL:
         loader.max_stale_seconds = max_stale_seconds
         loader._current_model = object()
         loader._current_model_info = {"ModelPackageArn": "arn:fake"}
-        loader._last_load_time = datetime.now(timezone.utc) - timedelta(seconds=1)
+        loader._last_load_time = datetime.now(UTC) - timedelta(seconds=1)
         loader._extracted_artifacts_cache = {}
         return loader
 
@@ -290,7 +290,7 @@ class TestMaxStaleTTL:
             loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
         ):
             # Bypass cache-valid fast path
-            loader._last_load_time = datetime.now(timezone.utc) - timedelta(seconds=120)
+            loader._last_load_time = datetime.now(UTC) - timedelta(seconds=120)
             assert loader.refresh_model_if_needed() is False
         # Cache preserved
         assert loader._current_model is not None
@@ -298,7 +298,7 @@ class TestMaxStaleTTL:
     def test_exceeded_ttl_drops_cache_and_raises(self, tmp_path):
         loader = self._make_loader(tmp_path, max_stale_seconds=10)
         # Force the cached model to look ancient.
-        loader._last_load_time = datetime.now(timezone.utc) - timedelta(seconds=999)
+        loader._last_load_time = datetime.now(UTC) - timedelta(seconds=999)
         with patch.object(
             loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
         ):

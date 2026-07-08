@@ -5,11 +5,11 @@ time, not silently skip.
 """
 
 import unittest
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
-from box_office.ml.model_registry.metadata import ModelMetadata
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.ml.model_registry.metadata import ModelMetadata
 
 
 class TestModelMetadata(unittest.TestCase):
@@ -24,8 +24,8 @@ class TestModelMetadata(unittest.TestCase):
             hyperparameters={"n_estimators": 100},
             status="development",
             metrics={"mae": 12.5, "r2": 0.85},
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         self.assertEqual(metadata.model_id, "model_001")
@@ -42,8 +42,8 @@ class TestModelMetadata(unittest.TestCase):
                 hyperparameters={},
                 status="invalid_status",  # Invalid
                 metrics={},
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
 
 

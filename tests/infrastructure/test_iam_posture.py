@@ -104,6 +104,6 @@ def test_profiles_yml_does_not_hardcode_accountadmin() -> None:
 
 def test_profiles_yml_role_is_env_driven() -> None:
     text = PROFILES_YML.read_text()
-    assert (
-        "env_var('SNOWFLAKE_ROLE')" in text
-    ), "dbt profile must resolve role from SNOWFLAKE_ROLE."
+    assert "env_var('SNOWFLAKE_ROLE')" in text, (
+        "dbt profile must resolve role from SNOWFLAKE_ROLE."
+    )

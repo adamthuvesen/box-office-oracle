@@ -9,7 +9,6 @@ Env vars are loaded once at import time from ``os.environ`` plus an optional
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,7 +18,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class _AwsView:
     region: str
     s3_bucket: str
-    account_id: Optional[str]
+    account_id: str | None
     sagemaker_role_arn: str
 
 
@@ -37,9 +36,9 @@ class _SnowflakeView:
     account: str
     database: str
     warehouse: str
-    password: Optional[str]
-    private_key_path: Optional[str]
-    private_key_passphrase: Optional[str]
+    password: str | None
+    private_key_path: str | None
+    private_key_passphrase: str | None
     schemas: _SnowflakeSchemas
 
 
@@ -95,7 +94,7 @@ class _SagemakerView:
 @dataclass(frozen=True)
 class _TmdbView:
     start_year: int
-    end_year: Optional[int]
+    end_year: int | None
     min_revenue: int
     page_limit: int
 
@@ -126,13 +125,13 @@ class Settings(BaseSettings):
             "AWS_S3_BUCKET", "S3_BUCKET_NAME", "SAGEMAKER_BUCKET"
         ),
     )
-    AWS_ACCOUNT_ID: Optional[str] = None
+    AWS_ACCOUNT_ID: str | None = None
     SAGEMAKER_ROLE_ARN: str
 
     SNOWFLAKE_USER: str
-    SNOWFLAKE_PASSWORD: Optional[str] = None
-    SNOWFLAKE_PRIVATE_KEY_PATH: Optional[str] = None
-    SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: Optional[str] = None
+    SNOWFLAKE_PASSWORD: str | None = None
+    SNOWFLAKE_PRIVATE_KEY_PATH: str | None = None
+    SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: str | None = None
     SNOWFLAKE_ACCOUNT: str
     SNOWFLAKE_WAREHOUSE: str = "COMPUTE_WH"
     SNOWFLAKE_DATABASE: str
@@ -142,7 +141,7 @@ class Settings(BaseSettings):
     SNOWFLAKE_SCHEMA_ML_TRAINING: str = "ML_TRAINING"
 
     TMDB_START_YEAR: int = 2024
-    TMDB_END_YEAR: Optional[int] = None
+    TMDB_END_YEAR: int | None = None
     TMDB_MIN_REVENUE: int = 50_000_000
     TMDB_PAGE_LIMIT: int = 10
 

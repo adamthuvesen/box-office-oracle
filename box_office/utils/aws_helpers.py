@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
-from typing import Tuple
 from urllib.parse import urlparse
 
 from botocore.config import Config
@@ -23,7 +22,7 @@ BOTO3_CONFIG = Config(
 SHA256_CHUNK_SIZE = 1024 * 1024  # 1 MiB
 
 
-def parse_s3_uri(uri: str) -> Tuple[str, str]:
+def parse_s3_uri(uri: str) -> tuple[str, str]:
     """Parse an ``s3://bucket/key`` URI into ``(bucket, key)``.
 
     Raises ``ValueError`` on missing scheme, missing bucket, or missing key —

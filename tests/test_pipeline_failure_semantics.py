@@ -15,7 +15,6 @@ from box_office.utils.snowflake_loader import (
     validate_sql_identifier,
 )
 
-
 # ---------------------------------------------------------------------------
 # CV loop failure handling (tasks 3.1 / 3.2 / 3.3)
 # ---------------------------------------------------------------------------

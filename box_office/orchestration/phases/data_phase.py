@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -39,15 +39,15 @@ class DataPhaseResult:
     X_train_processed: pd.DataFrame
     X_train_scaled: pd.DataFrame
     y_train_log: pd.Series
-    X_train_shape: Tuple[int, int]
-    X_val_shape: Tuple[int, int]
+    X_train_shape: tuple[int, int]
+    X_val_shape: tuple[int, int]
     processor_path: str
     scaler_path: str
-    save_results: Dict[str, bool]
-    validation_results: Dict[str, Any]
-    feature_metrics: Dict[str, Any]
-    data_metrics: Dict[str, Any]
-    feature_names: List[str]
+    save_results: dict[str, bool]
+    validation_results: dict[str, Any]
+    feature_metrics: dict[str, Any]
+    data_metrics: dict[str, Any]
+    feature_names: list[str]
 
 
 def run_data_phase(logger) -> DataPhaseResult:
@@ -150,7 +150,7 @@ def run_data_phase(logger) -> DataPhaseResult:
 
 def sagemaker_training_frames(
     data: DataPhaseResult,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build in-memory training frames for SageMaker upload."""
     X = data.X_train_scaled.copy()
     if "RELEASE_YEAR" not in data.X_train_processed.columns:

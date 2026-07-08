@@ -1,13 +1,18 @@
 import os
+from contextlib import contextmanager
+
 import joblib
 import pandas as pd
-from contextlib import contextmanager
-from prefect import task, get_run_logger
+from prefect import get_run_logger, task
 from prefect.tasks import exponential_backoff
 from prefect_dbt import PrefectDbtRunner, PrefectDbtSettings
 from sklearn.preprocessing import StandardScaler
+from snowflake.connector.pandas_tools import write_pandas
 
 from box_office.config import config
+from box_office.ml.artifacts import FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL
+from box_office.ml.data_prep import TargetTransformer
+from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.utils.snowflake_connection import (
     create_snowflake_connection,
     enforce_data_types,
@@ -16,10 +21,6 @@ from box_office.utils.snowflake_loader import (
     fully_qualified_name,
     validate_sql_identifier,
 )
-from box_office.ml.artifacts import FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL
-from box_office.ml.data_prep import TargetTransformer
-from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
-from snowflake.connector.pandas_tools import write_pandas
 
 
 @contextmanager
@@ -126,7 +127,7 @@ def run_raw_to_staging_dbt_transformations():
                 logger.info("dbt connection test successful")
             except Exception as e:
                 logger.error(f"dbt debug failed: {e}")
-                raise RuntimeError(f"dbt connection test failed: {e}")
+                raise RuntimeError(f"dbt connection test failed: {e}") from e
 
             logger.info("Running dbt transformations for staging models...")
             run_result = runner.invoke(["run", "--select", "staging"])

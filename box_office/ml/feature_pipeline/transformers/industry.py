@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -19,15 +18,15 @@ class IndustryTransformer(BaseEstimator, TransformerMixin):
     UNKNOWN_MPAA = "unknown"
 
     def __init__(self) -> None:
-        self.director_freq_map: Dict[str, int] = {}
-        self.company_freq_map: Dict[str, int] = {}
+        self.director_freq_map: dict[str, int] = {}
+        self.company_freq_map: dict[str, int] = {}
         self.actor_freq_map: Counter[str] = Counter()
         self.global_director_freq = 0
         self.global_company_freq = 0
         self.global_actor_freq = 0
         self.mpaa_encoder = LabelEncoder()
 
-    def fit(self, X: pd.DataFrame, y=None) -> "IndustryTransformer":
+    def fit(self, X: pd.DataFrame, y=None) -> IndustryTransformer:
         # Seed the unknown bucket so transform() can route unseen ratings.
         mpaa_train = X["MPAA"].fillna("Not Rated").tolist()
         mpaa_train.append(self.UNKNOWN_MPAA)

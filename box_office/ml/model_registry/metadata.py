@@ -2,17 +2,17 @@
 Model metadata data structure for the model registry.
 """
 
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
-from typing import Dict, Any
 import json
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 
 def _isoformat_utc_z(dt: datetime) -> str:
     """Format ``dt`` as ISO 8601 UTC with a trailing ``Z`` (registry wire format)."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _validate_metrics_dict(metrics: Any) -> None:
@@ -33,9 +33,9 @@ class ModelMetadata:
     version: int
     training_job_name: str
     model_artifacts_path: str
-    hyperparameters: Dict[str, Any]
+    hyperparameters: dict[str, Any]
     status: str
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
     created_at: datetime
     updated_at: datetime
 
@@ -59,21 +59,21 @@ class ModelMetadata:
     def update_status(self, new_status: str) -> None:
         self.status = new_status
         self.validate_status()
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
-    def update_metrics(self, new_metrics: Dict[str, float]) -> None:
+    def update_metrics(self, new_metrics: dict[str, float]) -> None:
         _validate_metrics_dict(new_metrics)
         self.metrics = new_metrics.copy()
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["created_at"] = _isoformat_utc_z(self.created_at)
         data["updated_at"] = _isoformat_utc_z(self.updated_at)
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ModelMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> "ModelMetadata":
         data = data.copy()
 
         if isinstance(data.get("created_at"), str):

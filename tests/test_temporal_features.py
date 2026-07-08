@@ -180,18 +180,18 @@ class TestTemporalTransformer:
         transformer = TemporalTransformer()
         result = transformer.transform(data)
 
-        assert (
-            result["IS_MEMORIAL_DAY_WEEKEND"].iloc[0] == 1
-        ), f"Memorial Day Saturday {memorial_saturday.date()} not flagged for year {year}"
-        assert (
-            result["IS_JULY_4TH_WEEKEND"].iloc[1] == 1
-        ), f"July 4 not flagged for year {year}"
-        assert (
-            result["IS_THANKSGIVING_WEEK"].iloc[2] == 1
-        ), f"Thanksgiving {thanksgiving.date()} not flagged for year {year}"
-        assert (
-            result["IS_CHRISTMAS_WEEK"].iloc[3] == 1
-        ), f"Christmas not flagged for year {year}"
+        assert result["IS_MEMORIAL_DAY_WEEKEND"].iloc[0] == 1, (
+            f"Memorial Day Saturday {memorial_saturday.date()} not flagged for year {year}"
+        )
+        assert result["IS_JULY_4TH_WEEKEND"].iloc[1] == 1, (
+            f"July 4 not flagged for year {year}"
+        )
+        assert result["IS_THANKSGIVING_WEEK"].iloc[2] == 1, (
+            f"Thanksgiving {thanksgiving.date()} not flagged for year {year}"
+        )
+        assert result["IS_CHRISTMAS_WEEK"].iloc[3] == 1, (
+            f"Christmas not flagged for year {year}"
+        )
 
     def test_temporal_columns_present_after_transform(self):
         from box_office.ml.feature_pipeline import TemporalTransformer

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from box_office.inference.app.model_loader import (
-    ModelLoadError,
     ModelLoader,
+    ModelLoadError,
     RegistryModelInfo,
 )
 from box_office.inference.app.predictor import (
@@ -18,13 +18,13 @@ from box_office.inference.app.predictor import (
 
 logger = logging.getLogger(__name__)
 
-_runtime: Optional["ModelRuntime"] = None
+_runtime: ModelRuntime | None = None
 
 
 class ModelRuntime:
     """Single entry point for Lambda inference: load approved model and predict."""
 
-    def __init__(self, loader: ModelLoader, engine: Optional[PredictionEngine] = None):
+    def __init__(self, loader: ModelLoader, engine: PredictionEngine | None = None):
         self._loader = loader
         self._engine = engine or PredictionEngine()
 
@@ -46,7 +46,7 @@ class ModelRuntime:
             )
         return refreshed
 
-    def validate_input(self, request_data: Dict[str, Any]) -> PredictionRequest:
+    def validate_input(self, request_data: dict[str, Any]) -> PredictionRequest:
         return self._engine.validate_input(request_data)
 
     def predict(self, request: PredictionRequest) -> PredictionResponse:
@@ -55,7 +55,7 @@ class ModelRuntime:
     def get_model_info(self):
         return self._engine.get_model_info()
 
-    def get_cache_info(self) -> Dict[str, Any]:
+    def get_cache_info(self) -> dict[str, Any]:
         return self._loader.get_cache_info()
 
 

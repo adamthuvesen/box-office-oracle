@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,28 +29,28 @@ class FeatureEngineeringMetrics(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     total_features: int
-    feature_categories: Dict[str, int]
-    feature_names: List[str]
+    feature_categories: dict[str, int]
+    feature_names: list[str]
 
 
 class CvResultsMetrics(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    mean_cv_mae: Optional[float] = None
-    std_cv_mae: Optional[float] = None
-    mean_cv_rmsle: Optional[float] = None
-    std_cv_rmsle: Optional[float] = None
-    mean_best_iteration: Optional[float] = None
-    cv_scores: List[float] = Field(default_factory=list)
+    mean_cv_mae: float | None = None
+    std_cv_mae: float | None = None
+    mean_cv_rmsle: float | None = None
+    std_cv_rmsle: float | None = None
+    mean_best_iteration: float | None = None
+    cv_scores: list[float] = Field(default_factory=list)
 
 
 class OofResultsMetrics(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    oof_r2: Optional[float] = None
-    oof_mae: Optional[float] = None
-    oof_rmsle: Optional[float] = None
-    num_oof_samples: Optional[int] = None
+    oof_r2: float | None = None
+    oof_mae: float | None = None
+    oof_rmsle: float | None = None
+    num_oof_samples: int | None = None
 
 
 class TrainingMetrics(BaseModel):
@@ -60,30 +60,30 @@ class TrainingMetrics(BaseModel):
 
     job_name: str = ""
     duration: float = 0.0
-    model_data_url: Optional[str] = None
-    training_duration_seconds: Optional[float] = None
-    training_duration_minutes: Optional[float] = None
-    cv_mean_mae: Optional[float] = None
-    cv_std_mae: Optional[float] = None
-    cv_mean_rmsle: Optional[float] = None
-    cv_std_rmsle: Optional[float] = None
-    cv_mean_best_iteration: Optional[float] = None
-    oof_r2: Optional[float] = None
-    oof_mae: Optional[float] = None
-    oof_rmsle: Optional[float] = None
-    oof_num_samples: Optional[int] = None
-    hyperparameters: Dict[str, Any] = Field(default_factory=dict)
-    cv_results: Optional[CvResultsMetrics] = None
-    oof_results: Optional[OofResultsMetrics] = None
-    training_time: Optional[float] = None
-    estimated_cost: Optional[float] = None
+    model_data_url: str | None = None
+    training_duration_seconds: float | None = None
+    training_duration_minutes: float | None = None
+    cv_mean_mae: float | None = None
+    cv_std_mae: float | None = None
+    cv_mean_rmsle: float | None = None
+    cv_std_rmsle: float | None = None
+    cv_mean_best_iteration: float | None = None
+    oof_r2: float | None = None
+    oof_mae: float | None = None
+    oof_rmsle: float | None = None
+    oof_num_samples: int | None = None
+    hyperparameters: dict[str, Any] = Field(default_factory=dict)
+    cv_results: CvResultsMetrics | None = None
+    oof_results: OofResultsMetrics | None = None
+    training_time: float | None = None
+    estimated_cost: float | None = None
 
     @classmethod
-    def from_performance_dict(cls, data: Dict[str, Any]) -> "TrainingMetrics":
+    def from_performance_dict(cls, data: dict[str, Any]) -> TrainingMetrics:
         """Build from the flat dict produced by training output parsing."""
         return cls.model_validate(data)
 
-    def to_performance_dict(self) -> Dict[str, Any]:
+    def to_performance_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)
 
 
@@ -91,19 +91,19 @@ class AwsRegistrationResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     status: str
-    model_package_arn: Optional[str] = None
-    approval_status: Optional[str] = None
-    error: Optional[str] = None
+    model_package_arn: str | None = None
+    approval_status: str | None = None
+    error: str | None = None
 
 
 class ModelRegistrationResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     status: str
-    aws_result: Optional[AwsRegistrationResult] = None
+    aws_result: AwsRegistrationResult | None = None
 
     @classmethod
-    def from_task_dict(cls, data: Dict[str, Any]) -> "ModelRegistrationResult":
+    def from_task_dict(cls, data: dict[str, Any]) -> ModelRegistrationResult:
         aws = data.get("aws_result")
         if isinstance(aws, dict):
             data = {**data, "aws_result": AwsRegistrationResult.model_validate(aws)}
@@ -114,28 +114,26 @@ class PromotionValidationResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     promote: bool = False
-    validation_details: Dict[str, Any] = Field(default_factory=dict)
+    validation_details: dict[str, Any] = Field(default_factory=dict)
 
 
 class AwsPromotionResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     status: str
-    error: Optional[str] = None
-    promotion_time_seconds: Optional[float] = None
+    error: str | None = None
+    promotion_time_seconds: float | None = None
 
 
 class ModelRegistryMetrics(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    model_registration: Optional[ModelRegistrationResult] = None
-    model_promotion_validation: Optional[PromotionValidationResult] = None
-    aws_promotion: Optional[AwsPromotionResult] = None
+    model_registration: ModelRegistrationResult | None = None
+    model_promotion_validation: PromotionValidationResult | None = None
+    aws_promotion: AwsPromotionResult | None = None
 
     @classmethod
-    def from_task_dict(
-        cls, data: Optional[Dict[str, Any]]
-    ) -> Optional["ModelRegistryMetrics"]:
+    def from_task_dict(cls, data: dict[str, Any] | None) -> ModelRegistryMetrics | None:
         if data is None:
             return None
         return cls.model_validate(data)
@@ -145,11 +143,11 @@ class PipelineExecutionSummary(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     pipeline_id: str
-    execution_time: Dict[str, Any]
-    data_summary: Dict[str, Any]
-    feature_summary: Dict[str, Any]
-    training_summary: Dict[str, Any]
-    model_registry_summary: Optional[Dict[str, Any]] = None
+    execution_time: dict[str, Any]
+    data_summary: dict[str, Any]
+    feature_summary: dict[str, Any]
+    training_summary: dict[str, Any]
+    model_registry_summary: dict[str, Any] | None = None
     status: str = "completed_successfully"
 
 
@@ -160,5 +158,5 @@ class PipelineMetrics(BaseModel):
 
     summary: PipelineExecutionSummary
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return self.summary.model_dump()

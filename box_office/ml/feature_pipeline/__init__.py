@@ -1,5 +1,6 @@
 """Box-office feature engineering as a composed sklearn Pipeline."""
 
+from box_office.ml.feature_pipeline._helpers import _column
 from box_office.ml.feature_pipeline.constants import (
     CORE_NUMERICAL_FEATURES,
     GENRE_VOCABULARY,
@@ -7,7 +8,6 @@ from box_office.ml.feature_pipeline.constants import (
     SELECTED_FEATURES,
 )
 from box_office.ml.feature_pipeline.cpi import CPI_ANCHOR_YEAR, CPI_BY_YEAR
-from box_office.ml.feature_pipeline._helpers import _column
 from box_office.ml.feature_pipeline.pipeline import build_feature_pipeline
 from box_office.ml.feature_pipeline.transformers.core import CoreNumericalTransformer
 from box_office.ml.feature_pipeline.transformers.financial import FinancialTransformer

@@ -4,9 +4,10 @@ Bare imports on purpose: a broken model module must fail at collection
 time, not silently skip.
 """
 
-import pandas as pd
 import unittest
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 from box_office.ml.model import BoxOfficeXGBoostModel, ModelEvaluator
 

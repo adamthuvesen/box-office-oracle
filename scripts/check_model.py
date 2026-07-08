@@ -14,7 +14,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger("check_model")
@@ -54,7 +54,7 @@ def decide_deploy(
         sagemaker_client = boto3.client("sagemaker", region_name=region)
 
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     logger.info("Checking for approved models in group: %s", model_group_name)
 

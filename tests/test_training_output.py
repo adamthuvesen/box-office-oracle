@@ -5,6 +5,7 @@ import tarfile
 from pathlib import Path
 
 import pytest
+
 from box_office.sagemaker.training_output import parse_training_output_tarball
 
 

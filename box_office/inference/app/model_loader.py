@@ -5,32 +5,34 @@ Handles model loading from AWS SageMaker Model Registry with caching
 and validation optimized for AWS Lambda environment.
 """
 
+import logging
 import os
 import pickle
-import logging
-import tempfile
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, cast
-from datetime import datetime, timezone
 import tarfile
-import joblib
+import tempfile
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
+
 import boto3
+import joblib
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
-from .integrity import ArtifactIntegrityError, compute_sha256, verify_artifact
-from box_office.utils.aws_helpers import BOTO3_CONFIG
-from box_office.utils.safe_tarfile import extractall_data_filter
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.ml.registry_constants import (
     CURRENT_FEATURE_SCHEMA_VERSION,
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
-from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.utils.aws_helpers import BOTO3_CONFIG
+from box_office.utils.safe_tarfile import extractall_data_filter
+
+from .integrity import ArtifactIntegrityError, compute_sha256, verify_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +40,16 @@ logger = logging.getLogger(__name__)
 class RegistryModelInfo:
     """Model information wrapper with to_dict() method."""
 
-    def __init__(self, model_data: Dict[str, Any]):
+    def __init__(self, model_data: dict[str, Any]):
         self.model_id = model_data.get("ModelPackageArn", "unknown")
         self.version = model_data.get("ModelPackageVersion", 1)
         self.status = model_data.get("ModelApprovalStatus", "unknown")
-        self.created_at = model_data.get("CreationTime", datetime.now(timezone.utc))
+        self.created_at = model_data.get("CreationTime", datetime.now(UTC))
         self.metrics = model_data.get("metrics", {})
         self.framework = model_data.get("framework", "unknown")
         self._raw_data = model_data
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format expected by prediction engine."""
         return {
             "model_id": self.model_id,
@@ -76,7 +78,6 @@ class ModelValidationError(Exception):
 
 
 class ModelLoader:
-
     def __init__(
         self,
         model_package_group_name: str,
@@ -130,7 +131,7 @@ class ModelLoader:
 
         logger.info(f"ModelLoader initialized for group: {model_package_group_name}")
 
-    def load_latest_approved_model(self) -> Optional[RegistryModelInfo]:
+    def load_latest_approved_model(self) -> RegistryModelInfo | None:
         try:
             model_info_dict = self._get_latest_approved_model_info()
             if not model_info_dict:
@@ -148,7 +149,7 @@ class ModelLoader:
 
             self._current_model = model_obj
             self._current_model_info = model_info_dict
-            self._last_load_time = datetime.now(timezone.utc)
+            self._last_load_time = datetime.now(UTC)
 
             logger.info(f"Successfully loaded model: {model_package_arn}")
             return RegistryModelInfo(model_info_dict)
@@ -167,7 +168,7 @@ class ModelLoader:
             logger.exception("Unexpected error loading model")
             raise ModelLoadError(f"Unexpected error loading model: {e}") from e
 
-    def get_current_model(self) -> Optional[Tuple[Any, Dict[str, Any]]]:
+    def get_current_model(self) -> tuple[Any, dict[str, Any]] | None:
         if self._current_model is not None and self._current_model_info is not None:
             return self._current_model, self._current_model_info
         return None
@@ -176,7 +177,7 @@ class ModelLoader:
         if self._last_load_time is None:
             return False
 
-        cache_age = (datetime.now(timezone.utc) - self._last_load_time).total_seconds()
+        cache_age = (datetime.now(UTC) - self._last_load_time).total_seconds()
         return cache_age < self.cache_ttl_seconds
 
     def refresh_model_if_needed(self) -> bool:
@@ -203,9 +204,7 @@ class ModelLoader:
             # Drop the cache once it crosses max_stale_seconds so a model
             # rejected/deleted upstream stops being served indefinitely.
             if self._current_model is not None and self._last_load_time is not None:
-                stale_age = (
-                    datetime.now(timezone.utc) - self._last_load_time
-                ).total_seconds()
+                stale_age = (datetime.now(UTC) - self._last_load_time).total_seconds()
                 if stale_age <= self.max_stale_seconds:
                     logger.warning(
                         "Using existing model due to refresh failure "
@@ -219,9 +218,11 @@ class ModelLoader:
                 self._current_model = None
                 self._current_model_info = None
                 self._last_load_time = None
-            raise ModelLoadError(f"Model refresh failed and no fallback available: {e}")
+            raise ModelLoadError(
+                f"Model refresh failed and no fallback available: {e}"
+            ) from e
 
-    def _get_latest_approved_model_info(self) -> Optional[Dict[str, Any]]:
+    def _get_latest_approved_model_info(self) -> dict[str, Any] | None:
         try:
             return self.model_registry.get_latest_approved_model(
                 self.model_package_group_name
@@ -240,7 +241,7 @@ class ModelLoader:
             logger.error(f"Boto error getting model info: {e}")
             return None
 
-    def _download_and_load_model(self, model_info: Dict[str, Any]) -> Any:
+    def _download_and_load_model(self, model_info: dict[str, Any]) -> Any:
         """Download and load model from S3, verifying SHA256 against the
         Model Package's manifest before any unpickling."""
         model_package_arn = model_info["ModelPackageArn"]
@@ -284,9 +285,11 @@ class ModelLoader:
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchKey":
-                raise ModelLoadError(f"Model file not found in S3: {model_data_url}")
+                raise ModelLoadError(
+                    f"Model file not found in S3: {model_data_url}"
+                ) from e
             elif error_code == "NoSuchBucket":
-                raise ModelLoadError(f"S3 bucket not found: {bucket}")
+                raise ModelLoadError(f"S3 bucket not found: {bucket}") from e
             else:
                 raise ModelLoadError(f"S3 error downloading model: {e}") from e
         except (
@@ -302,7 +305,7 @@ class ModelLoader:
             logger.exception("Unexpected error downloading model")
             raise ModelLoadError(f"Failed to download model: {e}") from e
 
-    def _load_from_extracted_cache(self, model_package_arn: str) -> Optional[Any]:
+    def _load_from_extracted_cache(self, model_package_arn: str) -> Any | None:
         if model_package_arn not in self._extracted_artifacts_cache:
             return None
 
@@ -324,7 +327,7 @@ class ModelLoader:
         verify_artifact(Path(cached_paths["model"]), model_sha256)
         return joblib.load(cached_paths["model"])
 
-    def _model_data_url(self, package_details: Dict[str, Any]) -> str:
+    def _model_data_url(self, package_details: dict[str, Any]) -> str:
         inference_spec = package_details.get("InferenceSpecification", {})
         containers = inference_spec.get("Containers", [])
         if not containers:
@@ -335,14 +338,14 @@ class ModelLoader:
             raise ModelLoadError("No model data URL found in container specification")
         return cast(str, model_data_url)
 
-    def _parse_s3_url(self, model_data_url: str) -> Tuple[str, str]:
+    def _parse_s3_url(self, model_data_url: str) -> tuple[str, str]:
         if not model_data_url.startswith("s3://"):
             raise ModelLoadError(f"Invalid S3 URL format: {model_data_url}")
         bucket, key = model_data_url[5:].split("/", 1)
         return bucket, key
 
     def _validated_manifest_sha256(
-        self, model_package_arn: str, customer_meta: Dict[str, Any]
+        self, model_package_arn: str, customer_meta: dict[str, Any]
     ) -> str:
         expected_sha256 = customer_meta.get("sha256")
         if not expected_sha256:
@@ -382,7 +385,7 @@ class ModelLoader:
         tar_path: str,
         model_package_arn: str,
         expected_sha256: str,
-    ) -> Tuple[Any, Dict[str, str]]:
+    ) -> tuple[Any, dict[str, str]]:
         """Extract a verified tarball into a SHA256-keyed cache directory and
         return the loaded model plus paths to the cached artifacts.
 
@@ -499,7 +502,7 @@ class ModelLoader:
             logger.exception("Unexpected error extracting/loading model")
             raise ModelLoadError(f"Failed to extract/load model: {e}") from e
 
-    def _validate_model(self, model_obj: Any, model_info: Dict[str, Any]) -> None:
+    def _validate_model(self, model_obj: Any, model_info: dict[str, Any]) -> None:
         try:
             if model_obj is None:
                 raise ModelValidationError("Model object is None")
@@ -614,7 +617,7 @@ class ModelLoader:
         except OSError as e:
             logger.warning(f"Failed to clear cache: {e}")
 
-    def get_cache_info(self) -> Dict[str, Any]:
+    def get_cache_info(self) -> dict[str, Any]:
         try:
             cache_dirs = (
                 [p for p in self.cache_dir.iterdir() if p.is_dir()]
@@ -641,11 +644,11 @@ class ModelLoader:
             logger.error(f"Failed to get cache info: {e}")
             return {"error": str(e)}
 
-    def get_latest_approved_model_info(self) -> Optional[RegistryModelInfo]:
+    def get_latest_approved_model_info(self) -> RegistryModelInfo | None:
         model_info_dict = self._get_latest_approved_model_info()
         return RegistryModelInfo(model_info_dict) if model_info_dict else None
 
-    def get_model_artifacts_paths(self) -> Dict[str, str]:
+    def get_model_artifacts_paths(self) -> dict[str, str]:
         """Get paths to model artifacts, reusing cached extracted artifacts."""
         if self._current_model is None:
             raise ModelLoadError(

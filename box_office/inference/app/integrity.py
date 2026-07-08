@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Tuple
 
 from box_office.utils.aws_helpers import compute_sha256_stream
 
@@ -30,8 +29,8 @@ class ArtifactIntegrityError(Exception):
     """Raised when an artifact's SHA256 does not match the trusted manifest."""
 
 
-VerifyKey = Tuple[str, float, int]
-_verified_paths: Dict[VerifyKey, str] = {}
+VerifyKey = tuple[str, float, int]
+_verified_paths: dict[VerifyKey, str] = {}
 
 
 def _verify_key(path: Path) -> VerifyKey:

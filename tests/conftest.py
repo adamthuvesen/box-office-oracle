@@ -12,10 +12,10 @@ end of the session.
 """
 
 import os
-import pytest
-import pandas as pd
-from _pytest.monkeypatch import MonkeyPatch
 
+import pandas as pd
+import pytest
+from _pytest.monkeypatch import MonkeyPatch
 
 # Module-scoped MonkeyPatch instance. Bound below before any test imports.
 _test_env_mp = MonkeyPatch()
@@ -81,18 +81,6 @@ def sample_movie_data():
                     "2024-05-01",
                 ]
             ),
-            "AD_BUDGET": [
-                5000000,
-                8000000,
-                3000000,
-                6000000,
-                10000000,
-                4000000,
-                2500000,
-                7000000,
-                5500000,
-                9000000,
-            ],
             "PRODUCTION_BUDGET": [
                 50000000,
                 100000000,
