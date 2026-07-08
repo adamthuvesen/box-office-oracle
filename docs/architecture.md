@@ -118,7 +118,19 @@ BOX_OFFICE database
 └── FEATURE_STORE    (feature metadata + lineage)
 ```
 
-dbt runs as a least-privilege `DBT_RUNNER` role (not `ACCOUNTADMIN`). The role owns the `STAGING` and `ML_TRAINING` schemas so it can recreate dbt models; it has read-only access to `RAW`.
+### Which role runs what
+
+Three roles, no `ACCOUNTADMIN` at runtime:
+
+| Role                | Owns                                      | Used by                                            |
+| ------------------- | ----------------------------------------- | -------------------------------------------------- |
+| `DBT_RUNNER`        | `STAGING`, `ML_TRAINING`, `FEATURE_STORE` | `box-office-pipeline` + dbt; read-only on `RAW`    |
+| `BOX_OFFICE_LOADER` | `RAW`                                     | `scripts/load_dataset_to_snowflake.py` (RAW loads) |
+| `ACCOUNTADMIN`      | —                                         | administration only, never in the runtime path     |
+
+`DBT_RUNNER` owns the three transform/feature schemas (with schema-level future grants) so it can recreate every dbt model and pipeline table it produces, and reads `RAW` through `SELECT` (present + future). `BOX_OFFICE_LOADER` owns `RAW` so a dataset load never needs `ACCOUNTADMIN`.
+
+Ownership and grants are reconciled by an idempotent script — `scripts/snowflake_role_grants.sql`, applied via `scripts/apply_snowflake_grants.py` (the one path that runs as `ACCOUNTADMIN`). Re-run it if a table ever ends up owned by the wrong role again (the failure mode: an object created by an old `ACCOUNTADMIN` run that a runtime role then can't replace).
 
 ## Configuration
 
@@ -158,7 +170,7 @@ The FastAPI `/predict` handler runs CPU-bound `PredictionEngine.predict` in **`a
 
 ## Security posture
 
-- **No `ACCOUNTADMIN`** for runtime: dbt uses `DBT_RUNNER` with scoped grants.
+- **No `ACCOUNTADMIN`** for runtime: dbt + pipeline use `DBT_RUNNER`, RAW loads use `BOX_OFFICE_LOADER`, both with scoped grants (see "Which role runs what" above).
 - **No `AmazonSageMakerFullAccess`** on the SageMaker execution role: scoped inline policy only.
 - **No IAM mutation** in the GitHub Actions role: any IAM change must come from a manual elevated apply.
 - **Manifest verification**: every `pickle.load` is preceded by SHA256 check against the trusted Model Package metadata.
