@@ -122,7 +122,7 @@ def test_run_data_phase_x_train_has_13_v9_features():
 
 def test_container_train_passes_preprocessor_factory():
     """model_training.train must run CV with FeaturePreprocessorHigh as the
-    per-fold factory (leakage-free), not the legacy no-factory path."""
+    per-fold factory, so each fold refits on train-year rows only (leakage-free)."""
     from box_office.ml import model_training
     from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 

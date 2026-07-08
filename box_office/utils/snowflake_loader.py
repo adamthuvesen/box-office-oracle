@@ -76,9 +76,9 @@ def fully_qualified_name(database: str, schema: str, table: str) -> str:
 
 logger = logging.getLogger(__name__)
 
-# Expected columns for the legacy CSV load path into BOX_OFFICE_V4. The RAW
-# source (RAW.BOX_OFFICE_V4 in transformations/models/sources/sources.yml)
-# carries the wider 1980-2026 parquet schema; the new production load path is
+# Expected columns for the CSV load path into BOX_OFFICE_V4. The RAW source
+# (RAW.BOX_OFFICE_V4 in transformations/models/sources/sources.yml) carries the
+# wider 1980-2026 parquet schema; the parquet load path is
 # scripts/load_dataset_to_snowflake.py.
 EXPECTED_COLUMNS = [
     "tmdb_id",

@@ -1,21 +1,19 @@
 """Local training driver for the 1980-2026 TMDB training frame.
 
-Pattern-matched to ``scripts/run_backtest.py`` (offline CV with the
-production ``TimeSeriesCrossValidator`` + ``BoxOfficeXGBoostModel``) and to
-``box_office.ml.model_training.train_final_model`` (final fit on all data at
-the CV-mean best iteration). Runs entirely locally: no Snowflake, no
-SageMaker, no AWS.
+Runs offline CV with the production ``TimeSeriesCrossValidator`` +
+``BoxOfficeXGBoostModel``, then a final fit on all data at the CV-mean best
+iteration (as in ``box_office.ml.model_training.train_final_model``). Runs
+entirely locally: no Snowflake, no SageMaker, no AWS.
 
 Steps:
 
 1. Load the Phase-1 frame (``scripts/prepare_training_frame.py`` output),
    ``y = log1p(worldwide_gross)``.
 2. Expanding-window CV, eval years 2015-2023 (iteration mode). 2024-2025 are
-   a SPENT confirmation set: v8's frozen confirmation stands, v9 is adopted
-   on <=2023 evidence, and 2026 actuals will confirm it. Evaluating them
-   again requires the explicit ``--i-know-this-burns-the-holdout`` flag.
-   2026 rows were excluded by the prep script because their gross is not
-   final. Each fold fits a fresh
+   a spent confirmation set held out from iteration; re-evaluating them
+   requires the explicit ``--i-know-this-burns-the-holdout`` flag. 2026 rows
+   are excluded by the prep script because their gross is not final. Each
+   fold fits a fresh
    ``FeaturePreprocessorHigh`` on train-years rows only (leakage-free
    frequency features); the final deployment preprocessor is fit on all data.
 3. Fit a ``StandardScaler`` and train the final model on scaled features —
@@ -87,8 +85,7 @@ HOLDOUT_END_YEAR = 2025  # 2024-2025: spent confirmation set; 2026 not final
 
 EVAL_DISCIPLINE_NOTE = (
     "v9 adopted on 2015-2023 iteration evidence; 2024-2025 are a spent "
-    "confirmation set (v8's frozen confirmation stands) and were not "
-    "evaluated. 2026 actuals will confirm v9."
+    "confirmation set held out from iteration. 2026 actuals will confirm v9."
 )
 
 

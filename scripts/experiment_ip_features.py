@@ -1,37 +1,24 @@
 """IP-feature experiment: does franchise/IP awareness improve the model?
 
-SUPERSEDED (2026-07-08): contract v9 adopted the E-variant features
-(IP_TIER, PRIOR_FRANCHISE_GROSS_LOG, IS_FRANCHISE_FOLLOWUP) into
-``SELECTED_FEATURES``. Production uses collection-keyed franchise history
-only (box_office/franchise_history.py); this script's umbrella-ip_name
-grouping in ``build_franchise_key`` is retired and kept for the historical
-record of the experiment.
+Read-only harness: it scores feature variants through the leakage-free CV path
+and writes a report. It does not touch the live feature contract, saved
+artifacts, or results/local_retrain/. Iterate mode only: eval years 2015-2023
+(2024-2025 are a spent confirmation set held out from iteration).
 
-Experiment only — never touched the then-current v8 feature contract
-(v9 is the live contract now), saved artifacts,
-or results/local_retrain/. Iterate mode only: eval years 2015-2023 (2024-2025
-are a spent confirmation set per results/local_retrain/report.md).
+Variants, all through the identical CV path (``TimeSeriesCrossValidator`` +
+per-fold ``FeaturePreprocessorHigh``):
 
-Variants, all through the identical leakage-fixed CV path
-(``TimeSeriesCrossValidator`` + per-fold ``FeaturePreprocessorHigh``):
-
-- A ``baseline``: the current 10 v8 features, rerun fresh.
-- C ``time_safe_ip``: baseline + per-movie features computed only from
-  franchise history strictly before the movie's release date
-  (PRIOR_FRANCHISE_GROSS_LOG, PRIOR_FRANCHISE_FILM_COUNT,
-  IS_FRANCHISE_FOLLOWUP). First films of a franchise get 0/0/0.
-- E ``time_safe_tier``: baseline + the restructured time-safe ``ip_tier``
-  (ordinal; as-of-date brand rules + prior-franchise gross + source-work
-  rules, no total-collection gross) + IS_FRANCHISE_FOLLOWUP +
-  PRIOR_FRANCHISE_GROSS_LOG.
-
-Earlier variants B (naive total-collection-gross tier, leaky) and D
-(BRAND_NONFILM_TIER) were retired when the tier system was restructured;
-their results remain in the first section of report.md.
+- ``baseline``: the base engineered features, rerun fresh.
+- ``time_safe_ip``: baseline + per-movie features computed only from franchise
+  history strictly before the movie's release date (PRIOR_FRANCHISE_GROSS_LOG,
+  PRIOR_FRANCHISE_FILM_COUNT, IS_FRANCHISE_FOLLOWUP). First films of a
+  franchise get 0/0/0.
+- ``time_safe_tier``: baseline + a time-safe ordinal ``ip_tier`` (as-of-date
+  brand rules + prior-franchise gross + source-work rules, no total-collection
+  gross) + IS_FRANCHISE_FOLLOWUP + PRIOR_FRANCHISE_GROSS_LOG.
 
 Extra columns ride along in the raw CV frame and are appended AFTER the
-fold-fitted preprocessor's 10 engineered features (same pattern as the old
-``missing_budget_flag_11th_col`` variant).
+fold-fitted preprocessor's engineered features.
 
 Run:  uv run python scripts/experiment_ip_features.py
 Appends a dated section to results/ip_experiment/report.md and writes
