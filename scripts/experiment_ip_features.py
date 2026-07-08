@@ -2,8 +2,9 @@
 
 Read-only harness: it scores feature variants through the leakage-free CV path
 and writes a report. It does not touch the live feature contract, saved
-artifacts, or results/local_retrain/. Iterate mode only: eval years 2015-2023
-(2024-2025 are a spent confirmation set held out from iteration).
+artifacts, or docs/internal/experiments/local_retrain/. Iterate mode only:
+eval years 2015-2023 (2024-2025 are a spent confirmation set held out from
+iteration).
 
 Variants, all through the identical CV path (``TimeSeriesCrossValidator`` +
 per-fold ``FeaturePreprocessorHigh``):
@@ -21,8 +22,8 @@ Extra columns ride along in the raw CV frame and are appended AFTER the
 fold-fitted preprocessor's engineered features.
 
 Run:  uv run python scripts/experiment_ip_features.py
-Appends a dated section to results/ip_experiment/report.md and writes
-results/ip_experiment/results_time_safe_tier.json.
+Appends a dated section to docs/internal/experiments/ip_experiment/report.md
+and writes docs/internal/experiments/ip_experiment/results_time_safe_tier.json.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ IP_PATH = Path("data/generated/ip/ip_classification_1980_2026.parquet")
 RAW_JSONL_PATH = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/tmdb_rich_raw_5m_1980_2026.jsonl"
 )
-OUTPUT_DIR = Path("results/ip_experiment")
+OUTPUT_DIR = Path("docs/internal/experiments/ip_experiment")
 
 PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
     "RELEASE_YEAR",
