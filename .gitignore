@@ -83,6 +83,8 @@ data/interim/*.csv
 # Belt-and-braces: never commit any dataset CSV/Parquet under data/
 data/**/*.csv
 data/**/*.parquet
+data/**/*.json
+data/**/*.jsonl
 # Keep README files in data directories
 !data/**/README.md
 
