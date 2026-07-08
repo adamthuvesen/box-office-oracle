@@ -22,6 +22,7 @@ from pydantic import (
 )
 
 from box_office.ml.feature_schema import FeatureContractMismatch
+from box_office.ml.text_utils import MAX_LITERAL_EVAL_BYTES, LiteralEvalTooLarge
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,13 @@ def _parse_json_or_python_repr_str_list(raw: str) -> list[str]:
     s = raw.strip()
     if s == "" or s == "[]":
         return []
+    # Bound the input before it reaches ast.literal_eval, which is recursive and
+    # can be driven to exhaust CPU/memory by a deeply-nested attacker payload.
+    # LiteralEvalTooLarge is a ValueError, so it surfaces as a 400 via pydantic.
+    if len(s.encode("utf-8")) > MAX_LITERAL_EVAL_BYTES:
+        raise LiteralEvalTooLarge(
+            f"Input exceeds MAX_LITERAL_EVAL_BYTES={MAX_LITERAL_EVAL_BYTES}"
+        )
     for parser in (json.loads, ast.literal_eval):
         try:
             parsed = parser(s)
@@ -262,14 +270,21 @@ class PredictionEngine:
         expected = self.preprocessor.get_feature_names()
         actual = list(features.columns)
         if actual != expected:
-            divergence = next(
-                (
-                    f"{a!r}!={e!r}"
-                    for a, e in zip(actual, expected, strict=True)
-                    if a != e
-                ),
-                "<length>",
-            )
+            # A length mismatch must not reach zip(strict=True) — that raises a
+            # bare ValueError before the FeatureContractMismatch below. Report
+            # the length divergence explicitly; only scan for a token mismatch
+            # when the two sequences are the same length.
+            if len(actual) != len(expected):
+                divergence = "<length>"
+            else:
+                divergence = next(
+                    (
+                        f"{a!r}!={e!r}"
+                        for a, e in zip(actual, expected, strict=True)
+                        if a != e
+                    ),
+                    "<length>",
+                )
             raise FeatureContractMismatch(
                 f"Preprocessor produced {len(actual)} features but the artifact "
                 f"contract declares {len(expected)} (first divergence: {divergence}). "

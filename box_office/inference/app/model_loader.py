@@ -196,31 +196,44 @@ class ModelLoader:
                         return False
 
             logger.info("Refreshing model due to cache expiry or new version")
-            self.load_latest_approved_model()
-            return True
-
+            loaded = self.load_latest_approved_model()
         except ModelLoadError as e:
             logger.error(f"Failed to refresh model: {e}")
-            # Drop the cache once it crosses max_stale_seconds so a model
-            # rejected/deleted upstream stops being served indefinitely.
-            if self._current_model is not None and self._last_load_time is not None:
-                stale_age = (datetime.now(UTC) - self._last_load_time).total_seconds()
-                if stale_age <= self.max_stale_seconds:
-                    logger.warning(
-                        "Using existing model due to refresh failure "
-                        f"(age {stale_age:.0f}s <= max_stale {self.max_stale_seconds}s)"
-                    )
-                    return False
-                logger.error(
-                    f"Cached model exceeded max_stale_seconds "
-                    f"({stale_age:.0f}s > {self.max_stale_seconds}s); dropping cache"
+            return self._handle_refresh_failure(str(e))
+
+        # A None result means the registry has no approved model. Left
+        # unhandled, the stale cached model would keep serving forever, so it
+        # gets the same staleness / cache-drop policy as a load error.
+        if loaded is None:
+            logger.error("Refresh found no approved model in registry")
+            return self._handle_refresh_failure("no approved model found in registry")
+        return True
+
+    def _handle_refresh_failure(self, reason: str) -> bool:
+        """Apply the staleness policy after a failed refresh.
+
+        Keep serving the cached model while it is within ``max_stale_seconds``;
+        once it crosses that bound drop the cache and raise, so a model that was
+        rejected/deleted upstream (or that has vanished from the registry) stops
+        being served indefinitely.
+        """
+        if self._current_model is not None and self._last_load_time is not None:
+            stale_age = (datetime.now(UTC) - self._last_load_time).total_seconds()
+            if stale_age <= self.max_stale_seconds:
+                logger.warning(
+                    "Using existing model after refresh failure "
+                    f"({reason}); age {stale_age:.0f}s <= max_stale "
+                    f"{self.max_stale_seconds}s"
                 )
-                self._current_model = None
-                self._current_model_info = None
-                self._last_load_time = None
-            raise ModelLoadError(
-                f"Model refresh failed and no fallback available: {e}"
-            ) from e
+                return False
+            logger.error(
+                f"Cached model exceeded max_stale_seconds "
+                f"({stale_age:.0f}s > {self.max_stale_seconds}s); dropping cache"
+            )
+            self._current_model = None
+            self._current_model_info = None
+            self._last_load_time = None
+        raise ModelLoadError(f"Model refresh failed and no fallback available: {reason}")
 
     def _get_latest_approved_model_info(self) -> dict[str, Any] | None:
         try:

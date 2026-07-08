@@ -267,6 +267,12 @@ _SINGLE_PATTERN = re.compile(
     r"\$\s*([\d,]+(?:\.\d+)?)\s*(thousand|million|billion)?",
     flags=re.IGNORECASE,
 )
+# US$/USD are normalized to a bare "$" by clean_budget_text, so any "$" still
+# preceded by letters (A$, CA$, NZ$, HK$, SG$, R$, ...) is a non-USD currency.
+_NON_USD_DOLLAR_PATTERN = re.compile(
+    r"[A-Za-z]{1,4}\$\s*[\d,]+(?:\.\d+)?\s*(?:thousand|million|billion)?",
+    flags=re.IGNORECASE,
+)
 
 
 def parse_usd_budget(cleaned: str) -> float | None:
@@ -310,8 +316,15 @@ def classify_budget_text(raw: str | None) -> tuple[float | None, str]:
     if "gross" in raw.lower():
         return None, "gross_line_guard"
     cleaned = clean_budget_text(raw)
+    # Drop currency-prefixed dollar amounts (A$3 million, CA$10 million, ...) so
+    # they are never read as USD; a genuine bare "$" amount alongside them still
+    # parses.
+    had_prefixed_dollar = bool(_NON_USD_DOLLAR_PATTERN.search(cleaned))
+    cleaned = _NON_USD_DOLLAR_PATTERN.sub(" ", cleaned)
     if "$" not in cleaned:
-        if any(symbol in cleaned for symbol in NON_USD_SYMBOLS):
+        if had_prefixed_dollar or any(
+            symbol in cleaned for symbol in NON_USD_SYMBOLS
+        ):
             return None, "non_usd"
         return None, "parse_failed"
     value = parse_usd_budget(cleaned)

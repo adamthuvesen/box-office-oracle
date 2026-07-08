@@ -45,7 +45,7 @@ function fade(p: number, stops: number[], values: number[]): number {
 }
 
 /**
- * The signature: ~2,900 movies as glowing particles in a budget×gross field,
+ * The signature: ~6,100 movies as glowing particles in a budget×gross field,
  * walked through a five-scene scroll narrative, settling into free explore.
  */
 let webglCache: boolean | null = null;

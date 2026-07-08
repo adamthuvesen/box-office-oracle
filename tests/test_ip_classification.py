@@ -352,6 +352,30 @@ def test_null_release_date_films_never_count_as_prior() -> None:
     assert followup["ip_tier"] == 4  # sequel keyword floor, no prior magnitude
 
 
+def test_nan_collection_name_does_not_inherit_umbrella_scope() -> None:
+    # A brand match with a NaN collection link must not be treated as an
+    # umbrella-inherited collection nor leak NaN into the evidence.
+    output = _classify(
+        [_row(130, "Black Panther", company="Marvel Studios")],
+        [_raw(130, collection_id=None, collection_name=float("nan"))],
+    )
+
+    row = output.loc["Black Panther"]
+    assert row["ip_scope"] == "brand_origin"
+    assert "collection_name" not in row["evidence_json"]
+
+
+def test_source_work_only_match_has_book_provenance() -> None:
+    # "Jaws" matches a source_works rule by title with no source_mappings
+    # keyword, so provenance must still be filled in (book).
+    output = _classify([_row(140, "Jaws", year=2000)])
+
+    row = output.loc["Jaws"]
+    assert row["ip_scope"] == "adaptation"
+    assert row["ip_source_type"] == "book"
+    assert row["brand_origin"] == "book"
+
+
 def test_rules_with_collection_gross_thresholds_are_rejected(
     tmp_path: Path,
 ) -> None:

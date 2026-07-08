@@ -40,7 +40,9 @@ from box_office.movie_data_quality import (
     clean_movie_source_data,
 )
 
-PER_YEAR_TABLE = Path("results/per_year_table.json")
+# The local-retrain track is canonical (v9 contract); its per-year backtest
+# table is the one the current schema version is stamped against.
+DEFAULT_PER_YEAR_TABLE = Path("results/local_retrain/per_year_table.json")
 
 DEFAULT_INPUT = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/"
@@ -97,9 +99,18 @@ def parse_args() -> argparse.Namespace:
         help="Output directory (default: web/data)",
     )
     parser.add_argument(
+        "--per-year-table",
+        type=Path,
+        default=DEFAULT_PER_YEAR_TABLE,
+        help=(
+            "Per-year backtest table JSON to embed in model_meta "
+            f"(default: {DEFAULT_PER_YEAR_TABLE})"
+        ),
+    )
+    parser.add_argument(
         "--api-url",
         default=None,
-        help="Inference API base URL (default: $PREDICTION_API_URL)",
+        help="Inference API base URL (default: $INFERENCE_API_URL)",
     )
     return parser.parse_args()
 
@@ -245,14 +256,14 @@ def fetch_model_info(api_url: str) -> dict[str, Any] | None:
         return None
 
 
-def build_model_meta(api_url: str | None) -> dict[str, Any]:
+def build_model_meta(api_url: str | None, per_year_table: Path) -> dict[str, Any]:
     from box_office.ml.feature_schema import CURRENT_FEATURE_SCHEMA_VERSION
 
     per_year = None
-    if PER_YEAR_TABLE.exists():
-        per_year = json.loads(PER_YEAR_TABLE.read_text())
+    if per_year_table.exists():
+        per_year = json.loads(per_year_table.read_text())
     else:
-        print(f"{PER_YEAR_TABLE} not found; per_year is null", file=sys.stderr)
+        print(f"{per_year_table} not found; per_year is null", file=sys.stderr)
 
     return {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -278,7 +289,7 @@ def main() -> None:
 
     configure_environment()
 
-    api_url = args.api_url or os.environ.get("PREDICTION_API_URL")
+    api_url = args.api_url or os.environ.get("INFERENCE_API_URL")
 
     out_dir: Path = args.out
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -295,7 +306,9 @@ def main() -> None:
         legacy.unlink()
         print(f"removed legacy {legacy}")
 
-    write_json(out_dir / "model_meta.json", build_model_meta(api_url))
+    write_json(
+        out_dir / "model_meta.json", build_model_meta(api_url, args.per_year_table)
+    )
     print(f"wrote {out_dir / 'model_meta.json'}")
 
 

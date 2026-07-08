@@ -73,6 +73,7 @@ pipeline-run: install-dev ## Run ML pipeline (requires environment variables)
 	uv run box-office-pipeline --environment dev --experiment-name "box-office-predictions"
 
 web-data: install-dev ## Export web/data JSON snapshots for the Next.js app (local dataset, no Snowflake)
+	uv run python scripts/score_all_movies.py
 	uv run python scripts/export_web_data.py
 
 datasets: install-dev ## Regenerate analysis/datasets_* from Snowflake (requires Snowflake creds)

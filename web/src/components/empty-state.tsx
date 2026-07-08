@@ -10,7 +10,7 @@ export function NoDataYet({ what = "the data snapshot" }: { what?: string }) {
         make web-data
       </pre>
       <p className="text-sm text-dim">
-        That pulls the movie catalog from Snowflake (read-only) into{" "}
+        That exports the movie catalog from the local dataset into{" "}
         <code className="font-mono">web/data/</code>, which stays out of git.
         Then refresh this page.
       </p>

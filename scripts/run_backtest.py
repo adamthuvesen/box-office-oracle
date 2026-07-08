@@ -1,4 +1,12 @@
-"""Offline per-year backtest driver.
+"""Offline per-year backtest driver — LEGACY, pre-v9 snapshot only.
+
+This driver backtests the pre-v9 selected-feature contract against the old
+``analysis/datasets_high`` snapshot. It CANNOT score the active v9 schema: v9
+adds pre-release IP/franchise features (``IP_TIER``, ``PRIOR_FRANCHISE_GROSS_LOG``,
+``IS_FRANCHISE_FOLLOWUP``) built by the offline join in
+``scripts/prepare_training_frame.py``, which this snapshot lacks. ``main`` raises
+immediately with that explanation. For the canonical local-retrain backtest and
+web predictions, use ``scripts/score_all_movies.py`` instead.
 
 Reproduces the per-year expanding-window backtest the README quotes — model
 dollar-space R², log-space R², and rank correlation against a log-budget
@@ -161,6 +169,19 @@ def select_production_features(X: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
+    raise SystemExit(
+        "run_backtest.py is legacy: it backtests the pre-v9 selected-feature "
+        "contract against the analysis/datasets_high snapshot and CANNOT score "
+        "the active v9 schema. v9 requires the pre-release IP/franchise features "
+        "(IP_TIER, PRIOR_FRANCHISE_GROSS_LOG, IS_FRANCHISE_FOLLOWUP), which come "
+        "from the offline franchise join in scripts/prepare_training_frame.py and "
+        "are absent from this snapshot — select_production_features would fail on "
+        "the missing columns. For the canonical local-retrain backtest and web "
+        "predictions, run `uv run python scripts/score_all_movies.py` (v9 model, "
+        "1980-2026 frame). This driver is kept only for the historical pre-v9 "
+        "snapshot table."
+    )
+
     X, y_raw = load_snapshot()
     n_raw = len(y_raw)
     X, y_raw, n_dropped = drop_budget_artifact_rows(X, y_raw)
