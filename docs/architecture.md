@@ -18,7 +18,7 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 | CI/CD               | GitHub Actions               | OIDC → AWS, key-pair → Snowflake                                                                                    |
 
 
-Operational cost: ~$50/month. Training run: 2-5 min on ~2,400 movies. The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) and is the public performance artifact for the v7 pre-release feature contract.
+Operational cost: ~$50/month. Training run: 2-5 min on ~2,400 movies. The per-year R² table is produced by the expanding-window backtest (see [`box_office/ml/backtest.py`](../box_office/ml/backtest.py)) and is the public performance artifact for the pre-release feature contract (currently v9).
 
 ## Data flow
 
@@ -29,7 +29,7 @@ ingestion (TMDB/IMDb) → Snowflake RAW
                             ↓
                   Snowflake STAGING.stg_box_office
                             ↓
-              build_feature_pipeline() (12 pre-release features)
+              build_feature_pipeline() (13 pre-release features)
                             ↓
                    Snowflake ML_TRAINING.{X,Y}_TRAIN
                             ↓
@@ -60,15 +60,15 @@ Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/dat
 
 ## Feature engineering
 
-`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of five augmenting transformers plus a final raw-column strip. It turns pre-release raw columns into **52 engineered features**, then projects them to the **12-feature** runtime contract.
+`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of five augmenting transformers plus a final raw-column strip. It turns pre-release raw columns into **53 engineered features** (including three pass-through IP/franchise inputs), then projects them to the **13-feature** runtime contract.
 
 | Step                  | Adds | What it captures                                                                              |
 | --------------------- | ---- | --------------------------------------------------------------------------------------------- |
-| Core numerical        | 4    | Numeric pass-through with type coercion + missing-column fill                                 |
+| Core numerical        | 3    | Numeric pass-through with type coercion + missing-column fill                                 |
 | Temporal              | 18   | Release timing — summer/holiday windows, COVID era, day-of-week                               |
 | Genre                 | 9    | Binary genre vectors + super-genre encoding                                                   |
 | Industry              | 6    | Frequency encoding of director / studio / actor / MPAA                                        |
-| Financial             | 15   | Total budget, budget logs, ad/prod ratio, CPI adjustment, and safe budget interactions         |
+| Financial             | 13   | Production budget logs, CPI adjustment, and safe budget interactions                          |
 
 `TransformerMixin`-style augmenting steps: each one returns the input frame plus its new columns, so the pipeline is debuggable via `set_output(transform="pandas")`. The final `_SelectEngineered` step drops the raw input columns the transformers consumed.
 
@@ -100,7 +100,7 @@ Production model lifecycle:
 3. **Promotion** — automated approval if validation passes
 4. **Production** — Lambda loads latest `Approved` package on cold start
 
-Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v7`) with a `FeatureSchemaVersionMismatch` exception.
+Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v9`) with a `FeatureSchemaVersionMismatch` exception.
 
 CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../box_office/ml/model_registry/aws_model_registry_cli.py)`.
 

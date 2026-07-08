@@ -12,6 +12,6 @@ box-office-ingest --start-year 2024 --load-to-snowflake
 ```
 
 Model training data is built through dbt and the orchestration tasks, then stored
-in Snowflake `ML_TRAINING` and uploaded to SageMaker. The v7 feature contract is
+in Snowflake `ML_TRAINING` and uploaded to SageMaker. The v8 feature contract is
 pre-release only; generated data files must not include post-release feature
 inputs such as vote counts, ratings, popularity scores, ranks, or domestic gross.

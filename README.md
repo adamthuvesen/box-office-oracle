@@ -10,7 +10,7 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 | --- | --- |
 | **Warehouse** | Snowflake (`RAW` → `STAGING` → `ML_TRAINING`) |
 | **Transform** | dbt-core + dbt-snowflake |
-| **Features** | scikit-learn `Pipeline`: pre-release raw columns → 52 engineered → 12 selected |
+| **Features** | scikit-learn `Pipeline`: pre-release raw columns → 53 engineered → 13 selected |
 | **Training** | XGBoost on SageMaker `ml.m5.large` |
 | **Registry** | SageMaker Model Registry (SHA256-verified) |
 | **Serving** | AWS Lambda (FastAPI + Mangum) |
@@ -50,9 +50,10 @@ uv run uvicorn box_office.inference.app.main:app --reload
 
 ## Features
 
-The pipeline expands pre-release raw columns into 52 engineered features (temporal
+The pipeline expands pre-release raw columns into 50 engineered features (temporal
 windows, genre vectors, frequency-encoded industry signals, CPI-adjusted
-financials, and safe budget interactions), then selects 12 (`SELECTED_FEATURES`).
+financials, safe budget interactions, and pre-release IP/franchise
+inputs), then selects 13 (`SELECTED_FEATURES`).
 The current contract excludes outcome-derived and post-release signals such as
 popularity scores, user ratings, ranking fields, and franchise scores derived
 from revenue. Revenue is log-transformed before training.
@@ -63,7 +64,7 @@ post-release field names from entering the feature contract.
 
 ## Evaluation
 
-The 12-feature pre-release model beats a budget-only baseline on log R² in every
+The pre-release model beats a budget-only baseline on log R² in every
 non-2020 fold. In the data-rich 2015-2019 window, dollar-space R² lands at
 `0.54-0.63`; on the log scale used for training, the yearly gain is `+0.12` to
 `+0.29` R².
@@ -101,7 +102,7 @@ TMDB_API_TOKEN
 ## Schema Versioning
 
 Every artifact carries a `feature_schema_version` in its registry metadata; the runtime
-pins `v7` (the 12-feature pre-release contract). A model with a different feature width is
+pins `v9` (the 13-feature pre-release contract). A model with a different feature width is
 rejected at cold start with `FeatureSchemaVersionMismatch` rather than served with a silent
 shape mismatch; retraining is required. The same load path verifies a SHA256
 manifest against the artifact tarball *before* unpickling, so a bucket write can't turn into
@@ -115,6 +116,25 @@ CSVs and Parquet snapshots under `analysis/datasets_*/` are git-ignored. Pull fr
 make datasets
 ```
 
+## Web App
+
+A local Next.js frontend under `web/` — "the screening room": a WebGL
+constellation of every movie, a poster explorer, box-office statistics, the
+model's backtest report card, and an interactive prediction oracle.
+
+```bash
+make web-data       # export gitignored JSON snapshots to web/data/ (local dataset, no Snowflake)
+pnpm --dir web install
+pnpm --dir web dev  # http://localhost:3000
+```
+
+The catalog comes from the local 1980-2026 parquet under
+`data/generated/tmdb/rich_backfill_1980_2026/`; poster/backdrop paths are
+already in it, so no TMDB API calls are made. Oracle predictions
+(`web/data/predictions.json`) come from `scripts/score_all_movies.py`. Live
+predictions on /predict need `INFERENCE_API_URL` and `INFERENCE_API_KEY` in
+`web/.env.local`; without them the app runs the oracle in mock mode.
+
 ## Project Layout
 
 - **`box_office/orchestration/`**: Prefect flows
@@ -122,6 +142,7 @@ make datasets
 - **`box_office/inference/`**: Lambda FastAPI app
 - **`transformations/`**: dbt models
 - **`infrastructure/terraform/`**: IaC
+- **`web/`**: Next.js frontend (local-only)
 - **[`docs/architecture.md`](docs/architecture.md)**: Architecture deep-dive
 - **[`AGENTS.md`](AGENTS.md)**: AI coding agent conventions
 
