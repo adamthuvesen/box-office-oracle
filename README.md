@@ -10,7 +10,7 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 | --- | --- |
 | **Warehouse** | Snowflake (`RAW` → `STAGING` → `ML_TRAINING`) |
 | **Transform** | dbt-core + dbt-snowflake |
-| **Features** | scikit-learn `Pipeline`: pre-release raw columns → 53 engineered → 13 selected |
+| **Features** | scikit-learn `Pipeline`: pre-release raw columns → 52 engineered → 13 selected |
 | **Training** | XGBoost on SageMaker `ml.m5.large` |
 | **Registry** | SageMaker Model Registry (SHA256-verified) |
 | **Serving** | AWS Lambda (FastAPI + Mangum) |
@@ -50,7 +50,7 @@ uv run uvicorn box_office.inference.app.main:app --reload
 
 ## Features
 
-The pipeline expands pre-release raw columns into 50 engineered features (temporal
+The pipeline expands pre-release raw columns into 52 engineered features (temporal
 windows, genre vectors, frequency-encoded industry signals, CPI-adjusted
 financials, safe budget interactions, and pre-release IP/franchise
 inputs), then selects 13 (`SELECTED_FEATURES`).

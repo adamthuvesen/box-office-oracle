@@ -7,7 +7,8 @@ only (box_office/franchise_history.py); this script's umbrella-ip_name
 grouping in ``build_franchise_key`` is retired and kept for the historical
 record of the experiment.
 
-Experiment only — does not touch the v8 feature contract, saved artifacts,
+Experiment only — never touched the then-current v8 feature contract
+(v9 is the live contract now), saved artifacts,
 or results/local_retrain/. Iterate mode only: eval years 2015-2023 (2024-2025
 are a spent confirmation set per results/local_retrain/report.md).
 

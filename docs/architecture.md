@@ -11,7 +11,7 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 | Transformations     | dbt-core + dbt-snowflake     | `[transformations/](../transformations/)`                                                                           |
 | Feature engineering | scikit-learn + pandas        | Single `Pipeline` built by [`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)                 |
 | Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV                                                                                       |
-| Model registry      | AWS SageMaker Model Registry | manual approval gate at R² ≥ 0.75                                                                                   |
+| Model registry      | AWS SageMaker Model Registry | manual approval gate at R² ≥ 0.55                                                                                   |
 | Inference           | Lambda (container image)     | `[box_office/inference/](../box_office/inference)`                                                                  |
 | Orchestration       | Prefect                      | Three-phase flow in [`box_office/orchestration/flows/ml_pipeline.py`](../box_office/orchestration/flows/ml_pipeline.py) |
 | Infra               | Terraform                    | `[infrastructure/terraform/](../infrastructure/terraform)`                                                          |
@@ -38,7 +38,7 @@ ingestion (TMDB/IMDb) → Snowflake RAW
                   SageMaker training (XGBoost)
                             ↓
                   SageMaker Model Registry
-                            ↓ (R² ≥ 0.75 gate)
+                            ↓ (R² ≥ 0.55 gate)
                        Approved
                             ↓
                 Lambda inference (loads from registry)
@@ -96,7 +96,7 @@ Per-fold failures are caught and logged; the loop raises `CrossValidationFailed`
 Production model lifecycle:
 
 1. **Development** — newly registered, `PendingManualApproval`
-2. **Validation** — R² ≥ 0.75 OOF threshold
+2. **Validation** — R² ≥ 0.55 OOF threshold, calibrated against the leakage-free v9 backtest ([results/local_retrain/report.md](../results/local_retrain/report.md)); the old 0.75 bar was set on pre-leakage-fix metrics
 3. **Promotion** — automated approval if validation passes
 4. **Production** — Lambda loads latest `Approved` package on cold start
 
@@ -109,7 +109,7 @@ CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../box_office/ml/
 ```
 BOX_OFFICE database
 ├── RAW              (source data ingested via box_office.ingestion)
-│   └── BOX_OFFICE_V3
+│   └── BOX_OFFICE_V4
 ├── STAGING          (dbt-transformed)
 │   └── STG_BOX_OFFICE
 ├── ML_TRAINING      (processed datasets)
@@ -136,7 +136,7 @@ from box_office.config import config
 config.aws.region                          # eu-north-1
 config.snowflake.database                  # BOX_OFFICE
 config.snowflake.schemas.staging           # STAGING
-config.model.promotion_threshold           # 0.75
+config.model.promotion_threshold           # 0.55
 config.model.hyperparameters.n_estimators  # 1500
 ```
 
