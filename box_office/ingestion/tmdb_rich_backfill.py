@@ -12,15 +12,14 @@ import json
 import logging
 import os
 import time
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 import requests
-
-from box_office.ingestion.data_enrichment import HeuristicEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +123,7 @@ class BackfillState:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def auth_headers() -> dict[str, str]:
@@ -157,9 +156,7 @@ def load_existing_movies_from_web(path: Path) -> tuple[set[int], set[str]]:
     return ids, titles
 
 
-def load_existing_flat_from_web(
-    path: Path, config: BackfillConfig
-) -> pd.DataFrame:
+def load_existing_flat_from_web(path: Path, config: BackfillConfig) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
 
@@ -183,7 +180,6 @@ def load_existing_flat_from_web(
         "mpaa",
         "runtime",
         "production_budget",
-        "ad_budget",
         "production_company",
         "overview",
         "tagline",
@@ -219,9 +215,7 @@ def load_existing_flat_from_web(
     for column in ["genres", "actors", "keywords"]:
         df[column] = df[column].apply(jsonish_list_to_text)
 
-    df["worldwide_gross"] = pd.to_numeric(
-        df["worldwide_gross"], errors="coerce"
-    )
+    df["worldwide_gross"] = pd.to_numeric(df["worldwide_gross"], errors="coerce")
     df = df[
         (df["release_year"] >= config.start_year)
         & (df["release_year"] <= config.end_year)
@@ -232,9 +226,7 @@ def load_existing_flat_from_web(
 
 def jsonish_list_to_text(value: Any) -> str:
     if isinstance(value, list):
-        return ", ".join(
-            str(item).strip() for item in value if str(item).strip()
-        )
+        return ", ".join(str(item).strip() for item in value if str(item).strip())
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
     return str(value)
@@ -288,9 +280,7 @@ def request_json(
                 state.rate_limit_count += 1
                 retry_after = response.headers.get("Retry-After")
                 sleep_for = float(retry_after) if retry_after else 60.0
-                logger.warning(
-                    "TMDB rate limit hit; sleeping %.1fs", sleep_for
-                )
+                logger.warning("TMDB rate limit hit; sleeping %.1fs", sleep_for)
                 time.sleep(sleep_for)
                 state.retry_count += 1
                 continue
@@ -353,9 +343,7 @@ def normalize_credits(payload: dict[str, Any]) -> dict[str, str]:
 
 def normalize_mpaa(payload: dict[str, Any]) -> str:
     release_dates = payload.get("release_dates") or {}
-    results = (
-        release_dates.get("results") if isinstance(release_dates, dict) else []
-    )
+    results = release_dates.get("results") if isinstance(release_dates, dict) else []
     for country_release in results:
         if not isinstance(country_release, dict):
             continue
@@ -422,19 +410,11 @@ def flat_record_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
     alternatives = payload.get("alternative_titles") or {}
     translations = payload.get("translations") or {}
 
-    poster_count = (
-        len(images.get("posters", [])) if isinstance(images, dict) else 0
-    )
-    backdrop_count = (
-        len(images.get("backdrops", [])) if isinstance(images, dict) else 0
-    )
-    video_count = (
-        len(videos.get("results", [])) if isinstance(videos, dict) else 0
-    )
+    poster_count = len(images.get("posters", [])) if isinstance(images, dict) else 0
+    backdrop_count = len(images.get("backdrops", [])) if isinstance(images, dict) else 0
+    video_count = len(videos.get("results", [])) if isinstance(videos, dict) else 0
     alternative_title_count = (
-        len(alternatives.get("titles", []))
-        if isinstance(alternatives, dict)
-        else 0
+        len(alternatives.get("titles", [])) if isinstance(alternatives, dict) else 0
     )
     translation_count = (
         len(translations.get("translations", []))
@@ -452,9 +432,7 @@ def flat_record_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
         "release_date": release_date,
         "release_year": extract_release_year(release_date),
         "original_language": payload.get("original_language"),
-        "production_countries": country_names(
-            payload.get("production_countries")
-        ),
+        "production_countries": country_names(payload.get("production_countries")),
         "spoken_languages": names_from_list(payload.get("spoken_languages")),
         "genres": names_from_list(payload.get("genres")),
         "production_budget": payload.get("budget"),
@@ -466,9 +444,7 @@ def flat_record_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
         "overview": payload.get("overview"),
         "tagline": payload.get("tagline"),
         "keywords": normalize_keywords(payload),
-        "production_company": names_from_list(
-            payload.get("production_companies")
-        ),
+        "production_company": names_from_list(payload.get("production_companies")),
         "homepage": payload.get("homepage"),
         "poster_path": payload.get("poster_path"),
         "backdrop_path": payload.get("backdrop_path"),
@@ -527,7 +503,6 @@ def flat_columns() -> list[str]:
         "discover_page",
         "fetched_at",
         "source_dataset",
-        "ad_budget",
     ]
 
 
@@ -623,9 +598,7 @@ def run_backfill(config: BackfillConfig) -> BackfillState:
                         session,
                         f"{TMDB_API_URL}/movie/{tmdb_id}",
                         params={
-                            "append_to_response": ",".join(
-                                config.append_responses
-                            ),
+                            "append_to_response": ",".join(config.append_responses),
                             "include_image_language": "en,null",
                         },
                         config=config,
@@ -711,7 +684,6 @@ def build_flat_outputs(
     if df.empty:
         raise ValueError(f"No raw records found at {config.raw_jsonl_path}")
 
-    df = HeuristicEnricher(seed=config.seed).enrich(df)
     if "source_dataset" not in df.columns:
         df["source_dataset"] = "tmdb_backfill"
     df = df.sort_values(
@@ -722,22 +694,14 @@ def build_flat_outputs(
 
     duplicate_count = int(df["tmdb_id"].duplicated().sum())
     if duplicate_count:
-        raise ValueError(
-            f"Raw output contains {duplicate_count} duplicate TMDB IDs"
-        )
+        raise ValueError(f"Raw output contains {duplicate_count} duplicate TMDB IDs")
     if int((df["worldwide_gross"] < config.min_revenue).sum()):
-        raise ValueError(
-            "Flat output contains rows below the configured revenue floor"
-        )
+        raise ValueError("Flat output contains rows below the configured revenue floor")
 
-    subset_50m = df[
-        df["worldwide_gross"] >= config.fifty_million_revenue
-    ].copy()
+    subset_50m = df[df["worldwide_gross"] >= config.fifty_million_revenue].copy()
     existing_df = load_existing_flat_from_web(config.existing_web_data, config)
     combined_parts = [
-        part.dropna(axis=1, how="all")
-        for part in [existing_df, df]
-        if not part.empty
+        part.dropna(axis=1, how="all") for part in [existing_df, df] if not part.empty
     ]
     combined = pd.concat(combined_parts, ignore_index=True).reindex(
         columns=flat_columns()
@@ -759,9 +723,7 @@ def build_flat_outputs(
     combined.to_csv(config.combined_csv_path, index=False)
     combined.to_parquet(config.combined_parquet_path, index=False)
     combined_50m.to_csv(config.combined_fifty_million_csv_path, index=False)
-    combined_50m.to_parquet(
-        config.combined_fifty_million_parquet_path, index=False
-    )
+    combined_50m.to_parquet(config.combined_fifty_million_parquet_path, index=False)
 
     summary = build_summary(combined, combined_50m, config)
     summary.to_csv(config.summary_csv_path, index=False)
@@ -778,9 +740,7 @@ def build_flat_outputs(
         missingness,
         state,
     )
-    config.manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True)
-    )
+    config.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
     return manifest
 
 
@@ -797,38 +757,22 @@ def build_summary(
                 "row_count_5m": int(len(year_df)),
                 "row_count_50m": int(len(year_50m)),
                 "min_worldwide_gross": (
-                    int(year_df["worldwide_gross"].min())
-                    if not year_df.empty
-                    else None
+                    int(year_df["worldwide_gross"].min()) if not year_df.empty else None
                 ),
                 "max_worldwide_gross": (
-                    int(year_df["worldwide_gross"].max())
-                    if not year_df.empty
-                    else None
+                    int(year_df["worldwide_gross"].max()) if not year_df.empty else None
                 ),
                 "missing_imdb_id": int(year_df["imdb_id"].isna().sum()),
-                "missing_budget": int(
-                    year_df["production_budget"].isna().sum()
-                ),
-                "zero_budget": int(
-                    (year_df["production_budget"].fillna(0) == 0).sum()
-                ),
+                "missing_budget": int(year_df["production_budget"].isna().sum()),
+                "zero_budget": int((year_df["production_budget"].fillna(0) == 0).sum()),
                 "missing_runtime": int(year_df["runtime"].isna().sum()),
-                "missing_director": int(
-                    year_df["director"].fillna("").eq("").sum()
-                ),
-                "missing_actors": int(
-                    year_df["actors"].fillna("").eq("").sum()
-                ),
+                "missing_director": int(year_df["director"].fillna("").eq("").sum()),
+                "missing_actors": int(year_df["actors"].fillna("").eq("").sum()),
                 "missing_mpaa": int(year_df["mpaa"].fillna("").eq("").sum()),
                 "missing_poster": int(year_df["poster_path"].isna().sum()),
                 "missing_backdrop": int(year_df["backdrop_path"].isna().sum()),
-                "missing_keywords": int(
-                    year_df["keywords"].fillna("").eq("").sum()
-                ),
-                "missing_videos": int(
-                    year_df["video_count"].fillna(0).eq(0).sum()
-                ),
+                "missing_keywords": int(year_df["keywords"].fillna("").eq("").sum()),
+                "missing_videos": int(year_df["video_count"].fillna(0).eq(0).sum()),
             }
         )
     return pd.DataFrame(rows)
@@ -880,7 +824,8 @@ def build_manifest(
         int(year) for year in combined["release_year"].dropna().unique()
     )
     missing_years = [
-        year for year in range(config.start_year, config.end_year + 1)
+        year
+        for year in range(config.start_year, config.end_year + 1)
         if year not in set(coverage_years)
     ]
     return {
@@ -900,9 +845,7 @@ def build_manifest(
             "combined_csv_5m": str(config.combined_csv_path),
             "combined_parquet_5m": str(config.combined_parquet_path),
             "combined_csv_50m": str(config.combined_fifty_million_csv_path),
-            "combined_parquet_50m": str(
-                config.combined_fifty_million_parquet_path
-            ),
+            "combined_parquet_50m": str(config.combined_fifty_million_parquet_path),
             "summary_csv": str(config.summary_csv_path),
             "missingness_csv": str(config.missingness_csv_path),
         },
@@ -922,9 +865,7 @@ def build_manifest(
                 "tmdb_id": int(combined["tmdb_id"].isna().sum()),
                 "title": int(combined["title"].isna().sum()),
                 "release_date": int(combined["release_date"].isna().sum()),
-                "worldwide_gross": int(
-                    combined["worldwide_gross"].isna().sum()
-                ),
+                "worldwide_gross": int(combined["worldwide_gross"].isna().sum()),
             },
             "coverage_years": coverage_years,
             "missing_years": missing_years,
@@ -944,9 +885,7 @@ def positive_int(value: str) -> int:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Run a local-only rich TMDB backfill and derived flat exports."
-        )
+        description=("Run a local-only rich TMDB backfill and derived flat exports.")
     )
     parser.add_argument("--start-year", type=int, default=1980)
     parser.add_argument("--end-year", type=int, default=2026)
@@ -980,9 +919,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def config_from_args(args: argparse.Namespace) -> BackfillConfig:
     append_responses = tuple(
-        part.strip()
-        for part in str(args.append_responses).split(",")
-        if part.strip()
+        part.strip() for part in str(args.append_responses).split(",") if part.strip()
     )
     return BackfillConfig(
         start_year=args.start_year,

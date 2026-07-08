@@ -7,9 +7,10 @@ and incremental merge capabilities using TMDB_ID as primary key.
 
 import logging
 import re
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, Literal, Generator, Tuple, Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -94,7 +95,6 @@ EXPECTED_COLUMNS = [
     "overview",
     "tagline",
     "keywords",
-    "ad_budget",
     "production_company",
     "release_year",
     "worldwide_gross",
@@ -105,7 +105,6 @@ NUMERIC_COLUMNS = [
     "tmdb_id",
     "production_budget",
     "runtime",
-    "ad_budget",
     "release_year",
     "worldwide_gross",
 ]
@@ -133,7 +132,7 @@ class SnowflakeLoader:
     def __init__(
         self,
         schema: str = "RAW",
-        database: Optional[str] = None,
+        database: str | None = None,
         use_browser_auth: bool = False,
     ):
         # Validate identifiers up front so a compromised env var (e.g.
@@ -151,7 +150,7 @@ class SnowflakeLoader:
         return validate_sql_identifier(name, identifier_type)
 
     @contextmanager
-    def _snowflake_cursor(self) -> Generator[Tuple[Any, Any], None, None]:
+    def _snowflake_cursor(self) -> Generator[tuple[Any, Any], None, None]:
         """Yield ``(cursor, conn)`` and close both on exit."""
         conn = create_snowflake_connection(
             schema=self.schema, use_browser_auth=self.use_browser_auth

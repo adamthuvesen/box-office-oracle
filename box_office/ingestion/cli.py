@@ -1,7 +1,7 @@
 """
 Unified movie data ingestion CLI.
 
-Orchestrates the full pipeline: TMDB Discovery → Enrichment → Snowflake Load.
+Orchestrates the full pipeline: TMDB Discovery → Snowflake Load.
 
 Usage:
     # Full pipeline
@@ -9,9 +9,6 @@ Usage:
 
     # Discovery only
     box-office-ingest --discover-only --output movies_2024.csv
-
-    # Enrich existing CSV
-    box-office-ingest --enrich-only --input discovered.csv --output enriched.csv
 """
 
 import argparse
@@ -19,7 +16,6 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -43,8 +39,8 @@ def run_discovery(
     end_year: int,
     min_revenue: int,
     page_limit: int,
-    existing_csv: Optional[str] = None,
-    output_path: Optional[str] = None,
+    existing_csv: str | None = None,
+    output_path: str | None = None,
 ) -> pd.DataFrame:
     """Run TMDB discovery to find new movies."""
     get_existing_ids = tmdb_discovery.get_existing_ids
@@ -82,26 +78,13 @@ def run_discovery(
     return df
 
 
-def run_enrichment(df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
-    """Run heuristic enrichment on discovered movies."""
-    from box_office.ingestion.data_enrichment import HeuristicEnricher
-
-    logger.info(f"Enriching {len(df)} movies with heuristics...")
-
-    enricher = HeuristicEnricher(seed=seed)
-    df_enriched = enricher.enrich(df)
-
-    logger.info("Enrichment complete")
-    return df_enriched
-
-
 def run_snowflake_load(
     csv_path: str,
     table_name: str = "BOX_OFFICE_V3",
     schema: str = "RAW",
     mode: str = "merge",
 ) -> dict:
-    """Load enriched data to Snowflake."""
+    """Load discovery output to Snowflake."""
     from box_office.utils.snowflake_loader import SnowflakeLoader
 
     logger.info(f"Loading to Snowflake: {schema}.{table_name}")
@@ -128,7 +111,7 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
-    # Only rename if target doesn't already exist (preserve pre-mapped columns).
+    # Only rename if target doesn't already exist (preserve pre-mapped cols).
     rename_map = {
         k: v
         for k, v in column_mapping.items()
@@ -153,7 +136,6 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
         "overview",
         "tagline",
         "keywords",
-        "ad_budget",
         "production_company",
         "release_year",
         "worldwide_gross",
@@ -176,7 +158,7 @@ def prepare_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
 def main():
     """Main entry point for ingestion CLI."""
     parser = argparse.ArgumentParser(
-        description="Movie data ingestion pipeline: TMDB → Enrichment → Snowflake",
+        description="Movie data ingestion pipeline: TMDB → Snowflake",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -186,23 +168,16 @@ Examples:
   # Discovery only (save to CSV)
   box-office-ingest --discover-only --start-year 2024 --output movies_2024.csv
 
-  # Enrich existing CSV
-  box-office-ingest --enrich-only --input discovered.csv --output enriched.csv
-
   # Custom year range
   box-office-ingest --start-year 2020 --end-year 2023 --load-to-snowflake
         """,
     )
 
     # Mode selection
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
+    parser.add_argument(
         "--discover-only",
         action="store_true",
-        help="Only run TMDB discovery, skip enrichment and loading",
-    )
-    mode_group.add_argument(
-        "--enrich-only", action="store_true", help="Only run enrichment on existing CSV"
+        help="Only run TMDB discovery, skip Snowflake loading",
     )
 
     # Discovery options
@@ -235,16 +210,13 @@ Examples:
     )
 
     # I/O options
-    parser.add_argument(
-        "--input", dest="input_csv", help="Input CSV for enrich-only mode"
-    )
     parser.add_argument("--output", dest="output_csv", help="Output CSV path")
 
     # Snowflake options
     parser.add_argument(
         "--load-to-snowflake",
         action="store_true",
-        help="Load results to Snowflake after enrichment",
+        help="Load results to Snowflake after discovery",
     )
     parser.add_argument(
         "--table",
@@ -252,7 +224,9 @@ Examples:
         help="Target Snowflake table (default: BOX_OFFICE_V3)",
     )
     parser.add_argument(
-        "--schema", default="RAW", help="Target Snowflake schema (default: RAW)"
+        "--schema",
+        default="RAW",
+        help="Target Snowflake schema (default: RAW)",
     )
     parser.add_argument(
         "--mode",
@@ -261,13 +235,6 @@ Examples:
         help="Snowflake load mode (default: merge)",
     )
 
-    # Other options
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for heuristic enrichment (default: 42)",
-    )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
@@ -285,29 +252,14 @@ Examples:
     if args.output_csv is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         args.output_csv = (
-            f"data/generated/tmdb/"
-            f"ingested_movies_{args.start_year}_{args.end_year}_{timestamp}.csv"
+            f"data/generated/tmdb/ingested_movies_"
+            f"{args.start_year}_{args.end_year}_{timestamp}.csv"
         )
 
     logger.info("Movie Data Ingestion Pipeline")
 
     try:
-        if args.enrich_only:
-            if not args.input_csv:
-                logger.error("--input required for --enrich-only mode")
-                sys.exit(1)
-
-            logger.info("Mode: Enrich only")
-            logger.info(f"Input: {args.input_csv}")
-            logger.info(f"Output: {args.output_csv}")
-
-            df = pd.read_csv(args.input_csv)
-            df = run_enrichment(df, seed=args.seed)
-            df = prepare_for_snowflake(df)
-            path = _write_csv(df, args.output_csv)
-            logger.info(f"Saved enriched data to: {path}")
-
-        elif args.discover_only:
+        if args.discover_only:
             logger.info("Mode: Discovery only")
             logger.info(f"Years: {args.start_year}-{args.end_year}")
             logger.info(f"Output: {args.output_csv}")
@@ -340,17 +292,14 @@ Examples:
                 logger.info("No new movies discovered. Exiting.")
                 return 0
 
-            logger.info("\n--- Step 2: Heuristic Enrichment ---")
-            df = run_enrichment(df, seed=args.seed)
-
-            logger.info("\n--- Step 3: Prepare for Snowflake ---")
+            logger.info("\n--- Step 2: Prepare for Snowflake ---")
             df = prepare_for_snowflake(df)
 
             path = _write_csv(df, args.output_csv)
             logger.info(f"Saved to: {path}")
 
             if args.load_to_snowflake:
-                logger.info("\n--- Step 4: Load to Snowflake ---")
+                logger.info("\n--- Step 3: Load to Snowflake ---")
                 result = run_snowflake_load(
                     csv_path=args.output_csv,
                     table_name=args.table,

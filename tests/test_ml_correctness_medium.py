@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Requirement: NaN values SHALL NOT be silently coerced to zero
 # ---------------------------------------------------------------------------
@@ -33,7 +32,6 @@ class TestNaNPropagation:
                         "2023-08-20",
                     ]
                 ),
-                "AD_BUDGET": [5_000_000, 8_000_000, 6_000_000, 4_000_000, 7_000_000],
                 "PRODUCTION_BUDGET": [
                     50_000_000,
                     100_000_000,
@@ -47,6 +45,9 @@ class TestNaNPropagation:
                 "ACTORS": ["X, Y", "Z", "X", "W", "X"],
                 "MPAA": ["PG-13", "R", "PG", "PG-13", "PG-13"],
                 "GENRES": ["Action", "Drama", "Action, Adventure", "Comedy", "Drama"],
+                "IP_TIER": [5.0, 4.0, 5.0, 3.0, 5.0],
+                "PRIOR_FRANCHISE_GROSS_LOG": [0.0, 18.2, 0.0, 20.1, 0.0],
+                "IS_FRANCHISE_FOLLOWUP": [0.0, 1.0, 0.0, 1.0, 0.0],
             }
         )
         if with_nan_budget:
@@ -65,15 +66,14 @@ class TestNaNPropagation:
             with caplog.at_level(logging.WARNING):
                 features = pre.fit_transform(df)
 
-        # PRODUCTION_BUDGET NaN must propagate (or feed dependent ratios) and
-        # NOT be silently zeroed. The dependent TOTAL_BUDGET should also be NaN
-        # for that row.
-        assert (
-            features.loc[1, "PRODUCTION_BUDGET"] != 0
-        ), "Preprocessor silently coerced NaN PRODUCTION_BUDGET to 0"
+        # PRODUCTION_BUDGET NaN must propagate (or feed dependent features) and
+        # NOT be silently zeroed.
+        assert features.loc[1, "PRODUCTION_BUDGET"] != 0, (
+            "Preprocessor silently coerced NaN PRODUCTION_BUDGET to 0"
+        )
         assert pd.isna(features.loc[1, "PRODUCTION_BUDGET"]) or pd.isna(
-            features.loc[1, "AD_TO_PROD_RATIO"]
-        ), "NaN should propagate to PRODUCTION_BUDGET or a dependent ratio"
+            features.loc[1, "LOG_BUDGET_X_HORROR"]
+        ), "NaN should propagate to PRODUCTION_BUDGET or a dependent feature"
 
         # A WARNING with the column name is emitted.
         assert any(
@@ -256,7 +256,6 @@ class TestMissingCoreColumnSurface:
         df = pd.DataFrame(
             {
                 "RELEASE_YEAR": [2020, 2021],
-                "AD_BUDGET": [10, 20],
                 "PRODUCTION_BUDGET": [30, 40],
                 # RUNTIME deliberately missing
             }
@@ -281,7 +280,6 @@ class TestMissingCoreColumnSurface:
         df = pd.DataFrame(
             {
                 "RELEASE_YEAR": [2020],
-                "AD_BUDGET": [10],
                 "PRODUCTION_BUDGET": [30],
                 # RUNTIME deliberately missing
             }
@@ -382,12 +380,10 @@ class TestInflationDirection:
     """Spec: Inflation adjustment SHALL increase older budgets."""
 
     def _row(self, year: int, prod_budget: float) -> pd.DataFrame:
-        # Use ad_budget=0 so TOTAL_BUDGET == prod_budget for crisp asserts.
         return pd.DataFrame(
             {
                 "RELEASE_YEAR": [year],
                 "PRODUCTION_BUDGET": [prod_budget],
-                "AD_BUDGET": [0.0],
                 "YEARS_SINCE_2000": [max(0, year - 2000)],
             }
         )
@@ -398,9 +394,9 @@ class TestInflationDirection:
 
         df = self._row(year=1990, prod_budget=10_000_000.0)
         out = FinancialTransformer().transform(df)
-        assert (
-            out["BUDGET_INFLATION_ADJUSTED"].iloc[0] > 10_000_000.0
-        ), "1990 budget should be larger after CPI adjustment to 2024 anchor"
+        assert out["BUDGET_INFLATION_ADJUSTED"].iloc[0] > 10_000_000.0, (
+            "1990 budget should be larger after CPI adjustment to 2024 anchor"
+        )
 
     def test_anchor_year_budget_unchanged(self):
         """Spec scenario: Anchor-year budget is unchanged."""
@@ -435,9 +431,9 @@ class TestSnowflakeNaNToNone:
         df = loader.validate_schema(df)
         out = loader.transform_columns(df)
 
-        assert (
-            out["worldwide_gross"].iloc[1] is None
-        ), "NaN values should be converted to None (Python singleton)"
+        assert out["worldwide_gross"].iloc[1] is None, (
+            "NaN values should be converted to None (Python singleton)"
+        )
 
 
 # ---------------------------------------------------------------------------

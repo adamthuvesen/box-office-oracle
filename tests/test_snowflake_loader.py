@@ -1,15 +1,16 @@
 """Tests for the Snowflake CSV loader module."""
 
-import pytest
-import pandas as pd
+from unittest.mock import MagicMock, patch
+
 import numpy as np
-from unittest.mock import patch, MagicMock
+import pandas as pd
+import pytest
 
 from box_office.utils.snowflake_loader import (
-    SnowflakeLoader,
     EXPECTED_COLUMNS,
     NUMERIC_COLUMNS,
     STRING_COLUMNS,
+    SnowflakeLoader,
     fully_qualified_name,
 )
 
@@ -34,7 +35,6 @@ def sample_csv_data():
             "overview": ["A test movie overview", "Another overview"],
             "tagline": ["Tagline 1", "Tagline 2"],
             "keywords": ["action, blockbuster", "drama, indie"],
-            "ad_budget": [50000000, 25000000],
             "production_company": ["Studio A", "Studio B"],
             "release_year": [2024, 2024],
             "worldwide_gross": [500000000, 75000000],
@@ -154,7 +154,7 @@ class TestColumnTransformation:
 
 class TestExpectedColumns:
     def test_expected_columns_count(self):
-        assert len(EXPECTED_COLUMNS) == 20
+        assert len(EXPECTED_COLUMNS) == 19
 
     def test_primary_key_in_columns(self):
         assert "tmdb_id" in EXPECTED_COLUMNS

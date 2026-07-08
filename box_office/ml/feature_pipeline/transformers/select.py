@@ -27,7 +27,7 @@ class _DropPreEngineered(BaseEstimator, TransformerMixin):
         "PRODUCTION_COMPANY_ENCODED",
     )
 
-    def fit(self, X: pd.DataFrame, y=None) -> "_DropPreEngineered":
+    def fit(self, X: pd.DataFrame, y=None) -> _DropPreEngineered:
         self.is_fitted_ = True
         return self
 
@@ -42,7 +42,7 @@ class _SelectEngineered(BaseEstimator, TransformerMixin):
     def __init__(self, raw_cols=RAW_INPUT_COLUMNS_TO_DROP) -> None:
         self.raw_cols = tuple(raw_cols)
 
-    def fit(self, X: pd.DataFrame, y=None) -> "_SelectEngineered":
+    def fit(self, X: pd.DataFrame, y=None) -> _SelectEngineered:
         self.is_fitted_ = True
         return self
 
@@ -72,14 +72,14 @@ class FeatureSelector(BaseEstimator, TransformerMixin):
     keeps only the curated, decorrelated subset and fixes its order, so the
     feature contract lives in exactly one place (``SELECTED_FEATURES``) rather
     than being smeared across the transformers. Computing-then-projecting also
-    keeps intermediate dependencies intact (e.g. ``AD_TO_PROD_RATIO`` needs
-    ``AD_BUDGET``, which is not itself selected).
+    keeps intermediate dependencies intact (e.g. ``LOG_BUDGET_X_HORROR`` needs
+    ``GENRE_horror``, which is not itself selected).
     """
 
     def __init__(self, selected=SELECTED_FEATURES) -> None:
         self.selected = tuple(selected)
 
-    def fit(self, X: pd.DataFrame, y=None) -> "FeatureSelector":
+    def fit(self, X: pd.DataFrame, y=None) -> FeatureSelector:
         self.is_fitted_ = True
         return self
 

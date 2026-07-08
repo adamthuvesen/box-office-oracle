@@ -136,7 +136,6 @@ def test_flat_outputs_include_rich_fields_and_50m_subset(tmp_path):
                 "mpaa": "PG",
                 "runtime": 90,
                 "production_budget": 1_000_000,
-                "ad_budget": 250_000,
                 "production_company": "Existing Studio",
                 "overview": "Existing",
                 "tagline": "Existing",
@@ -156,12 +155,8 @@ def test_flat_outputs_include_rich_fields_and_50m_subset(tmp_path):
     )
     config.output_dir.mkdir(parents=True)
     rows = [
-        rich.raw_record_from_payload(
-            _payload(10, revenue=60_000_000), 2020, 1
-        ),
-        rich.raw_record_from_payload(
-            _payload(11, revenue=6_000_000), 2020, 2
-        ),
+        rich.raw_record_from_payload(_payload(10, revenue=60_000_000), 2020, 1),
+        rich.raw_record_from_payload(_payload(11, revenue=6_000_000), 2020, 2),
     ]
     for row in rows:
         rich.write_jsonl_record(config.raw_jsonl_path, row)
@@ -180,14 +175,8 @@ def test_flat_outputs_include_rich_fields_and_50m_subset(tmp_path):
     assert len(combined_subset) == 1
     assert set(subset["tmdb_id"]) == {10}
     assert set(combined["source_dataset"]) == {"web_existing", "tmdb_backfill"}
-    assert (
-        flat.loc[flat["tmdb_id"] == 10, "director"].iloc[0]
-        == "Director One"
-    )
-    assert (
-        flat.loc[flat["tmdb_id"] == 10, "keywords"].iloc[0]
-        == "space, quest"
-    )
+    assert flat.loc[flat["tmdb_id"] == 10, "director"].iloc[0] == "Director One"
+    assert flat.loc[flat["tmdb_id"] == 10, "keywords"].iloc[0] == "space, quest"
     assert flat.loc[flat["tmdb_id"] == 10, "mpaa"].iloc[0] == "PG-13"
     assert config.flat_parquet_path.exists()
     assert config.fifty_million_parquet_path.exists()

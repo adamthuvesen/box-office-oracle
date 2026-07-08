@@ -8,7 +8,6 @@ using both password and private key authentication methods.
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_private_key_from_file(
-    private_key_path: str, passphrase: Optional[str] = None
+    private_key_path: str, passphrase: str | None = None
 ) -> bytes:
     """Load a .p8 private key and return DER/PKCS8 bytes as expected by snowflake-connector-python."""
     if not os.path.exists(private_key_path):
@@ -49,13 +48,13 @@ def load_private_key_from_file(
     except Exception as e:
         raise ValueError(
             f"Failed to load private key from {private_key_path}: {str(e)}"
-        )
+        ) from e
 
 
 def create_snowflake_connection(
-    schema: Optional[str] = None,
+    schema: str | None = None,
     use_private_key: bool = True,
-    private_key_passphrase: Optional[str] = None,
+    private_key_passphrase: str | None = None,
     use_browser_auth: bool = False,
     **additional_params,
 ) -> snowflake.connector.SnowflakeConnection:
@@ -217,13 +216,11 @@ def enforce_data_types(df: pd.DataFrame, table_type: str = "training") -> pd.Dat
     numerical_columns = {
         "training": [
             "RELEASE_YEAR",
-            "AD_BUDGET",
             "PRODUCTION_BUDGET",
             "RUNTIME",
         ],
         "features": [
             "RELEASE_YEAR",
-            "AD_BUDGET",
             "PRODUCTION_BUDGET",
             "RUNTIME",
             "MPAA_ENCODED",
@@ -236,7 +233,6 @@ def enforce_data_types(df: pd.DataFrame, table_type: str = "training") -> pd.Dat
             "LEAD_ACTOR_FREQ",
             "AVG_ACTOR_FREQ",
             "MAX_ACTOR_FREQ",
-            "TOTAL_BUDGET",
             "YEARS_SINCE_2000",
         ],
         "target": ["GROSS_LOG", "WORLDWIDE_GROSS"],

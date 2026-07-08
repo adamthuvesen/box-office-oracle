@@ -1,7 +1,7 @@
 """Tests for ML edge cases and critical path validation."""
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 
@@ -14,7 +14,7 @@ class TestCrossValidationIndexHandling:
         Data is constructed deterministically with a fixed number of rows per
         year so every fold the splitter produces is non-empty.
         """
-        from box_office.ml.model import TimeSeriesCrossValidator, BoxOfficeXGBoostModel
+        from box_office.ml.model import BoxOfficeXGBoostModel, TimeSeriesCrossValidator
 
         np.random.seed(42)
 
@@ -61,7 +61,7 @@ class TestCrossValidationIndexHandling:
 
     def test_oof_predictions_align_with_source_rows(self):
         """OOF predictions preserve their source-row alignment."""
-        from box_office.ml.model import TimeSeriesCrossValidator, BoxOfficeXGBoostModel
+        from box_office.ml.model import BoxOfficeXGBoostModel, TimeSeriesCrossValidator
 
         np.random.seed(7)
         n_samples = 60
@@ -119,18 +119,22 @@ class TestFeatureAccumulationDuplicateColumns:
         from box_office.ml.feature_pipeline import _column
 
         df_with_duplicates = pd.DataFrame()
-        df_with_duplicates["TOTAL_BUDGET"] = ["not_a_number", "also_not"]  # raw
+        # raw
+        df_with_duplicates["LOG_PRODUCTION_BUDGET"] = [
+            "not_a_number",
+            "also_not",
+        ]
         df_with_duplicates = pd.concat(
             [
                 df_with_duplicates,
                 pd.DataFrame(
-                    {"TOTAL_BUDGET": [1000000.0, 2000000.0]}
+                    {"LOG_PRODUCTION_BUDGET": [1000000.0, 2000000.0]}
                 ),  # engineered (last)
             ],
             axis=1,
         )
 
-        result = _column(df_with_duplicates, "TOTAL_BUDGET")
+        result = _column(df_with_duplicates, "LOG_PRODUCTION_BUDGET")
         assert result.dtype in [np.float64, np.int64]
         assert result.iloc[0] == 1000000.0
 
@@ -141,7 +145,6 @@ class TestFeatureAccumulationDuplicateColumns:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-06-15", "2021-12-20"]),
-                "AD_BUDGET": [500000, 600000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
@@ -237,7 +240,6 @@ class TestTransformerSanityChecks:
             {
                 "RELEASE_YEAR": [2020, 2021],
                 "RELEASE_DATE": pd.to_datetime(["2020-06-15", "2021-12-20"]),
-                "AD_BUDGET": [500000, 600000],
                 "PRODUCTION_BUDGET": [1000000, 2000000],
                 "RUNTIME": [120, 130],
                 "DIRECTOR": ["Dir A", "Dir B"],
@@ -292,9 +294,11 @@ class TestTransformerSanityChecks:
 
     def test_financial_transformer_with_context(self, sample_data):
         """FinancialTransformer needs accumulated features from upstream transformers."""
-        from box_office.ml.feature_pipeline import CoreNumericalTransformer
-        from box_office.ml.feature_pipeline import TemporalTransformer
-        from box_office.ml.feature_pipeline import FinancialTransformer
+        from box_office.ml.feature_pipeline import (
+            CoreNumericalTransformer,
+            FinancialTransformer,
+            TemporalTransformer,
+        )
 
         core = CoreNumericalTransformer()
         temporal = TemporalTransformer()
@@ -308,8 +312,7 @@ class TestTransformerSanityChecks:
         result = financial.transform(accumulated)
 
         assert len(result) == 2
-        assert "TOTAL_BUDGET" in result.columns
-        assert "AD_TO_PROD_RATIO" in result.columns
+        assert "LOG_PRODUCTION_BUDGET" in result.columns
 
 
 class TestSharedUtilities:
