@@ -1,0 +1,520 @@
+# IP classification rules.
+#
+# ip_tier = how pre-sold the property was AT THE MOVIE'S RELEASE DATE,
+# computed only from information available before that date:
+#   1 major   brand rule says tier 1 at that date, or prior-films gross >= tier_1
+#   2 strong  brand rule tier 2, or prior gross >= tier_2
+#   3 established  brand rule tier 3, prior gross >= tier_3, or a source_works
+#     rule (adaptation of a source with documented pre-release success)
+#   4 nominal IP   adaptation/remake/sequel/public-domain source with no
+#     documented pre-sold magnitude
+#   5 none    original screenplays
+#
+# tier_by_period entries need a `basis` citing a fact documentable BEFORE
+# from_year — never a movie outcome that postdates from_year. When in doubt,
+# use the lower tier: under-crediting is honest, over-crediting is hindsight.
+version: 2
+tier_thresholds:
+  prior_franchise_gross:
+    tier_1: 1500000000
+    tier_2: 500000000
+    tier_3: 100000000
+
+umbrella_brands:
+  - name: Transformers
+    origin: toy
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1986
+        tier: 2
+        basis: "Top-selling Hasbro toy line since 1984 plus the daily animated series (1984-1987)"
+    patterns:
+      title:
+        - "\\btransformers\\b"
+      collection:
+        - "\\btransformers\\b"
+  - name: Sonic the Hedgehog
+    origin: video_game
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1993
+        tier: 2
+        basis: "Sega's mascot; Sonic the Hedgehog (1991) and Sonic 2 (1992) were best-selling Genesis games"
+    patterns:
+      title:
+        - "\\bsonic the hedgehog\\b"
+      collection:
+        - "\\bsonic the hedgehog\\b"
+  - name: LEGO
+    origin: toy
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 2
+        basis: "Globally dominant construction-toy brand for decades before any film"
+    patterns:
+      title:
+        - "\\blego\\b"
+      collection:
+        - "\\blego\\b"
+  - name: Godzilla
+    origin: original_film
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 2
+        basis: "Decades of Toho films since 1954; internationally recognized character by 1980"
+    patterns:
+      title:
+        - "\\bgodzilla\\b"
+      collection:
+        - "\\bgodzilla\\b"
+        - "\\bmonsterverse\\b"
+  - name: Teenage Mutant Ninja Turtles
+    origin: comic
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1989
+        tier: 2
+        basis: "Hit 1987 animated series and top-selling toy line built on the 1984 comics"
+    patterns:
+      title:
+        - "\\bteenage mutant ninja turtles\\b"
+      collection:
+        - "\\bteenage mutant ninja turtles\\b"
+  - name: Marvel
+    origin: comic
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 2
+        basis: "Decades of widely circulated Marvel comics; characters famous before any modern film"
+      - from_year: 2013
+        tier: 1
+        basis: "The Avengers (2012) capped a run of MCU hits, making Marvel a top film brand"
+    patterns:
+      title:
+        - "\\b(iron man|captain america|thor|black panther|doctor strange|guardians of the galaxy|ant-man|deadpool|x-men|wolverine|fantastic four|spider-man|venom|morbius)\\b"
+        - "^blade(?! runner)\\b"
+      collection:
+        - "\\b(avengers|iron man|captain america|thor|black panther|doctor strange|guardians of the galaxy|ant-man|deadpool|x-men|wolverine|fantastic four|spider-man|venom)\\b"
+        - "^blade collection$"
+      company:
+        - "\\bmarvel\\b"
+      keyword:
+        - "\\bmarvel cinematic universe\\b"
+  - name: DC
+    origin: comic
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 1
+        basis: "40+ years of Batman/Superman comics fame plus the Superman (1978) film hit"
+    patterns:
+      title:
+        - "^the flash$"
+        - "\\b(batman|superman|joker|wonder woman|aquaman|shazam|suicide squad|green lantern|supergirl|constantine|blue beetle|justice league)\\b"
+      collection:
+        - "\\b(batman|superman|wonder woman|aquaman|suicide squad|man of steel|the dark knight|shazam)\\b"
+      company:
+        - "\\bdc (comics|entertainment|films|studios)\\b"
+      keyword:
+        - "\\b(bruce wayne|clark kent|gotham city|dc extended universe|based on dc comics)\\b"
+  - name: Star Wars
+    origin: original_film
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 1
+        basis: "Star Wars (1977) was a cultural phenomenon and record-setting hit before 1980"
+    patterns:
+      title:
+        - "\\bstar wars\\b"
+      collection:
+        - "\\bstar wars\\b"
+  - name: Wizarding World
+    origin: book
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1999
+        tier: 1
+        basis: "Harry Potter novels were record-breaking global bestsellers before any film"
+    patterns:
+      title:
+        - "\\bharry potter\\b"
+        - "\\bfantastic beasts\\b"
+      collection:
+        - "\\bharry potter\\b"
+        - "\\bfantastic beasts\\b"
+      keyword:
+        - "\\bschool of witchcraft\\b"
+        - "\\bwizarding world\\b"
+  - name: Barbie
+    origin: toy
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 2
+        basis: "Mattel's dominant fashion-doll line since 1959"
+    patterns:
+      title:
+        - "\\bbarbie\\b"
+      keyword:
+        - "\\bbarbie\\b"
+  - name: Super Mario
+    origin: video_game
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1990
+        tier: 1
+        basis: "Super Mario Bros. (1985) and sequels were the best-selling video games in history by 1990"
+    patterns:
+      title:
+        - "\\bsuper mario\\b"
+        - "\\bmario bros\\b"
+      collection:
+        - "\\bsuper mario\\b"
+  - name: Pokemon
+    origin: video_game
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1998
+        tier: 1
+        basis: "Pokemon games (1996) and TV series were a global phenomenon before any film"
+    patterns:
+      title:
+        - "\\bpok[eé]mon\\b"
+      keyword:
+        - "\\bpok[eé]mon\\b"
+        - "\\bpikachu\\b"
+  - name: Jurassic Park
+    origin: book
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1992
+        tier: 2
+        basis: "Michael Crichton's Jurassic Park (1990) was a major bestseller"
+      - from_year: 1994
+        tier: 1
+        basis: "Jurassic Park (1993) became the highest-grossing film to date"
+    patterns:
+      title:
+        - "\\bjurassic (park|world)\\b"
+      collection:
+        - "\\bjurassic park\\b"
+      keyword:
+        - "\\bjurassic\\b"
+  - name: James Bond
+    origin: book
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 1
+        basis: "Fleming's bestselling novels plus the hit 1962-1979 film series"
+    patterns:
+      collection:
+        - "\\bjames bond\\b"
+  # Avatar and Despicable Me: original films with no pre-release basis for
+  # the first film; later films rise via prior_franchise_gross only.
+  - name: Avatar
+    origin: original_film
+    rights_status: copyrighted
+    patterns:
+      title:
+        - "\\bavatar\\b"
+      collection:
+        - "\\bavatar\\b"
+  - name: Despicable Me
+    origin: original_film
+    rights_status: copyrighted
+    patterns:
+      title:
+        - "\\bdespicable me\\b"
+        - "\\bminions?\\b"
+      collection:
+        - "\\bdespicable me\\b"
+        - "\\bminions?\\b"
+  - name: Middle-earth
+    origin: book
+    rights_status: copyrighted
+    tier_by_period:
+      - from_year: 1980
+        tier: 2
+        basis: "The Lord of the Rings and The Hobbit were among the best-selling novels of the century"
+      - from_year: 2003
+        tier: 1
+        basis: "Fellowship (2001) and The Two Towers (2002) were global blockbusters"
+    patterns:
+      title:
+        - "\\blord of the rings\\b"
+        - "\\bthe hobbit\\b"
+      collection:
+        - "\\blord of the rings\\b"
+        - "\\bthe hobbit\\b"
+  - name: Disney Princess/Fairy Tales
+    origin: public_domain
+    rights_status: public_domain
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain fairy tales known worldwide for over a century"
+    patterns:
+      title:
+        - "\\bcinderella\\b(?! man)"
+        - "\\b(snow white|the little mermaid|beauty and the beast|aladdin|mulan)\\b"
+
+public_domain_brands:
+  - name: Dracula
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain classic character with a century of adaptations"
+    patterns:
+      title:
+        - "\\bdracula\\b"
+  - name: Sherlock Holmes
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain classic character with a century of adaptations"
+    patterns:
+      title:
+        - "\\bsherlock holmes\\b"
+  - name: Robin Hood
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain legend adapted continuously since the silent era"
+    patterns:
+      title:
+        - "\\brobin hood\\b"
+  - name: Peter Pan
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain classic character with a century of adaptations"
+    patterns:
+      title:
+        - "\\bpeter pan\\b"
+  - name: Pinocchio
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain classic character with a century of adaptations"
+    patterns:
+      title:
+        - "\\bpinocchio\\b"
+  - name: King Arthur
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain legend adapted continuously since the silent era"
+    patterns:
+      title:
+        - "\\bking arthur\\b"
+        - "^excalibur$"
+  - name: Frankenstein
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain classic character with a century of adaptations"
+    patterns:
+      title:
+        - "\\bfrankenstein\\b"
+  - name: Tarzan
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain classic character with a century of adaptations"
+    patterns:
+      title:
+        - "\\btarzan\\b"
+  - name: Hercules
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain mythological figure known worldwide"
+    patterns:
+      title:
+        - "\\bhercules\\b"
+  - name: Wizard of Oz
+    tier_by_period:
+      - from_year: 1980
+        tier: 3
+        basis: "Public-domain classic novel plus the beloved 1939 film"
+    patterns:
+      title:
+        - "\\bwizard of oz\\b"
+        - "\\breturn to oz\\b"
+        - "^oz the great and powerful$"
+
+# Adaptations of a specific non-umbrella source with a documented
+# pre-release success basis -> tier 3. `basis` must predate `from_year`.
+source_works:
+  - name: The Godfather
+    from_year: 1980
+    basis: "Mario Puzo's The Godfather (1969) was a #1 bestseller; 1972/1974 films were hits"
+    patterns:
+      title:
+        - "\\bthe godfather\\b"
+  - name: The Exorcist
+    from_year: 1980
+    basis: "Blatty's The Exorcist (1971) was a bestseller; the 1973 film a phenomenon"
+    patterns:
+      title:
+        - "\\bexorcist\\b"
+  - name: Jaws
+    from_year: 1980
+    basis: "Benchley's Jaws (1974) was a bestseller; the 1975 film broke box-office records"
+    patterns:
+      title:
+        - "\\bjaws\\b"
+  - name: The Shining
+    from_year: 1980
+    basis: "Stephen King's The Shining (1977) was a bestseller"
+    patterns:
+      title:
+        - "\\bthe shining\\b"
+  - name: Dune
+    from_year: 1980
+    basis: "Frank Herbert's Dune (1965) was the best-selling science fiction novel of its era"
+    patterns:
+      title:
+        - "\\bdune\\b"
+  - name: Bridget Jones
+    from_year: 1999
+    basis: "Fielding's Bridget Jones's Diary (1996) was a bestselling novel"
+    patterns:
+      title:
+        - "\\bbridget jones\\b"
+  - name: The Da Vinci Code
+    from_year: 2004
+    basis: "Dan Brown's The Da Vinci Code (2003) was a record-breaking bestseller"
+    patterns:
+      title:
+        - "\\bthe da vinci code\\b"
+        - "\\bangels & demons\\b"
+        - "^inferno$"
+  - name: Twilight
+    from_year: 2007
+    basis: "Meyer's Twilight novels (2005-) were young-adult bestsellers before any film"
+    patterns:
+      title:
+        - "\\btwilight saga\\b"
+        - "^twilight$"
+      collection:
+        - "\\btwilight\\b"
+  - name: The Hunger Games
+    from_year: 2009
+    basis: "Collins's The Hunger Games (2008) was a young-adult bestseller"
+    patterns:
+      title:
+        - "\\bhunger games\\b"
+      collection:
+        - "\\bhunger games\\b"
+  - name: Fifty Shades
+    from_year: 2012
+    basis: "James's Fifty Shades of Grey (2011) was a record-selling novel"
+    patterns:
+      title:
+        - "\\bfifty shades\\b"
+      collection:
+        - "\\bfifty shades\\b"
+  - name: Ready Player One
+    from_year: 2012
+    basis: "Cline's Ready Player One (2011) was a bestselling novel"
+    patterns:
+      title:
+        - "\\bready player one\\b"
+  - name: The Martian
+    from_year: 2014
+    basis: "Weir's The Martian became a bestseller with the 2014 Crown edition"
+    patterns:
+      title:
+        - "^the martian$"
+  - name: American Sniper
+    from_year: 2013
+    basis: "Kyle's American Sniper (2012) was a #1 bestselling memoir"
+    patterns:
+      title:
+        - "\\bamerican sniper\\b"
+  - name: The Fault in Our Stars
+    from_year: 2013
+    basis: "Green's The Fault in Our Stars (2012) was a #1 young-adult bestseller"
+    patterns:
+      title:
+        - "\\bthe fault in our stars\\b"
+  - name: Gone Girl
+    from_year: 2013
+    basis: "Flynn's Gone Girl (2012) was a #1 bestseller"
+    patterns:
+      title:
+        - "^gone girl$"
+  - name: Crazy Rich Asians
+    from_year: 2014
+    basis: "Kwan's Crazy Rich Asians (2013) was a bestselling novel"
+    patterns:
+      title:
+        - "\\bcrazy rich asians\\b"
+
+# Provenance only (ip_source_type); adaptations default to tier 4 unless a
+# brand rule, prior-franchise gross, or source_works rule raises them.
+source_mappings:
+  - source_type: comic
+    patterns:
+      keyword:
+        - "\\bbased on comic\\b"
+        - "\\bbased on graphic novel\\b"
+  - source_type: book
+    patterns:
+      keyword:
+        - "\\bbased on novel or book\\b"
+        - "\\bbased on young adult novel\\b"
+  - source_type: video_game
+    patterns:
+      keyword:
+        - "\\bbased on video game\\b"
+        - "\\bbased on game\\b"
+  - source_type: toy
+    patterns:
+      keyword:
+        - "\\bbased on toy\\b"
+  - source_type: tv
+    patterns:
+      keyword:
+        - "\\bbased on tv series\\b"
+        - "\\bbased on television\\b"
+  - source_type: play_or_musical
+    patterns:
+      keyword:
+        - "\\bbased on play or musical\\b"
+        - "\\bbased on musical\\b"
+  - source_type: remake
+    sequel_or_spinoff: true
+    patterns:
+      keyword:
+        - "\\bremake\\b"
+        - "\\breboot\\b"
+  - source_type: sequel_or_spinoff
+    sequel_or_spinoff: true
+    patterns:
+      keyword:
+        - "\\bsequel\\b"
+        - "\\bprequel\\b"
+        - "\\bspin[- ]?off\\b"
+
+awareness_sources:
+  - name: true_story
+    patterns:
+      keyword:
+        - "\\bbased on true story\\b"
+        - "\\btrue story\\b"
+  - name: biography
+    patterns:
+      keyword:
+        - "\\bbiography\\b"
+        - "\\bbiopic\\b"
+  - name: historical_event
+    patterns:
+      keyword:
+        - "\\bhistorical event\\b"
