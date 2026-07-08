@@ -1,0 +1,357 @@
+{
+  "settings": {
+    "mode": "iteration",
+    "start_eval_year": 2015,
+    "end_year": 2023,
+    "recent_window_start": 2023,
+    "cv_folds": 9,
+    "feature_schema_version": "9",
+    "leakage_free_cv": true
+  },
+  "recent_window": {
+    "years": "2023-2023",
+    "n_movies": 116,
+    "mean_r2_log": 0.6280733690493054,
+    "pooled_median_ape": 0.520353216952622
+  },
+  "full_window": {
+    "years": "2015-2023",
+    "n_movies": 1156,
+    "mean_r2_log": 0.6018251878505639,
+    "pooled_median_ape": 0.5076140667494797
+  },
+  "mean_cv_mae_log": 0.6958395423667485,
+  "std_cv_mae_log": 0.048824681895904096,
+  "mean_cv_rmsle": 0.880171793920485,
+  "per_year": [
+    {
+      "year": 2015,
+      "n_movies": 158,
+      "baseline_r2_log": 0.392963901,
+      "model_r2_log": 0.6769912833,
+      "gain_r2_log": 0.2840273823,
+      "baseline_spearman": 0.6948547469,
+      "model_spearman": 0.7960414325,
+      "baseline_r2": 0.105010174,
+      "model_r2": 0.666781562,
+      "gain_r2": 0.561771388,
+      "model_rmsle": 0.806270977,
+      "model_median_ape": 0.4476027538
+    },
+    {
+      "year": 2016,
+      "n_movies": 181,
+      "baseline_r2_log": 0.4971374341,
+      "model_r2_log": 0.6282674594,
+      "gain_r2_log": 0.1311300252,
+      "baseline_spearman": 0.7337118533,
+      "model_spearman": 0.7782925436,
+      "baseline_r2": 0.170856371,
+      "model_r2": 0.6487029565,
+      "gain_r2": 0.4778465855,
+      "model_rmsle": 0.8610980304,
+      "model_median_ape": 0.514131076
+    },
+    {
+      "year": 2017,
+      "n_movies": 164,
+      "baseline_r2_log": 0.4270865821,
+      "model_r2_log": 0.6475357417,
+      "gain_r2_log": 0.2204491596,
+      "baseline_spearman": 0.6481656477,
+      "model_spearman": 0.7591854502,
+      "baseline_r2": 0.1645700572,
+      "model_r2": 0.670328028,
+      "gain_r2": 0.5057579708,
+      "model_rmsle": 0.8858211504,
+      "model_median_ape": 0.5510887479
+    },
+    {
+      "year": 2018,
+      "n_movies": 163,
+      "baseline_r2_log": 0.4374295071,
+      "model_r2_log": 0.6666833356,
+      "gain_r2_log": 0.2292538285,
+      "baseline_spearman": 0.693802622,
+      "model_spearman": 0.7878586352,
+      "baseline_r2": 0.1373223092,
+      "model_r2": 0.7057117508,
+      "gain_r2": 0.5683894416,
+      "model_rmsle": 0.8462483963,
+      "model_median_ape": 0.4350037533
+    },
+    {
+      "year": 2019,
+      "n_movies": 132,
+      "baseline_r2_log": 0.4200006657,
+      "model_r2_log": 0.6423656025,
+      "gain_r2_log": 0.2223649368,
+      "baseline_spearman": 0.6473720741,
+      "model_spearman": 0.7519892723,
+      "baseline_r2": 0.1410197847,
+      "model_r2": 0.7218579885,
+      "gain_r2": 0.5808382037,
+      "model_rmsle": 0.8341931369,
+      "model_median_ape": 0.457561392
+    },
+    {
+      "year": 2020,
+      "n_movies": 53,
+      "baseline_r2_log": 0.1762560367,
+      "model_r2_log": 0.4388067331,
+      "gain_r2_log": 0.2625506964,
+      "baseline_spearman": 0.5583585284,
+      "model_spearman": 0.6863409128,
+      "baseline_r2": 0.4313856181,
+      "model_r2": 0.4645252606,
+      "gain_r2": 0.0331396426,
+      "model_rmsle": 0.891542962,
+      "model_median_ape": 0.568950255
+    },
+    {
+      "year": 2021,
+      "n_movies": 89,
+      "baseline_r2_log": 0.2848713694,
+      "model_r2_log": 0.5044153654,
+      "gain_r2_log": 0.219543996,
+      "baseline_spearman": 0.5525784671,
+      "model_spearman": 0.6764555669,
+      "baseline_r2": 0.1887122606,
+      "model_r2": 0.409022666,
+      "gain_r2": 0.2203104054,
+      "model_rmsle": 0.9245705402,
+      "model_median_ape": 0.5661750838
+    },
+    {
+      "year": 2022,
+      "n_movies": 100,
+      "baseline_r2_log": 0.425699112,
+      "model_r2_log": 0.5832878006,
+      "gain_r2_log": 0.1575886886,
+      "baseline_spearman": 0.6701749844,
+      "model_spearman": 0.7247486491,
+      "baseline_r2": 0.2579263593,
+      "model_r2": 0.4383181506,
+      "gain_r2": 0.1803917913,
+      "model_rmsle": 0.9536275018,
+      "model_median_ape": 0.6169000171
+    },
+    {
+      "year": 2023,
+      "n_movies": 116,
+      "baseline_r2_log": 0.4051963156,
+      "model_r2_log": 0.628073369,
+      "gain_r2_log": 0.2228770535,
+      "baseline_spearman": 0.6547204363,
+      "model_spearman": 0.7904432399,
+      "baseline_r2": 0.1798921757,
+      "model_r2": 0.2562573368,
+      "gain_r2": 0.0763651611,
+      "model_rmsle": 0.9181734502,
+      "model_median_ape": 0.5203532176
+    }
+  ],
+  "delta_vs_committed": [
+    {
+      "year": 2015,
+      "n_old": 110,
+      "n_new": 158,
+      "model_r2_log_old": 0.6706836622,
+      "model_r2_log_new": 0.6769912833,
+      "delta_r2_log": 0.0063076211,
+      "model_spearman_old": 0.7805378356,
+      "model_spearman_new": 0.7960414325,
+      "delta_spearman": 0.0155035969,
+      "median_ape_old": 0.4073497582,
+      "median_ape_new": 0.4476027538,
+      "delta_median_ape": 0.0402529956
+    },
+    {
+      "year": 2016,
+      "n_old": 119,
+      "n_new": 181,
+      "model_r2_log_old": 0.6340240468,
+      "model_r2_log_new": 0.6282674594,
+      "delta_r2_log": -0.0057565874,
+      "model_spearman_old": 0.7901865831,
+      "model_spearman_new": 0.7782925436,
+      "delta_spearman": -0.0118940395,
+      "median_ape_old": 0.4040525,
+      "median_ape_new": 0.514131076,
+      "delta_median_ape": 0.110078576
+    },
+    {
+      "year": 2017,
+      "n_old": 108,
+      "n_new": 164,
+      "model_r2_log_old": 0.5971872467,
+      "model_r2_log_new": 0.6475357417,
+      "delta_r2_log": 0.050348495,
+      "model_spearman_old": 0.743605133,
+      "model_spearman_new": 0.7591854502,
+      "delta_spearman": 0.0155803172,
+      "median_ape_old": 0.4643784578,
+      "median_ape_new": 0.5510887479,
+      "delta_median_ape": 0.0867102901
+    },
+    {
+      "year": 2018,
+      "n_old": 111,
+      "n_new": 163,
+      "model_r2_log_old": 0.6397354211,
+      "model_r2_log_new": 0.6666833356,
+      "delta_r2_log": 0.0269479145,
+      "model_spearman_old": 0.7651368901,
+      "model_spearman_new": 0.7878586352,
+      "delta_spearman": 0.0227217451,
+      "median_ape_old": 0.3887634474,
+      "median_ape_new": 0.4350037533,
+      "delta_median_ape": 0.0462403059
+    },
+    {
+      "year": 2019,
+      "n_old": 104,
+      "n_new": 132,
+      "model_r2_log_old": 0.6498159793,
+      "model_r2_log_new": 0.6423656025,
+      "delta_r2_log": -0.0074503768,
+      "model_spearman_old": 0.7766104145,
+      "model_spearman_new": 0.7519892723,
+      "delta_spearman": -0.0246211422,
+      "median_ape_old": 0.4523913918,
+      "median_ape_new": 0.457561392,
+      "delta_median_ape": 0.0051700002
+    },
+    {
+      "year": 2020,
+      "n_old": 56,
+      "n_new": 53,
+      "model_r2_log_old": -0.4979907211,
+      "model_r2_log_new": 0.4388067331,
+      "delta_r2_log": 0.9367974542,
+      "model_spearman_old": 0.6477101846,
+      "model_spearman_new": 0.6863409128,
+      "delta_spearman": 0.0386307282,
+      "median_ape_old": 2.4438451779,
+      "median_ape_new": 0.568950255,
+      "delta_median_ape": -1.8748949229
+    },
+    {
+      "year": 2021,
+      "n_old": 92,
+      "n_new": 89,
+      "model_r2_log_old": 0.4500461353,
+      "model_r2_log_new": 0.5044153654,
+      "delta_r2_log": 0.0543692301,
+      "model_spearman_old": 0.5880122682,
+      "model_spearman_new": 0.6764555669,
+      "delta_spearman": 0.0884432987,
+      "median_ape_old": 0.6298479342,
+      "median_ape_new": 0.5661750838,
+      "delta_median_ape": -0.0636728504
+    },
+    {
+      "year": 2022,
+      "n_old": 96,
+      "n_new": 100,
+      "model_r2_log_old": 0.5399054098,
+      "model_r2_log_new": 0.5832878006,
+      "delta_r2_log": 0.0433823908,
+      "model_spearman_old": 0.6696147585,
+      "model_spearman_new": 0.7247486491,
+      "delta_spearman": 0.0551338906,
+      "median_ape_old": 0.6605269931,
+      "median_ape_new": 0.6169000171,
+      "delta_median_ape": -0.043626976
+    },
+    {
+      "year": 2023,
+      "n_old": 117,
+      "n_new": 116,
+      "model_r2_log_old": 0.5990640099,
+      "model_r2_log_new": 0.628073369,
+      "delta_r2_log": 0.0290093591,
+      "model_spearman_old": 0.76317643,
+      "model_spearman_new": 0.7904432399,
+      "delta_spearman": 0.0272668099,
+      "median_ape_old": 0.6262963185,
+      "median_ape_new": 0.5203532176,
+      "delta_median_ape": -0.1059431009
+    }
+  ],
+  "overlap_per_year": [
+    {
+      "year": 2015,
+      "n_movies": 90,
+      "model_r2_log": 0.5976385625,
+      "model_spearman": 0.8433386838,
+      "model_median_ape": 0.3797281646
+    },
+    {
+      "year": 2016,
+      "n_movies": 96,
+      "model_r2_log": 0.39464625,
+      "model_spearman": 0.7250949539,
+      "model_median_ape": 0.3779124775
+    },
+    {
+      "year": 2017,
+      "n_movies": 79,
+      "model_r2_log": 0.2496470519,
+      "model_spearman": 0.7022638754,
+      "model_median_ape": 0.4946026706
+    },
+    {
+      "year": 2018,
+      "n_movies": 91,
+      "model_r2_log": 0.5459442461,
+      "model_spearman": 0.7403726708,
+      "model_median_ape": 0.4067454186
+    },
+    {
+      "year": 2019,
+      "n_movies": 70,
+      "model_r2_log": 0.5216271474,
+      "model_spearman": 0.7981978829,
+      "model_median_ape": 0.412358339
+    },
+    {
+      "year": 2020,
+      "n_movies": 32,
+      "model_r2_log": 0.3835886819,
+      "model_spearman": 0.5139296188,
+      "model_median_ape": 0.5113465811
+    },
+    {
+      "year": 2021,
+      "n_movies": 58,
+      "model_r2_log": 0.5378115732,
+      "model_spearman": 0.6837798763,
+      "model_median_ape": 0.5329673677
+    },
+    {
+      "year": 2022,
+      "n_movies": 59,
+      "model_r2_log": 0.5233716616,
+      "model_spearman": 0.7014611338,
+      "model_median_ape": 0.5734608273
+    },
+    {
+      "year": 2023,
+      "n_movies": 57,
+      "model_r2_log": 0.5048186664,
+      "model_spearman": 0.7450738916,
+      "model_median_ape": 0.5325653777
+    }
+  ],
+  "overlap_note": "Overlap key: (release_year, runtime, production_budget) \u2014 the old snapshot has no imdb_id or title, so this match is approximate. 1988 of 6073 new rows matched 2762 old rows.",
+  "dropped_rows": {
+    "drop_counts": {
+      "gross_not_final_future_year": 55,
+      "runtime_under_60_non_feature": 10,
+      "no_reliable_worldwide_gross": 10,
+      "gross_over_100m_with_no_documented_budget": 3
+    },
+    "n_dropped": 75
+  }
+}
