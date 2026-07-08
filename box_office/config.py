@@ -64,7 +64,10 @@ class _ModelCV:
 
 @dataclass(frozen=True)
 class _ModelView:
-    promotion_threshold: float = 0.75
+    # Minimum pooled OOF R² (dollar space) for promotion. Calibrated against
+    # the leakage-free v9 backtest (results/local_retrain/report.md), not the
+    # pre-leakage-fix numbers that justified the old 0.75 bar.
+    promotion_threshold: float = 0.55
     auto_approve_models: bool = False
     artifacts_dir: str = "artifacts"
     hyperparameters: _ModelHyperparams = _ModelHyperparams()
