@@ -6,13 +6,17 @@ sources:
     database: BOX_OFFICE
     schema: RAW
     tables:
-      - name: BOX_OFFICE_V3
+      - name: BOX_OFFICE_V4
         description: >
-          Raw movie dataset with box office performance, budgets, and metadata.
-          Duplicate tmdb_id values can occur in this table; stg_box_office
-          deduplicates to one row per TMDB_ID by latest release_date, then
-          lowest tmdb_id as a deterministic tiebreak. No source freshness: RAW
-          has no reliable loaded_at; staging sets loaded_at at transform time.
+          Raw movie dataset (1980-2026 rich backfill) with box office
+          performance, budgets, and TMDB/Wikidata metadata. Columns mirror the
+          local parquet
+          data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet
+          (column names uppercased). Duplicate tmdb_id values can occur; the
+          stg_box_office model deduplicates to one row per TMDB_ID by latest
+          release_date, then lowest tmdb_id as a deterministic tiebreak. No
+          source freshness: RAW has no reliable loaded_at; staging sets
+          loaded_at at transform time.
         columns:
           - name: tmdb_id
             description: "The Movie Database (TMDb) unique identifier"
@@ -23,20 +27,56 @@ sources:
           - name: title
             description: "Movie title"
             data_type: string
+          - name: original_title
+            description: "Original-language movie title"
+            data_type: string
+          - name: status
+            description: "TMDB release status (e.g. Released)"
+            data_type: string
           - name: release_date
             description: "Release date of the movie"
             data_type: date
+          - name: release_year
+            description: "Year the movie was released"
+            data_type: number
           - name: original_language
             description: "Original language of the movie"
             data_type: string
           - name: production_countries
             description: "Countries where the movie was produced"
             data_type: string
+          - name: spoken_languages
+            description: "Spoken languages in the movie"
+            data_type: string
           - name: genres
             description: "Movie genre(s)"
             data_type: string
           - name: production_budget
-            description: "Production budget"
+            description: "Production budget in USD; NULL when unknown (never 0)"
+            data_type: number
+          - name: production_budget_original
+            description: "Production budget as originally sourced (0 when missing)"
+            data_type: number
+          - name: production_budget_source
+            description: "Provenance of the production budget value"
+            data_type: string
+          - name: production_budget_was_missing
+            description: "True when the production budget was imputed/missing"
+            data_type: boolean
+          - name: wikidata_budget_usd
+            description: "Budget in USD sourced from Wikidata, when available"
+            data_type: number
+          - name: wikidata_item
+            description: "Wikidata item (Q-id) for the movie"
+            data_type: string
+          - name: wikidata_label
+            description: "Wikidata label for the movie"
+            data_type: string
+          - name: worldwide_gross
+            description: "Worldwide box office gross revenue"
+            data_type: number
+          - name: runtime
+            description: "Movie runtime in minutes"
             data_type: number
           - name: director
             description: "Movie director(s)"
@@ -47,12 +87,6 @@ sources:
           - name: mpaa
             description: "MPAA rating (G, PG, PG-13, R, etc.)"
             data_type: string
-          - name: release_type
-            description: "Type of release (wide, limited)"
-            data_type: string
-          - name: runtime
-            description: "Movie runtime in minutes"
-            data_type: number
           - name: overview
             description: "Movie plot overview/synopsis"
             data_type: string
@@ -65,9 +99,57 @@ sources:
           - name: production_company
             description: "Production company"
             data_type: string
-          - name: release_year
-            description: "Year the movie was released"
+          - name: homepage
+            description: "Official movie homepage URL"
+            data_type: string
+          - name: poster_path
+            description: "TMDB poster image path"
+            data_type: string
+          - name: backdrop_path
+            description: "TMDB backdrop image path"
+            data_type: string
+          - name: adult
+            description: "TMDB adult content flag"
+            data_type: boolean
+          - name: popularity
+            description: "TMDB popularity score"
             data_type: number
-          - name: worldwide_gross
-            description: "Worldwide box office gross revenue"
+          - name: vote_average
+            description: "TMDB average vote score"
             data_type: number
+          - name: vote_count
+            description: "TMDB vote count"
+            data_type: number
+          - name: poster_count
+            description: "Number of posters on TMDB"
+            data_type: number
+          - name: backdrop_count
+            description: "Number of backdrops on TMDB"
+            data_type: number
+          - name: video_count
+            description: "Number of videos on TMDB"
+            data_type: number
+          - name: alternative_title_count
+            description: "Number of alternative titles on TMDB"
+            data_type: number
+          - name: translation_count
+            description: "Number of translations on TMDB"
+            data_type: number
+          - name: release_year_query
+            description: "Release year used for the discovery query"
+            data_type: number
+          - name: discover_page
+            description: "TMDB discover pagination page the record came from"
+            data_type: number
+          - name: fetched_at
+            description: "Timestamp the record was fetched from source"
+            data_type: string
+          - name: source_dataset
+            description: "Name of the source dataset the record belongs to"
+            data_type: string
+          - name: collection_id
+            description: "TMDB collection (franchise) id; NULL when the movie belongs to no collection"
+            data_type: number
+          - name: collection_name
+            description: "TMDB collection (franchise) name; NULL when the movie belongs to no collection"
+            data_type: string

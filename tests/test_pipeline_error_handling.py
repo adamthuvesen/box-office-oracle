@@ -107,21 +107,21 @@ class _AuthError(Exception):
 class TestSnowflakeLoaderErrorClassification:
     def test_get_current_count_returns_zero_on_table_not_found(self):
         loader = _make_loader_with_cursor(_TableNotFound())
-        assert loader.get_current_count("BOX_OFFICE_V3") == 0
+        assert loader.get_current_count("BOX_OFFICE_V4") == 0
 
     def test_get_current_count_reraises_on_auth_error(self):
         loader = _make_loader_with_cursor(_AuthError())
         with pytest.raises(_AuthError):
-            loader.get_current_count("BOX_OFFICE_V3")
+            loader.get_current_count("BOX_OFFICE_V4")
 
     def test_get_existing_tmdb_ids_returns_empty_on_table_not_found(self):
         loader = _make_loader_with_cursor(_TableNotFound())
-        assert loader.get_existing_tmdb_ids("BOX_OFFICE_V3") == set()
+        assert loader.get_existing_tmdb_ids("BOX_OFFICE_V4") == set()
 
     def test_get_existing_tmdb_ids_reraises_on_auth_error(self):
         loader = _make_loader_with_cursor(_AuthError())
         with pytest.raises(_AuthError):
-            loader.get_existing_tmdb_ids("BOX_OFFICE_V3")
+            loader.get_existing_tmdb_ids("BOX_OFFICE_V4")
 
 
 # --------------------------------------------------------------------------- #
