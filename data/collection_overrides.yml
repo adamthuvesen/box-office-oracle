@@ -1,0 +1,17 @@
+# Manual TMDB collection overrides, consumed by
+# box_office.franchise_history.collection_memberships AFTER the raw JSONL
+# and the refetch parquet (scripts/refetch_collections.py). An entry here
+# always wins over both.
+#
+# Only add entries you have verified against TMDB (or documented evidence
+# when TMDB itself is wrong). Each entry needs tmdb_id, collection_id,
+# collection_name, and a comment stating the evidence.
+#
+# Example:
+#   overrides:
+#     - tmdb_id: 24428          # The Avengers (2012)
+#       collection_id: 86311
+#       collection_name: "The Avengers Collection"
+#       # evidence: https://www.themoviedb.org/movie/24428 lists the collection
+
+overrides: []

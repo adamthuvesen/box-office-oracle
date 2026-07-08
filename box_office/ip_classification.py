@@ -24,7 +24,10 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from box_office.franchise_history import prior_franchise_stats
+from box_office.franchise_history import (
+    collection_memberships,
+    prior_franchise_stats,
+)
 from box_office.movie_data_quality import clean_movie_source_data
 
 # The same cleaned source parquet the training frame is built from, so the
@@ -222,6 +225,12 @@ def load_rules(path: Path = DEFAULT_RULES_PATH) -> IpRules:
 
 
 def load_raw_movie_metadata(path: Path = DEFAULT_RAW_JSONL_PATH) -> pd.DataFrame:
+    """Per-movie collection link and wikidata id.
+
+    Collection links come from the merged sources (raw JSONL, plus the
+    refetch parquet and manual overrides when present — see
+    ``box_office.franchise_history.collection_memberships``).
+    """
     rows: list[dict[str, Any]] = []
     with path.open() as file:
         for line_number, line in enumerate(file, start=1):
@@ -236,17 +245,22 @@ def load_raw_movie_metadata(path: Path = DEFAULT_RAW_JSONL_PATH) -> pd.DataFrame
             if not isinstance(payload, dict):
                 raise ValueError(f"Missing payload object at {path}:{line_number}")
 
-            collection = payload.get("belongs_to_collection") or {}
             external_ids = payload.get("external_ids") or {}
             rows.append(
                 {
                     "tmdb_id": int(payload.get("id") or record["tmdb_id"]),
-                    "collection_id": collection.get("id"),
-                    "collection_name": collection.get("name"),
                     "wikidata_id": external_ids.get("wikidata_id"),
                 }
             )
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    memberships = collection_memberships(path)
+    frame["collection_id"] = frame["tmdb_id"].map(
+        {tmdb_id: cid for tmdb_id, (cid, _) in memberships.items()}
+    )
+    frame["collection_name"] = frame["tmdb_id"].map(
+        {tmdb_id: name for tmdb_id, (_, name) in memberships.items()}
+    )
+    return frame[["tmdb_id", "collection_id", "collection_name", "wikidata_id"]]
 
 
 def classify_movies(
