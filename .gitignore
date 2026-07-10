@@ -74,13 +74,7 @@ model_registry/registry.json
 *.h5
 *.hdf5
 
-# Data files (keep structure, ignore large datasets)
-data/raw/box_office_movies/*.csv
-data/external/tmdb/*.csv
-data/external/general/*.csv
-data/processed/*.csv
-data/interim/*.csv
-# Belt-and-braces: never commit any dataset CSV/Parquet under data/
+# Never commit any dataset file under data/ (keep structure via READMEs)
 data/**/*.csv
 data/**/*.parquet
 data/**/*.json
@@ -107,6 +101,8 @@ htmlcov/
 coverage.xml
 *.cover
 .hypothesis/
+.mypy_cache/
+.ruff_cache/
 
 # Terraform
 **/.terraform/*
