@@ -86,8 +86,8 @@ jobs:
         # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the previous step via $GITHUB_ENV.
         SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
       run: |
-        # Unit tests + inference tests (match pyproject testpaths; exclude integration/slow)
-        uv run pytest tests/ box_office/inference/tests/ -m "not integration and not slow" --cov=box_office --cov-report=xml --cov-report=term-missing
+        # Full hermetic suite (match pyproject testpaths; exclude integration/slow)
+        uv run pytest tests/ -m "not integration and not slow" --cov=box_office --cov-report=xml --cov-report=term-missing
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354  # v6

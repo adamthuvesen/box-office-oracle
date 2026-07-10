@@ -36,7 +36,7 @@ uv run python scripts/apply_snowflake_grants.py   # connects as ACCOUNTADMIN
 
 ## Test discipline
 
-- Tests live in [`tests/`](../tests) (mirror the `box_office/` package layout) and [`box_office/inference/tests/`](../box_office/inference/tests). Name `test_*.py`.
+- Tests live in [`tests/`](../tests), in subdirectories that mirror the `box_office/` package layout (plus `tests/scripts/` for `scripts/` and `tests/infrastructure/` for Terraform/CI posture). Name `test_*.py`.
 - **Never** mutate `sys.modules` at module import. Real `boto3` / `snowflake-connector-python` / `sagemaker` import cleanly without contacting AWS — no mocking layer needed.
 - **Never** wrap a unit-under-test in `try/except: pass` and pass regardless. Use `pytest.raises` or assert a concrete value.
 - Random fixtures must be seeded (`np.random.default_rng(42)`).
@@ -45,13 +45,13 @@ uv run python scripts/apply_snowflake_grants.py   # connects as ACCOUNTADMIN
 Run the full suite:
 
 ```bash
-uv run pytest tests/ box_office/inference/tests/
+uv run pytest tests/
 ```
 
 Run only one file:
 
 ```bash
-uv run pytest tests/test_pipeline_failure_semantics.py -v
+uv run pytest tests/orchestration/test_pipeline_failure_semantics.py -v
 ```
 
 ## Commands you'll actually use

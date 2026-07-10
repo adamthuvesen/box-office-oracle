@@ -1,17 +1,10 @@
 """Unit tests for the pure franchise-history features in
 scripts/experiment_ip_features.py."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-
-from experiment_ip_features import (  # noqa: E402
-    compute_time_safe_franchise_features,
-)
+from scripts.experiment_ip_features import compute_time_safe_franchise_features
 
 
 def _frame(rows: list[dict]) -> pd.DataFrame:

@@ -1,23 +1,17 @@
 """Unit tests for the pure transformations in scripts/prepare_training_frame.py."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-
-from prepare_training_frame import (  # noqa: E402
+from box_office.ml.text_utils import process_text_list
+from scripts.prepare_training_frame import (
     COLUMN_MAPPING,
     actors_to_list_literal,
     apply_quality_gate,
     flag_extreme_gross_multiplier,
     map_to_staging_columns,
 )
-
-from box_office.ml.text_utils import process_text_list  # noqa: E402
 
 
 def _source_row(**overrides) -> dict:
