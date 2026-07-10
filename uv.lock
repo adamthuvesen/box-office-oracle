@@ -553,7 +553,7 @@ requires-dist = [
     { name = "sagemaker", specifier = "==2.257.2" },
     { name = "scikit-learn", specifier = "==1.7.0" },
     { name = "scipy", specifier = "==1.16.0" },
-    { name = "seaborn", marker = "extra == 'dev'", specifier = "==0.11.1" },
+    { name = "seaborn", marker = "extra == 'dev'", specifier = "==0.13.2" },
     { name = "shap", marker = "extra == 'dev'", specifier = "==0.46.0" },
     { name = "snowflake-connector-python", extras = ["pandas"], specifier = "==4.6.0" },
     { name = "sqlalchemy", specifier = "==2.0.50" },
@@ -4374,17 +4374,16 @@ wheels = [
 
 [[package]]
 name = "seaborn"
-version = "0.11.1"
+version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ef/f4/1927dc0e07f34d54617ce7d31e83b0e3345f14e893b138e44eddd5fad806/seaborn-0.11.1.tar.gz", hash = "sha256:44e78eaed937c5a87fc7a892c329a7cc091060b67ebd1d0d306b446a74ba01ad", size = 261397, upload-time = "2020-12-20T20:53:26.849Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/59/a451d7420a77ab0b98f7affa3a1d78a313d2f7281a57afb1a34bae8ab412/seaborn-0.13.2.tar.gz", hash = "sha256:93e60a40988f4d65e9f4885df477e2fdaff6b73a9ded434c1ab356dd57eefff7", size = 1457696, upload-time = "2024-01-25T13:21:52.551Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/ad/6c2406ae175f59ec616714e408979b674fe27b9587f79d59a528ddfbcd5b/seaborn-0.11.1-py3-none-any.whl", hash = "sha256:4e1cce9489449a1c6ff3c567f2113cdb41122f727e27a984950d004a88ef3c5c", size = 285007, upload-time = "2020-12-20T20:53:25.248Z" },
+    { url = "https://files.pythonhosted.org/packages/83/11/00d3c3dfc25ad54e731d91449895a79e4bf2384dc3ac01809010ba88f6d5/seaborn-0.13.2-py3-none-any.whl", hash = "sha256:636f8336facf092165e27924f223d3c62ca560b1f2bb5dff7ab7fad265361987", size = 294914, upload-time = "2024-01-25T13:21:49.598Z" },
 ]
 
 [[package]]
