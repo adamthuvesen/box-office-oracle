@@ -1,4 +1,4 @@
-"""Pure-logic tests for scripts/fix_dataset_gaps.py (no live TMDB)."""
+"""Pure-logic tests for box_office.ingestion.curated_movies (no live TMDB)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from box_office.ingestion import curated_movies as cm
 from box_office.ingestion.tmdb_rich_backfill import BackfillConfig, flat_columns
-from scripts import fix_dataset_gaps as fdg
 
 
 def _payload(
@@ -84,11 +84,11 @@ def _raw(tmdb_id: int, **kwargs: Any) -> dict[str, Any]:
 
 
 def _target_columns() -> list[str]:
-    return flat_columns() + list(fdg.BUDGET_EXTRA_COLUMNS)
+    return flat_columns() + list(cm.BUDGET_EXTRA_COLUMNS)
 
 
 def test_build_flat_row_uses_tmdb_budget() -> None:
-    row = fdg.build_flat_row(_raw(24428, budget=220_000_000), _target_columns())
+    row = cm.build_flat_row(_raw(24428, budget=220_000_000), _target_columns())
     assert row["tmdb_id"] == 24428
     assert row["production_budget"] == 220_000_000.0
     assert row["production_budget_original"] == 220_000_000
@@ -102,7 +102,7 @@ def test_build_flat_row_uses_tmdb_budget() -> None:
 
 
 def test_build_flat_row_documented_budget_fallback() -> None:
-    row = fdg.build_flat_row(
+    row = cm.build_flat_row(
         _raw(24428, budget=0), _target_columns(), documented_budget=220_000_000
     )
     assert row["production_budget"] == 220_000_000.0
@@ -111,7 +111,7 @@ def test_build_flat_row_documented_budget_fallback() -> None:
 
 
 def test_build_flat_row_missing_budget() -> None:
-    row = fdg.build_flat_row(_raw(1, budget=0), _target_columns())
+    row = cm.build_flat_row(_raw(1, budget=0), _target_columns())
     assert row["production_budget"] is None
     assert row["production_budget_original"] == 0
     assert row["production_budget_source"] == "missing"
@@ -120,11 +120,11 @@ def test_build_flat_row_missing_budget() -> None:
 
 def test_build_flat_row_rejects_missing_target_column() -> None:
     with pytest.raises(ValueError, match="missing target columns"):
-        fdg.build_flat_row(_raw(1), _target_columns() + ["does_not_exist"])
+        cm.build_flat_row(_raw(1), _target_columns() + ["does_not_exist"])
 
 
 def _seed_frame(target_columns: list[str]) -> pd.DataFrame:
-    existing = fdg.build_flat_row(_raw(99861, budget=235_000_000), target_columns)
+    existing = cm.build_flat_row(_raw(99861, budget=235_000_000), target_columns)
     df = pd.DataFrame([existing], columns=target_columns)
     # match real parquet dtypes on the int/bool columns
     for column in [
@@ -147,36 +147,20 @@ def test_append_rows_preserves_dtypes() -> None:
     target_columns = _target_columns()
     df = _seed_frame(target_columns)
     before = df.dtypes.to_dict()
-    new = fdg.build_flat_row(_raw(24428), target_columns)
-    combined = fdg.append_rows(df, [new], target_columns)
+    new = cm.build_flat_row(_raw(24428), target_columns)
+    combined = cm.append_rows(df, [new], target_columns)
     assert len(combined) == 2
     assert combined.dtypes.to_dict() == before
 
 
 def test_append_rows_empty_is_noop() -> None:
     df = _seed_frame(_target_columns())
-    assert fdg.append_rows(df, [], list(df.columns)) is df
-
-
-def test_drop_ad_columns() -> None:
-    df = pd.DataFrame(
-        {"tmdb_id": [1], "ad_budget_original": [0], "ad_budget_source": ["missing"]}
-    )
-    stripped, dropped = fdg.drop_ad_columns(df)
-    assert dropped == ["ad_budget_original", "ad_budget_source"]
-    assert list(stripped.columns) == ["tmdb_id"]
-
-
-def test_drop_ad_columns_absent_is_noop() -> None:
-    df = pd.DataFrame({"tmdb_id": [1]})
-    stripped, dropped = fdg.drop_ad_columns(df)
-    assert dropped == []
-    assert list(stripped.columns) == ["tmdb_id"]
+    assert cm.append_rows(df, [], list(df.columns)) is df
 
 
 def test_validate_row_accepts_clean_row() -> None:
-    row = fdg.build_flat_row(_raw(24428, budget=220_000_000), _target_columns())
-    fdg.validate_row(row)  # must not raise
+    row = cm.build_flat_row(_raw(24428, budget=220_000_000), _target_columns())
+    cm.validate_row(row)  # must not raise
 
 
 def test_add_missing_movies_skips_present_id(monkeypatch, tmp_path) -> None:
@@ -187,9 +171,9 @@ def test_add_missing_movies_skips_present_id(monkeypatch, tmp_path) -> None:
     def _boom(*args: Any, **kwargs: Any) -> dict[str, Any]:
         raise AssertionError("should not fetch an already-present id")
 
-    monkeypatch.setattr(fdg, "request_json", _boom)
-    updated, added, rejected = fdg.add_missing_movies(
-        df, target_columns, [99861], config
+    monkeypatch.setattr(cm, "request_json", _boom)
+    updated, added, rejected = cm.add_missing_movies(
+        df, target_columns, [cm.CuratedMovie(99861, "Avengers: Age of Ultron")], config
     )
     assert added == []
     assert rejected == []
@@ -202,10 +186,10 @@ def test_add_missing_movies_appends_and_writes_jsonl(monkeypatch, tmp_path) -> N
     config = BackfillConfig(output_dir=tmp_path)
 
     monkeypatch.setattr(
-        fdg, "request_json", lambda *a, **k: _payload(24428, title="The Avengers")
+        cm, "request_json", lambda *a, **k: _payload(24428, title="The Avengers")
     )
-    updated, added, rejected = fdg.add_missing_movies(
-        df, target_columns, [24428], config
+    updated, added, rejected = cm.add_missing_movies(
+        df, target_columns, [cm.CuratedMovie(24428, "The Avengers")], config
     )
 
     assert rejected == []
@@ -224,8 +208,10 @@ def test_add_missing_movies_idempotent_on_jsonl(monkeypatch, tmp_path) -> None:
     # pretend 24428 is already in the JSONL (but not the parquet)
     config.raw_jsonl_path.write_text('{"tmdb_id": 24428, "payload": {"id": 24428}}\n')
 
-    monkeypatch.setattr(fdg, "request_json", lambda *a, **k: _payload(24428))
-    fdg.add_missing_movies(df, target_columns, [24428], config)
+    monkeypatch.setattr(cm, "request_json", lambda *a, **k: _payload(24428))
+    cm.add_missing_movies(
+        df, target_columns, [cm.CuratedMovie(24428, "The Avengers")], config
+    )
     # still exactly one JSONL line for 24428 (no duplicate append)
     lines = [
         line for line in config.raw_jsonl_path.read_text().splitlines() if line.strip()
@@ -239,15 +225,44 @@ def test_add_missing_movies_rejects_below_inclusion_bar(monkeypatch, tmp_path) -
     config = BackfillConfig(output_dir=tmp_path)
 
     monkeypatch.setattr(
-        fdg,
+        cm,
         "request_json",
         lambda *a, **k: _payload(24428, revenue=1_000_000, runtime=40),
     )
-    updated, added, rejected = fdg.add_missing_movies(
-        df, target_columns, [24428], config
+    updated, added, rejected = cm.add_missing_movies(
+        df, target_columns, [cm.CuratedMovie(24428, "The Avengers")], config
     )
     assert added == []
     assert [entry["tmdb_id"] for entry in rejected] == [24428]
     assert len(updated) == 1
     # nothing written to the JSONL when the candidate is rejected
     assert not config.raw_jsonl_path.exists()
+
+
+def test_load_curated_movies_reads_repo_file() -> None:
+    movies = cm.load_curated_movies()
+    ids = [movie.tmdb_id for movie in movies]
+    assert 24428 in ids  # The Avengers, the original gap
+    avengers = next(movie for movie in movies if movie.tmdb_id == 24428)
+    assert avengers.documented_budget == 220_000_000
+
+
+def test_load_curated_movies_rejects_malformed_entry(tmp_path) -> None:
+    path = tmp_path / "curated.yml"
+    path.write_text("movies:\n  - title: No Id\n")
+    with pytest.raises(ValueError, match="malformed curated movie entry"):
+        cm.load_curated_movies(path)
+
+
+def test_load_curated_movies_rejects_duplicate_id(tmp_path) -> None:
+    path = tmp_path / "curated.yml"
+    path.write_text("movies:\n  - {tmdb_id: 1, title: A}\n  - {tmdb_id: 1, title: B}\n")
+    with pytest.raises(ValueError, match="duplicate curated tmdb_id"):
+        cm.load_curated_movies(path)
+
+
+def test_load_curated_movies_rejects_empty_file(tmp_path) -> None:
+    path = tmp_path / "curated.yml"
+    path.write_text("movies: []\n")
+    with pytest.raises(ValueError, match="no curated movies"):
+        cm.load_curated_movies(path)

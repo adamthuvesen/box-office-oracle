@@ -1,0 +1,118 @@
+# Hand-curated must-have movies for the local dataset.
+#
+# box-office-curated-movies fetches any entry missing from the budget parquet
+# and appends it (raw JSONL + flat row), provided it clears the inclusion bar
+# (>= $5M worldwide gross, >= 60min runtime). The TMDB /discover sweep has
+# paging holes; this list guarantees the highest-grossing films 1980-2025 are
+# always present.
+#
+# documented_budget (USD) is a fallback used only when TMDB reports a
+# zero/blank production budget for the movie.
+movies:
+  - tmdb_id: 24428
+    title: The Avengers
+    documented_budget: 220000000
+  - tmdb_id: 19995
+    title: Avatar
+  - tmdb_id: 76600
+    title: "Avatar: The Way of Water"
+  - tmdb_id: 597
+    title: Titanic
+  - tmdb_id: 140607
+    title: "Star Wars: The Force Awakens"
+  - tmdb_id: 299536
+    title: "Avengers: Infinity War"
+  - tmdb_id: 634649
+    title: "Spider-Man: No Way Home"
+  - tmdb_id: 135397
+    title: Jurassic World
+  - tmdb_id: 420818
+    title: The Lion King
+  - tmdb_id: 299534
+    title: "Avengers: Endgame"
+  - tmdb_id: 168259
+    title: Furious 7
+  - tmdb_id: 361743
+    title: "Top Gun: Maverick"
+  - tmdb_id: 330457
+    title: Frozen II
+  - tmdb_id: 346698
+    title: Barbie
+  - tmdb_id: 99861
+    title: "Avengers: Age of Ultron"
+  - tmdb_id: 502356
+    title: The Super Mario Bros. Movie
+  - tmdb_id: 284054
+    title: Black Panther
+  - tmdb_id: 12445
+    title: "Harry Potter and the Deathly Hallows: Part 2"
+  - tmdb_id: 181808
+    title: "Star Wars: The Last Jedi"
+  - tmdb_id: 351286
+    title: "Jurassic World: Fallen Kingdom"
+  - tmdb_id: 109445
+    title: Frozen
+  - tmdb_id: 321612
+    title: Beauty and the Beast
+  - tmdb_id: 260513
+    title: Incredibles 2
+  - tmdb_id: 337339
+    title: The Fate of the Furious
+  - tmdb_id: 68721
+    title: Iron Man 3
+  - tmdb_id: 211672
+    title: Minions
+  - tmdb_id: 271110
+    title: "Captain America: Civil War"
+  - tmdb_id: 297802
+    title: Aquaman
+  - tmdb_id: 122
+    title: "The Lord of the Rings: The Return of the King"
+  - tmdb_id: 429617
+    title: "Spider-Man: Far From Home"
+  - tmdb_id: 299537
+    title: Captain Marvel
+  - tmdb_id: 38356
+    title: "Transformers: Dark of the Moon"
+  - tmdb_id: 37724
+    title: Skyfall
+  - tmdb_id: 91314
+    title: "Transformers: Age of Extinction"
+  - tmdb_id: 49026
+    title: The Dark Knight Rises
+  - tmdb_id: 301528
+    title: Toy Story 4
+  - tmdb_id: 10193
+    title: Toy Story 3
+  - tmdb_id: 58
+    title: "Pirates of the Caribbean: Dead Man's Chest"
+  - tmdb_id: 330459
+    title: "Rogue One: A Star Wars Story"
+  - tmdb_id: 420817
+    title: Aladdin
+  - tmdb_id: 1865
+    title: "Pirates of the Caribbean: On Stranger Tides"
+  - tmdb_id: 324852
+    title: Despicable Me 3
+  - tmdb_id: 127380
+    title: Finding Dory
+  - tmdb_id: 181812
+    title: "Star Wars: The Rise of Skywalker"
+  - tmdb_id: 12155
+    title: Alice in Wonderland
+  - tmdb_id: 269149
+    title: Zootopia
+  - tmdb_id: 155
+    title: The Dark Knight
+  - tmdb_id: 671
+    title: Harry Potter and the Philosopher's Stone
+  - tmdb_id: 533535
+    title: Deadpool & Wolverine
+  - tmdb_id: 1022789
+    title: Inside Out 2
+  - tmdb_id: 507086
+    title: Jurassic World Dominion
+  - tmdb_id: 8587
+    title: The Lion King (1994)
+  - tmdb_id: 12
+    title: Finding Nemo

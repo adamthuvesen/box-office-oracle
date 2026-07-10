@@ -1,28 +1,18 @@
-"""Repair two defects in the canonical local dataset.
+"""Ensure hand-curated must-have movies exist in the local budget dataset.
 
-The canonical source is
-``data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet``
-(plus its ``.csv`` sibling). Two problems:
+The TMDB ``/discover`` sweep in ``tmdb_rich_backfill`` has paging holes, so
+top-grossing films can be absent from the canonical parquet
+(``data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet``).
+This module reads ``data/curated_movies.yml``, fetches any listed movie that
+is missing, and appends it — raw JSONL record plus a flat row shaped exactly
+like the rest of the dataset — provided it clears the inclusion bar
+(>= $5M worldwide gross, >= 60min runtime). Additions are idempotent: a
+tmdb_id already in the JSONL or parquet is skipped.
 
-1. The original discover sweep never fetched *The Avengers* (2012, tmdb_id
-   24428), so it is absent from both the raw JSONL and the parquet. Its
-   absence breaks ``PRIOR_FRANCHISE_GROSS`` for later Marvel films, which read
-   the collection link from the raw JSONL payload
-   (``box_office.franchise_history.collection_memberships``).
-2. ``ad_budget_original`` / ``ad_budget_source`` are unused columns that no
-   code reads. They are dropped so the parquet carries only columns the
-   pipeline consumes.
+Runs after ``wikipedia_budget_fill`` (the target parquet carries the budget
+provenance columns).
 
-This script also sweeps a hand-picked list of the highest-grossing films
-1980-2025 and adds any that are missing *and* clear the dataset's inclusion
-bar (>= $5M worldwide gross, >= 60min runtime).
-
-Every fetch reuses the rich-backfill helpers so the appended rows match the
-existing schema exactly (same raw payload shape, same flat columns, same
-list-string formats). Additions are idempotent: a tmdb_id already in the
-JSONL or parquet is skipped.
-
-Run:  uv run python scripts/fix_dataset_gaps.py
+Run:  uv run box-office-curated-movies
 Needs TMDB_API_TOKEN (see .env).
 """
 
@@ -31,11 +21,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import requests
+import yaml
 
 from box_office.ingestion.tmdb_rich_backfill import (
     TMDB_API_URL,
@@ -54,13 +46,13 @@ from box_office.utils.env_setup import configure_environment
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CURATED_PATH = Path("data/curated_movies.yml")
+
 DATASET_DIR = Path("data/generated/tmdb/rich_backfill_1980_2026")
 SOURCE_PARQUET = DATASET_DIR / "tmdb_budget_wikipedia_5m_1980_2026.parquet"
 SOURCE_CSV = DATASET_DIR / "tmdb_budget_wikipedia_5m_1980_2026.csv"
 RAW_JSONL = DATASET_DIR / "tmdb_rich_raw_5m_1980_2026.jsonl"
-AUDIT_MANIFEST = DATASET_DIR / "tmdb_dataset_gap_fix_manifest_1980_2026.json"
-
-AD_COLUMNS = ("ad_budget_original", "ad_budget_source")
+AUDIT_MANIFEST = DATASET_DIR / "curated_movies_manifest_1980_2026.json"
 
 # Columns the budget parquet adds on top of the 37-column flat schema.
 BUDGET_EXTRA_COLUMNS = (
@@ -74,70 +66,43 @@ BUDGET_EXTRA_COLUMNS = (
 
 MIN_RUNTIME_MINUTES = 60
 
-# The 2012 Avengers gap, plus a hardcoded sweep of the highest-grossing films
-# 1980-2025. Most are already present; the sweep only appends genuine gaps
-# that clear the inclusion bar. Documented budgets are a fallback used only
-# when TMDB reports a zero/blank budget for the movie.
-BLOCKBUSTERS: dict[int, str] = {
-    24428: "The Avengers",
-    19995: "Avatar",
-    76600: "Avatar: The Way of Water",
-    597: "Titanic",
-    140607: "Star Wars: The Force Awakens",
-    299536: "Avengers: Infinity War",
-    634649: "Spider-Man: No Way Home",
-    135397: "Jurassic World",
-    420818: "The Lion King",
-    299534: "Avengers: Endgame",
-    168259: "Furious 7",
-    361743: "Top Gun: Maverick",
-    330457: "Frozen II",
-    346698: "Barbie",
-    99861: "Avengers: Age of Ultron",
-    502356: "The Super Mario Bros. Movie",
-    284054: "Black Panther",
-    12445: "Harry Potter and the Deathly Hallows: Part 2",
-    181808: "Star Wars: The Last Jedi",
-    351286: "Jurassic World: Fallen Kingdom",
-    109445: "Frozen",
-    321612: "Beauty and the Beast",
-    260513: "Incredibles 2",
-    337339: "The Fate of the Furious",
-    68721: "Iron Man 3",
-    211672: "Minions",
-    271110: "Captain America: Civil War",
-    297802: "Aquaman",
-    122: "The Lord of the Rings: The Return of the King",
-    429617: "Spider-Man: Far From Home",
-    299537: "Captain Marvel",
-    38356: "Transformers: Dark of the Moon",
-    37724: "Skyfall",
-    91314: "Transformers: Age of Extinction",
-    49026: "The Dark Knight Rises",
-    301528: "Toy Story 4",
-    10193: "Toy Story 3",
-    58: "Pirates of the Caribbean: Dead Man's Chest",
-    330459: "Rogue One: A Star Wars Story",
-    420817: "Aladdin",
-    1865: "Pirates of the Caribbean: On Stranger Tides",
-    324852: "Despicable Me 3",
-    127380: "Finding Dory",
-    181812: "Star Wars: The Rise of Skywalker",
-    12155: "Alice in Wonderland",
-    269149: "Zootopia",
-    155: "The Dark Knight",
-    671: "Harry Potter and the Philosopher's Stone",
-    533535: "Deadpool & Wolverine",
-    1022789: "Inside Out 2",
-    507086: "Jurassic World Dominion",
-    8587: "The Lion King (1994)",
-    12: "Finding Nemo",
-}
 
-# Documented production budgets (USD), used only when TMDB returns 0/blank.
-DOCUMENTED_BUDGETS: dict[int, int] = {
-    24428: 220_000_000,
-}
+@dataclass(frozen=True)
+class CuratedMovie:
+    tmdb_id: int
+    title: str
+    # Documented production budget (USD), used only when TMDB returns 0/blank.
+    documented_budget: int | None = None
+
+
+def load_curated_movies(path: Path = DEFAULT_CURATED_PATH) -> list[CuratedMovie]:
+    """Read ``data/curated_movies.yml``. Malformed entries raise loudly."""
+    raw = yaml.safe_load(path.read_text()) or {}
+    entries = raw.get("movies") or []
+    movies: list[CuratedMovie] = []
+    seen: set[int] = set()
+    for entry in entries:
+        if (
+            not isinstance(entry, dict)
+            or "tmdb_id" not in entry
+            or "title" not in entry
+        ):
+            raise ValueError(f"malformed curated movie entry: {entry!r}")
+        tmdb_id = int(entry["tmdb_id"])
+        if tmdb_id in seen:
+            raise ValueError(f"duplicate curated tmdb_id: {tmdb_id}")
+        seen.add(tmdb_id)
+        budget = entry.get("documented_budget")
+        movies.append(
+            CuratedMovie(
+                tmdb_id=tmdb_id,
+                title=str(entry["title"]),
+                documented_budget=int(budget) if budget is not None else None,
+            )
+        )
+    if not movies:
+        raise ValueError(f"no curated movies found in {path}")
+    return movies
 
 
 def build_flat_row(
@@ -203,13 +168,6 @@ def append_rows(
     return combined
 
 
-def drop_ad_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    present = [column for column in AD_COLUMNS if column in df.columns]
-    if not present:
-        return df, []
-    return df.drop(columns=present), present
-
-
 def validate_row(row: dict[str, Any]) -> None:
     """Run the row through the source-quality expectations.
 
@@ -257,7 +215,7 @@ def fetch_raw_record(
 def add_missing_movies(
     df: pd.DataFrame,
     target_columns: list[str],
-    candidate_ids: list[int],
+    candidates: list[CuratedMovie],
     config: BackfillConfig,
     *,
     write_jsonl: bool = True,
@@ -276,15 +234,16 @@ def add_missing_movies(
     added: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
-    for tmdb_id in candidate_ids:
+    for candidate in candidates:
+        tmdb_id = candidate.tmdb_id
         if tmdb_id in parquet_ids:
-            logger.info("present already: tmdb %s (%s)", tmdb_id, BLOCKBUSTERS[tmdb_id])
+            logger.info("present already: tmdb %s (%s)", tmdb_id, candidate.title)
             continue
 
         logger.warning(
             "MISSING from parquet: tmdb %s (%s) -- fetching",
             tmdb_id,
-            BLOCKBUSTERS[tmdb_id],
+            candidate.title,
         )
         raw = fetch_raw_record(session, tmdb_id, config, state)
         payload = raw.get("payload") or {}
@@ -316,7 +275,7 @@ def add_missing_movies(
             logger.warning("appended raw JSONL record: tmdb %s (%s)", tmdb_id, title)
 
         row = build_flat_row(
-            raw, target_columns, documented_budget=DOCUMENTED_BUDGETS.get(tmdb_id)
+            raw, target_columns, documented_budget=candidate.documented_budget
         )
         validate_row(row)
         new_rows.append(row)
@@ -358,7 +317,6 @@ def write_manifest(
     *,
     added: list[dict[str, Any]],
     rejected: list[dict[str, Any]],
-    dropped_columns: list[str],
     row_count_before: int,
     row_count_after: int,
 ) -> None:
@@ -367,7 +325,6 @@ def write_manifest(
         "source_parquet": str(SOURCE_PARQUET),
         "source_csv": str(SOURCE_CSV),
         "raw_jsonl": str(RAW_JSONL),
-        "dropped_columns": dropped_columns,
         "row_count_before": row_count_before,
         "row_count_after": row_count_after,
         "rows_added": len(added),
@@ -379,8 +336,9 @@ def write_manifest(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Repair missing blockbusters and drop ad-budget columns."
+        description="Fetch curated must-have movies missing from the budget parquet."
     )
+    parser.add_argument("--curated", type=Path, default=DEFAULT_CURATED_PATH)
     parser.add_argument("--parquet", type=Path, default=SOURCE_PARQUET)
     parser.add_argument("--csv", type=Path, default=SOURCE_CSV)
     parser.add_argument("--raw-jsonl", type=Path, default=RAW_JSONL)
@@ -406,20 +364,16 @@ def main(argv: list[str] | None = None) -> int:
             f"raw JSONL path mismatch: {args.raw_jsonl} != {config.raw_jsonl_path}"
         )
 
+    candidates = load_curated_movies(args.curated)
+    logger.info("loaded %d curated movies from %s", len(candidates), args.curated)
+
     df = pd.read_parquet(args.parquet)
     row_count_before = len(df)
     logger.info("loaded %d rows from %s", row_count_before, args.parquet)
 
-    df, dropped_columns = drop_ad_columns(df)
-    if dropped_columns:
-        logger.warning("dropping ad-budget columns: %s", ", ".join(dropped_columns))
-    else:
-        logger.info("no ad-budget columns present")
-
     target_columns = list(df.columns)
-    candidate_ids = list(BLOCKBUSTERS)
     df, added, rejected = add_missing_movies(
-        df, target_columns, candidate_ids, config, write_jsonl=not args.dry_run
+        df, target_columns, candidates, config, write_jsonl=not args.dry_run
     )
 
     df = sort_dataset(df)
@@ -445,7 +399,6 @@ def main(argv: list[str] | None = None) -> int:
         args.manifest,
         added=added,
         rejected=rejected,
-        dropped_columns=dropped_columns,
         row_count_before=row_count_before,
         row_count_after=row_count_after,
     )

@@ -9,7 +9,6 @@ Roughly in dependency order:
 | Script                        | Purpose                                                          |
 | ----------------------------- | ---------------------------------------------------------------- |
 | `clean_movie_source_data.py`  | Apply curated source-data cleanup to the generated local dataset |
-| `fix_dataset_gaps.py`         | Repair known defects in the canonical local dataset              |
 | `refetch_collections.py`      | Refetch TMDB collection links for the cleaned source             |
 | `materialize_collections.py`  | Add collection id/name columns to the canonical dataset          |
 | `classify_ip.py`              | CLI wrapper for movie IP classification                          |
