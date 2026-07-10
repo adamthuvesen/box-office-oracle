@@ -143,13 +143,13 @@ scratch/
 todo.txt
 notes.txt
 
-# Analysis is a local-only scratchpad (notebooks + regenerated datasets).
+# Analysis is a local-only scratchpad (notebooks + prior-model snapshot).
 # Production code lives in box_office/ — see analysis/README.md.
 analysis/*.ipynb
-analysis/datasets_*/
+analysis/prior_training_snapshot/
 analysis/*.csv
+analysis/*.parquet
 analysis/*.pkl
-analysis/reports/*.csv
 
 # Web frontend (generated data snapshots + build output)
 web/data/

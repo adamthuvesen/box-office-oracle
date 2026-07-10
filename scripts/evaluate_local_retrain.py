@@ -48,7 +48,7 @@ FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 DROPPED_PATH = Path("data/generated/training/dropped_rows_1980_2026.csv")
 FLAGGED_PATH = Path("data/generated/training/flagged_kept_rows_1980_2026.csv")
 OLD_TABLE_PATH = Path("results/per_year_table.json")
-OLD_SNAPSHOT_X = Path("analysis/datasets_high/X_train.csv")
+OLD_SNAPSHOT_X = Path("analysis/prior_training_snapshot/X_train.csv")
 OUTPUT_DIR = Path("docs/internal/experiments/local_retrain")
 
 PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
@@ -432,7 +432,7 @@ def main() -> None:
     overlap_table = None
     if overlap_mask is None:
         overlap_note = (
-            "Old snapshot (`analysis/datasets_high/X_train.csv`) not found; "
+            "Old snapshot (`analysis/prior_training_snapshot/X_train.csv`) not found; "
             "overlap view skipped."
         )
     else:

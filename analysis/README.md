@@ -1,14 +1,18 @@
 # Analysis Directory
 
-Local scratchpad for EDA and modelling experiments. Notebooks and datasets are
+Local scratchpad for EDA and modelling experiments. Notebooks and data are
 gitignored; production code lives in `box_office/`.
 
-## Datasets
+## Contents
+
+- `*.ipynb` — local exploration/training notebooks (not tracked).
+- `prior_training_snapshot/` — frozen training data from the previous
+  Snowflake-era model. Read by `scripts/evaluate_local_retrain.py` as the
+  old-model comparison baseline. Not regenerable — don't delete.
+
+To pull a fresh raw snapshot from Snowflake for notebook work (requires
+Snowflake credentials in `.env`, see project root `README.md`):
 
 ```bash
-make datasets
+uv run box-office-ingest --output analysis/box_office_raw.parquet
 ```
-
-Pulls the raw box-office snapshot from Snowflake into `analysis/datasets_raw/`. Requires Snowflake credentials in `.env` (see project root `README.md`).
-
-Downstream `datasets_medium / datasets_high / datasets_max` directories are produced by whatever notebooks you keep locally.
