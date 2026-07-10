@@ -50,7 +50,7 @@ dependencies = [
     "sagemaker==2.257.2",
 
     # Security & Cryptography
-    "cryptography==46.0.7",
+    "cryptography==48.0.0",
 
     # Snowflake
     "snowflake-connector-python[pandas]==4.6.0",
