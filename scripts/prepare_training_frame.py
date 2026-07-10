@@ -81,6 +81,8 @@ IP_CLASSIFICATION_PATH = Path("data/generated/ip/ip_classification_1980_2026.par
 RAW_JSONL_PATH = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/tmdb_rich_raw_5m_1980_2026.jsonl"
 )
+
+
 def add_ip_franchise_features(frame: pd.DataFrame) -> pd.DataFrame:
     """Join IP_TIER from the local parquet, then the collection-keyed franchise
     features (shared with the production path).

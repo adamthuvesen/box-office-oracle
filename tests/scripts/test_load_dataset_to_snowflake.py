@@ -212,10 +212,18 @@ def test_spot_check_mismatches_reports_bad_value():
 
 
 def test_spot_check_mismatches_null_vs_value():
-    expected = {"title": "X", "release_year": None, "production_budget": None,
-                "worldwide_gross": None}
-    actual = {"title": "X", "release_year": None, "production_budget": 5.0,
-              "worldwide_gross": None}
+    expected = {
+        "title": "X",
+        "release_year": None,
+        "production_budget": None,
+        "worldwide_gross": None,
+    }
+    actual = {
+        "title": "X",
+        "release_year": None,
+        "production_budget": 5.0,
+        "worldwide_gross": None,
+    }
     mismatches = spot_check_mismatches(expected, actual)
     assert len(mismatches) == 1
     assert "production_budget" in mismatches[0]
@@ -257,11 +265,17 @@ def _loader() -> DatasetLoader:
 
 
 def test_verify_passes_on_match():
-    expectations = {597: {"title": "Titanic", "release_year": 1997,
-                          "production_budget": 200000000.0,
-                          "worldwide_gross": 2264162353.0}}
+    expectations = {
+        597: {
+            "title": "Titanic",
+            "release_year": 1997,
+            "production_budget": 200000000.0,
+            "worldwide_gross": 2264162353.0,
+        }
+    }
     cursor = _cursor_for(
-        rows=3, nulls=1,
+        rows=3,
+        nulls=1,
         spot_rows={597: ("Titanic", 1997, 200000000.0, 2264162353.0)},
     )
     _loader()._verify(cursor, "DB.RAW.STG", 3, 1, expectations)
@@ -280,11 +294,17 @@ def test_verify_null_budget_mismatch_raises():
 
 
 def test_verify_spot_check_mismatch_raises():
-    expectations = {597: {"title": "Titanic", "release_year": 1997,
-                          "production_budget": 200000000.0,
-                          "worldwide_gross": 2264162353.0}}
+    expectations = {
+        597: {
+            "title": "Titanic",
+            "release_year": 1997,
+            "production_budget": 200000000.0,
+            "worldwide_gross": 2264162353.0,
+        }
+    }
     cursor = _cursor_for(
-        rows=3, nulls=1,
+        rows=3,
+        nulls=1,
         spot_rows={597: ("Titanic", 1997, 0.0, 2264162353.0)},  # budget zeroed
     )
     with pytest.raises(ValueError, match="Spot check for tmdb_id 597 failed"):
@@ -292,9 +312,14 @@ def test_verify_spot_check_mismatch_raises():
 
 
 def test_verify_spot_check_missing_row_raises():
-    expectations = {597: {"title": "Titanic", "release_year": 1997,
-                          "production_budget": 200000000.0,
-                          "worldwide_gross": 2264162353.0}}
+    expectations = {
+        597: {
+            "title": "Titanic",
+            "release_year": 1997,
+            "production_budget": 200000000.0,
+            "worldwide_gross": 2264162353.0,
+        }
+    }
     cursor = _cursor_for(rows=3, nulls=1, spot_rows={})  # no row returned
     with pytest.raises(ValueError, match="expected 1 row, got 0"):
         _loader()._verify(cursor, "DB.RAW.STG", 3, 1, expectations)

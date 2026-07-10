@@ -103,9 +103,7 @@ def staging_columns_from_sources(sources_path: Path = SOURCES_YML) -> list[str]:
                 continue
             columns = [col["name"].lower() for col in table.get("columns", [])]
             if not columns:
-                raise ValueError(
-                    f"sources.yml lists no columns for RAW.{TARGET_TABLE}"
-                )
+                raise ValueError(f"sources.yml lists no columns for RAW.{TARGET_TABLE}")
             return columns
 
     raise ValueError(
@@ -324,14 +322,18 @@ class DatasetLoader:
                 if not success:
                     raise RuntimeError("write_pandas reported failure loading staging")
 
-                self._verify(cursor, fq_staging, expected_rows, expected_nulls, expectations)
+                self._verify(
+                    cursor, fq_staging, expected_rows, expected_nulls, expectations
+                )
 
                 logger.info("Verification passed; swapping %s into place", fq_target)
                 cursor.execute(
                     f"CREATE OR REPLACE TABLE {fq_target} AS SELECT * FROM {fq_staging}"
                 )
                 cursor.execute(f"DROP TABLE IF EXISTS {fq_staging}")
-                logger.info("Load complete: %s now holds %d rows", fq_target, expected_rows)
+                logger.info(
+                    "Load complete: %s now holds %d rows", fq_target, expected_rows
+                )
 
                 self._maybe_drop_old(cursor, drop_old)
             finally:
@@ -403,7 +405,9 @@ class DatasetLoader:
         logger.info("Dropped %s", fq_old)
 
 
-def _print_dry_run(database: str, schema: str, parquet_path: Path, drop_old: bool) -> int:
+def _print_dry_run(
+    database: str, schema: str, parquet_path: Path, drop_old: bool
+) -> int:
     df = read_source_frame(parquet_path)
     fq_staging = fully_qualified_name(database, schema, STAGING_TABLE)
     fq_target = fully_qualified_name(database, schema, TARGET_TABLE)
@@ -413,12 +417,16 @@ def _print_dry_run(database: str, schema: str, parquet_path: Path, drop_old: boo
     print(f"[dry-run] rows              : {len(df)}")
     print(f"[dry-run] null budgets      : {expected_null_budget_count(df)}")
     print(f"[dry-run] columns           : {len(df.columns)}")
-    print(f"[dry-run] staging table     : {fq_staging} (transient, verified, then dropped)")
+    print(
+        f"[dry-run] staging table     : {fq_staging} (transient, verified, then dropped)"
+    )
     print(f"[dry-run] target table      : CREATE OR REPLACE {fq_target}")
     if drop_old:
         print(f"[dry-run] would DROP        : {fq_old}")
     else:
-        print(f"[dry-run] old table {fq_old} left in place (pass --drop-old to drop it)")
+        print(
+            f"[dry-run] old table {fq_old} left in place (pass --drop-old to drop it)"
+        )
     return 0
 
 

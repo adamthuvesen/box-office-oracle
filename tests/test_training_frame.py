@@ -70,9 +70,7 @@ def _staging_frame(n: int = 12) -> pd.DataFrame:
 class TestBuildProductionTrainingFrame:
     def test_produces_the_13_v9_features_through_the_preprocessor(self):
         staging = _staging_frame()
-        kept, _dropped = build_production_training_frame(
-            staging, overrides_path=None
-        )
+        kept, _dropped = build_production_training_frame(staging, overrides_path=None)
 
         for col in ("IP_TIER", "PRIOR_FRANCHISE_GROSS_LOG", "IS_FRANCHISE_FOLLOWUP"):
             assert col in kept.columns
@@ -141,9 +139,7 @@ class TestFranchiseFeatures:
         collection_map = {t: "collection:7" for t in (10, 11, 12)}
         # Middle film is a known-bad gross artifact the quality gate drops.
         eligible = pd.Series([True, False, True])
-        out = add_franchise_features(
-            frame, collection_map, eligible_as_prior=eligible
-        )
+        out = add_franchise_features(frame, collection_map, eligible_as_prior=eligible)
 
         # The third film's prior counts only the first film's gross.
         assert out.loc[2, "PRIOR_FRANCHISE_GROSS_LOG"] == np.log1p(200_000_000.0)

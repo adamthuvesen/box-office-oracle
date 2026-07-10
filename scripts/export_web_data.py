@@ -42,7 +42,9 @@ from box_office.movie_data_quality import (
 
 # The local-retrain track is canonical (v9 contract); its per-year backtest
 # table is the one the current schema version is stamped against.
-DEFAULT_PER_YEAR_TABLE = Path("docs/internal/experiments/local_retrain/per_year_table.json")
+DEFAULT_PER_YEAR_TABLE = Path(
+    "docs/internal/experiments/local_retrain/per_year_table.json"
+)
 
 DEFAULT_INPUT = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/"
@@ -72,6 +74,7 @@ INPUT_COLUMNS = (
     "poster_path",
     "backdrop_path",
 )
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -195,7 +198,9 @@ def _clean_financials(row: dict[str, Any], no_gross_ids: set[int]) -> tuple[Any,
 
     vote_count = row.get("vote_count")
     imdb_id = _optional_str(row.get("imdb_id"))
-    has_no_votes = "vote_count" in row and (_is_missing(vote_count) or int(vote_count) == 0)
+    has_no_votes = "vote_count" in row and (
+        _is_missing(vote_count) or int(vote_count) == 0
+    )
     if gross is not None and gross >= 1_000_000 and imdb_id is None and has_no_votes:
         gross = None
 

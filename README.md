@@ -2,6 +2,8 @@
 
 ![License](https://img.shields.io/github/license/adamthuvesen/box-office-oracle) ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 
+![Box Office Oracle web app](docs/assets/hero.jpg)
+
 An end-to-end MLOps pipeline predicting worldwide box-office revenue from TMDB and IMDb data. The model is an XGBoost regressor trained on ~6,080 movies (kept from 6,152 in the 1980-2026 dataset).
 
 ## Architecture

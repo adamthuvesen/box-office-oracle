@@ -14,6 +14,14 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def model_registry_group_name(
+    project_name: str = "box-office",
+    environment: str = "dev",
+) -> str:
+    """SageMaker Model Registry package group name."""
+    return f"{project_name}-{environment}-box-office-models"
+
+
 @dataclass(frozen=True)
 class _AwsView:
     region: str

@@ -34,9 +34,7 @@ def test_tarball_has_exactly_the_loader_member_names(tmp_path):
         names = sorted(tar.getnames())
     # Member names are the bare filenames at the archive root — exactly what
     # ModelLoader._extract_and_load_model_with_cache verifies.
-    assert names == sorted(
-        [MODEL_PKL, FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL]
-    )
+    assert names == sorted([MODEL_PKL, FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL])
     for name in names:
         assert "/" not in name
 

@@ -5,7 +5,7 @@ from functools import lru_cache
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
-from box_office.shared.names import model_registry_group_name
+from box_office.config import model_registry_group_name
 
 
 class Settings(BaseSettings):

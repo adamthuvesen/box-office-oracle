@@ -11,6 +11,13 @@ box-office-ingest --discover-only --start-year 2024 --output data/generated/tmdb
 box-office-ingest --start-year 2024 --load-to-snowflake
 ```
 
+Tracked YAML files here are hand-curated inputs to the local dataset:
+
+- `curated_movies.yml` — must-have movies the TMDB discover sweep can miss;
+  `box-office-curated-movies` fetches and appends any that are absent.
+- `collection_overrides.yml` — manual collection-link corrections.
+- `ip_rules.yml` — rules for movie IP classification.
+
 Model training data is built through dbt and the orchestration tasks, then stored
 in Snowflake `ML_TRAINING` and uploaded to SageMaker. The v9 feature contract is
 pre-release only; generated data files must not include post-release feature

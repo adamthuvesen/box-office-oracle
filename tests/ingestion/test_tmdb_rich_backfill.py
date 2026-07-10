@@ -151,7 +151,9 @@ def test_remake_with_matching_title_but_new_year_is_accepted(tmp_path, monkeypat
 
 def test_scan_continues_past_page_of_only_skipped_movies(tmp_path, monkeypatch):
     web_data = tmp_path / "web" / "movies.json"
-    _write_web_data(web_data, [{"tmdb_id": 1, "title": "Existing", "release_year": 2020}])
+    _write_web_data(
+        web_data, [{"tmdb_id": 1, "title": "Existing", "release_year": 2020}]
+    )
     config = rich.BackfillConfig(
         start_year=2020,
         end_year=2020,

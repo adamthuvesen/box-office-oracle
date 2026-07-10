@@ -19,21 +19,21 @@ install: setup ## Install production dependencies
 install-dev: setup ## Install development dependencies
 	uv sync --extra dev --frozen
 
-test: setup ## Run all tests (root suite + inference package tests)
+test: setup ## Run all tests
 	uv sync --extra dev --extra inference --frozen
-	uv run pytest tests/ box_office/inference/tests/ -v
+	uv run pytest tests/ -v
 
 test-unit: setup ## Run unit tests only (markers)
 	uv sync --extra dev --extra inference --frozen
-	uv run pytest tests/ box_office/inference/tests/ -m "unit and not slow" -v
+	uv run pytest tests/ -m "unit and not slow" -v
 
 test-integration: setup ## Run integration tests only
 	uv sync --extra dev --extra inference --frozen
-	uv run pytest tests/ box_office/inference/tests/ -m "integration and not slow" -v
+	uv run pytest tests/ -m "integration and not slow" -v
 
 test-coverage: setup ## Run tests with coverage
 	uv sync --extra dev --extra inference --frozen
-	uv run pytest tests/ box_office/inference/tests/ --cov=box_office --cov-report=xml --cov-report=term-missing
+	uv run pytest tests/ --cov=box_office --cov-report=xml --cov-report=term-missing
 
 lint: install-dev ## Run linting checks
 	uv run ruff check box_office tests scripts
@@ -76,9 +76,5 @@ web-data: install-dev ## Export web/data JSON snapshots for the Next.js app (loc
 	uv run python scripts/score_all_movies.py
 	uv run python scripts/export_web_data.py
 
-datasets: install-dev ## Regenerate analysis/datasets_* from Snowflake (requires Snowflake creds)
-	@echo "Pulling raw box-office snapshot from Snowflake into analysis/datasets_raw/"
-	@mkdir -p analysis/datasets_raw
-	uv run box-office-ingest --output analysis/datasets_raw/box_office_raw.parquet
-	@echo "Run analysis notebooks (1_*.ipynb -> 4_*.ipynb) to materialize"
-	@echo "datasets_medium / datasets_high / datasets_max from the raw snapshot."
+datasets: install-dev ## Pull a raw box-office snapshot from Snowflake into analysis/ (requires Snowflake creds)
+	uv run box-office-ingest --output analysis/box_office_raw.parquet

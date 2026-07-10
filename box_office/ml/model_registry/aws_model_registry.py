@@ -72,7 +72,7 @@ class AWSModelRegistry:
     ) -> str:
         import os
 
-        from box_office.shared.names import model_registry_group_name as _group_name
+        from box_office.config import model_registry_group_name as _group_name
 
         if environment is None:
             environment = os.environ.get("ENVIRONMENT", "dev")

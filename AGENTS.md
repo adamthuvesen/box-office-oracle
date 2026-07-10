@@ -10,8 +10,8 @@ This file holds project facts only. User-level guidance (tone, git etiquette) li
 box_office/        Python package: ingestion, training frame, ML, inference
 transformations/   dbt (Snowflake staging)
 infrastructure/    Terraform (SageMaker, Lambda, IAM, S3)
-scripts/           Loaders, training, scoring, registry, grants
-tests/             Pytest, hermetic (no cloud access)
+scripts/           Loaders, training, scoring, registry, grants — see scripts/README.md
+tests/             Pytest, hermetic (no cloud access); subdirs mirror box_office/
 web/               Next.js frontend — has its own AGENTS.md
 docs/              Public docs; docs/internal/ is gitignored, local-only
 ```
@@ -20,7 +20,7 @@ docs/              Public docs; docs/internal/ is gitignored, local-only
 
 ```bash
 make install-dev                                  # uv sync --extra dev
-uv run pytest tests/ box_office/inference/tests/  # CI gate
+uv run pytest tests/                              # CI gate
 make lint                                         # ruff
 ```
 
