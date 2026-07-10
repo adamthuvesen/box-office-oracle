@@ -23,8 +23,7 @@ DEFAULT_PARQUET = Path(
     "tmdb_budget_wikipedia_5m_1980_2026.parquet"
 )
 DEFAULT_CSV = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/"
-    "tmdb_budget_wikipedia_5m_1980_2026.csv"
+    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.csv"
 )
 DEFAULT_AUDIT = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/"

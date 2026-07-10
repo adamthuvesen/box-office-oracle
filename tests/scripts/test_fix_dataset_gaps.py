@@ -127,10 +127,17 @@ def _seed_frame(target_columns: list[str]) -> pd.DataFrame:
     existing = fdg.build_flat_row(_raw(99861, budget=235_000_000), target_columns)
     df = pd.DataFrame([existing], columns=target_columns)
     # match real parquet dtypes on the int/bool columns
-    for column in ["runtime", "vote_count", "release_year", "production_budget_original"]:
+    for column in [
+        "runtime",
+        "vote_count",
+        "release_year",
+        "production_budget_original",
+    ]:
         df[column] = df[column].astype("int64")
     df["adult"] = df["adult"].astype(bool)
-    df["production_budget_was_missing"] = df["production_budget_was_missing"].astype(bool)
+    df["production_budget_was_missing"] = df["production_budget_was_missing"].astype(
+        bool
+    )
     df["production_budget"] = df["production_budget"].astype("float64")
     df["wikidata_budget_usd"] = df["wikidata_budget_usd"].astype("float64")
     return df
@@ -181,7 +188,9 @@ def test_add_missing_movies_skips_present_id(monkeypatch, tmp_path) -> None:
         raise AssertionError("should not fetch an already-present id")
 
     monkeypatch.setattr(fdg, "request_json", _boom)
-    updated, added, rejected = fdg.add_missing_movies(df, target_columns, [99861], config)
+    updated, added, rejected = fdg.add_missing_movies(
+        df, target_columns, [99861], config
+    )
     assert added == []
     assert rejected == []
     assert len(updated) == 1
@@ -195,7 +204,9 @@ def test_add_missing_movies_appends_and_writes_jsonl(monkeypatch, tmp_path) -> N
     monkeypatch.setattr(
         fdg, "request_json", lambda *a, **k: _payload(24428, title="The Avengers")
     )
-    updated, added, rejected = fdg.add_missing_movies(df, target_columns, [24428], config)
+    updated, added, rejected = fdg.add_missing_movies(
+        df, target_columns, [24428], config
+    )
 
     assert rejected == []
     assert [entry["tmdb_id"] for entry in added] == [24428]
@@ -211,9 +222,7 @@ def test_add_missing_movies_idempotent_on_jsonl(monkeypatch, tmp_path) -> None:
     df = _seed_frame(target_columns)
     config = BackfillConfig(output_dir=tmp_path)
     # pretend 24428 is already in the JSONL (but not the parquet)
-    config.raw_jsonl_path.write_text(
-        '{"tmdb_id": 24428, "payload": {"id": 24428}}\n'
-    )
+    config.raw_jsonl_path.write_text('{"tmdb_id": 24428, "payload": {"id": 24428}}\n')
 
     monkeypatch.setattr(fdg, "request_json", lambda *a, **k: _payload(24428))
     fdg.add_missing_movies(df, target_columns, [24428], config)
@@ -234,7 +243,9 @@ def test_add_missing_movies_rejects_below_inclusion_bar(monkeypatch, tmp_path) -
         "request_json",
         lambda *a, **k: _payload(24428, revenue=1_000_000, runtime=40),
     )
-    updated, added, rejected = fdg.add_missing_movies(df, target_columns, [24428], config)
+    updated, added, rejected = fdg.add_missing_movies(
+        df, target_columns, [24428], config
+    )
     assert added == []
     assert [entry["tmdb_id"] for entry in rejected] == [24428]
     assert len(updated) == 1

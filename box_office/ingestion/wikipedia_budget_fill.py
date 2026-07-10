@@ -322,9 +322,7 @@ def classify_budget_text(raw: str | None) -> tuple[float | None, str]:
     had_prefixed_dollar = bool(_NON_USD_DOLLAR_PATTERN.search(cleaned))
     cleaned = _NON_USD_DOLLAR_PATTERN.sub(" ", cleaned)
     if "$" not in cleaned:
-        if had_prefixed_dollar or any(
-            symbol in cleaned for symbol in NON_USD_SYMBOLS
-        ):
+        if had_prefixed_dollar or any(symbol in cleaned for symbol in NON_USD_SYMBOLS):
             return None, "non_usd"
         return None, "parse_failed"
     value = parse_usd_budget(cleaned)

@@ -233,7 +233,9 @@ class ModelLoader:
             self._current_model = None
             self._current_model_info = None
             self._last_load_time = None
-        raise ModelLoadError(f"Model refresh failed and no fallback available: {reason}")
+        raise ModelLoadError(
+            f"Model refresh failed and no fallback available: {reason}"
+        )
 
     def _get_latest_approved_model_info(self) -> dict[str, Any] | None:
         try:
