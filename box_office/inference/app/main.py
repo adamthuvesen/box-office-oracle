@@ -24,7 +24,7 @@ from box_office.ml.text_utils import LiteralEvalTooLarge
 from .config import get_settings
 from .integrity import ArtifactIntegrityError
 from .model_loader import ModelLoadError
-from .predictor import PredictionResponse
+from .predictor import ModelInfo, PredictionResponse
 from .runtime import get_runtime
 
 MAX_REQUEST_BODY_BYTES = 1024 * 1024  # 1 MiB
@@ -428,14 +428,13 @@ async def get_model_info() -> dict[str, Any]:
                     },
                 )
 
+            normalized = ModelInfo.from_registry_package(model_info)
             return {
-                "model_id": model_info.get("ModelPackageArn", "unknown"),
-                "version": model_info.get("ModelPackageVersion", 1),
-                "status": model_info.get("ModelApprovalStatus", "unknown"),
-                "created_at": model_info.get(
-                    "CreationTime", datetime.now(UTC)
-                ).isoformat(),
-                "metrics": model_info.get("metrics", {}),
+                "model_id": normalized.model_id,
+                "version": normalized.version,
+                "status": normalized.status,
+                "created_at": normalized.created_at,
+                "metrics": normalized.metrics,
                 "loaded": False,
                 "timestamp": datetime.now(UTC).isoformat(),
             }

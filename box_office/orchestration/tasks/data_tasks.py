@@ -74,7 +74,7 @@ def run_raw_to_staging_dbt_transformations():
     if "SNOWFLAKE_SCHEMA_STAGING" not in os.environ:
         dbt_env["SNOWFLAKE_SCHEMA_STAGING"] = config.snowflake.schemas.staging
 
-    # Resolve SNOWFLAKE_PRIVATE_KEY_PATH to an absolute path for the dbt run
+    # Resolve SNOWFLAKE_PRIVATE_KEY_PATH to an absolute path for the dbt build
     # (dbt resolves env vars at parse time and a relative path breaks when its
     # cwd differs from ours). Keep the resolved value scoped to the with-block.
     if "SNOWFLAKE_PRIVATE_KEY_PATH" in os.environ:
@@ -110,13 +110,14 @@ def run_raw_to_staging_dbt_transformations():
             settings=PrefectDbtSettings(
                 project_dir=dbt_project_dir,
                 profiles_dir=dbt_project_dir,
-            )
+            ),
+            raise_on_failure=True,
         )
 
         with _scoped_env(dbt_env):
             logger.info("Installing dbt dependencies...")
             # Fail fast: a broken packages.yml or unreachable hub silently masking
-            # itself as a "warning" produces confusing downstream `dbt run` errors.
+            # itself as a "warning" produces confusing downstream dbt errors.
             # Let the error bubble so the caller sees the dbt-deps failure directly.
             runner.invoke(["deps"])
             logger.info("dbt deps completed successfully")
@@ -129,18 +130,14 @@ def run_raw_to_staging_dbt_transformations():
                 logger.error(f"dbt debug failed: {e}")
                 raise RuntimeError(f"dbt connection test failed: {e}") from e
 
-            logger.info("Running dbt transformations for staging models...")
-            run_result = runner.invoke(["run", "--select", "staging"])
-            logger.info("dbt transformations completed successfully")
-
-            logger.info("Testing dbt staging models...")
-            runner.invoke(["test", "--select", "staging"])
-            logger.info("dbt staging tests completed successfully")
+            logger.info("Building and testing dbt staging models...")
+            run_result = runner.invoke(["build", "--select", "staging"])
+            logger.info("dbt staging build completed successfully")
 
         # Log result details
         if hasattr(run_result, "results") and run_result.results:
             logger.info(
-                f"dbt run completed: {len(run_result.results)} models processed"
+                f"dbt build completed: {len(run_result.results)} nodes processed"
             )
 
         return run_result

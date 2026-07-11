@@ -67,7 +67,7 @@ box-office-pipeline                 # three-phase Prefect flow
 box-office-api                      # inference service CLI (uvicorn)
 box-office-rich-backfill            # refresh rich local TMDB data
 
-cd transformations && uv run dbt run --select staging --profiles-dir=.
+cd transformations && uv run dbt build --select staging --profiles-dir=.
 ```
 
 ## Coding style

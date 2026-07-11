@@ -8,6 +8,7 @@ and error handling with comprehensive mocking.
 import os
 import pickle
 import tempfile
+from datetime import UTC, datetime
 from unittest.mock import Mock
 
 import numpy as np
@@ -329,6 +330,27 @@ class TestModelInfo:
         assert info.version == 3
         assert info.status == "Approved"
         assert info.metrics == {"rmse": 0.15, "mae": 0.12, "r2": 0.85}
+        assert info.framework == "xgboost"
+
+    def test_from_registry_package(self):
+        created_at = datetime(2026, 7, 11, 12, 30, tzinfo=UTC)
+
+        info = ModelInfo.from_registry_package(
+            {
+                "ModelPackageArn": "arn:aws:sagemaker:eu-north-1:123:model-package/g/7",
+                "ModelPackageVersion": 7,
+                "ModelApprovalStatus": "Approved",
+                "CreationTime": created_at,
+                "metrics": {"oof_r2": 0.61},
+                "framework": "xgboost",
+            }
+        )
+
+        assert info.model_id.endswith("/g/7")
+        assert info.version == 7
+        assert info.status == "Approved"
+        assert info.created_at == created_at.isoformat()
+        assert info.metrics == {"oof_r2": 0.61}
         assert info.framework == "xgboost"
 
 
