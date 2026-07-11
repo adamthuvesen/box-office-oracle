@@ -17,12 +17,9 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.cv import ModelEvaluator, TimeSeriesCrossValidator
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
-from box_office.ml.model import (
-    BoxOfficeXGBoostModel,
-    ModelEvaluator,
-    TimeSeriesCrossValidator,
-)
+from box_office.ml.model import BoxOfficeXGBoostModel
 from box_office.utils.aws_helpers import parse_s3_uri, resolve_aws_region
 
 try:

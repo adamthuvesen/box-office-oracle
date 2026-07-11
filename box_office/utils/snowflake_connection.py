@@ -86,7 +86,7 @@ def create_snowflake_connection(
     if use_private_key:
         # Prefer the env var so a redeploy can override the key path without a code change.
         private_key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH")
-        config_private_key_path = getattr(config.snowflake, "private_key_path", None)
+        config_private_key_path = config.snowflake.private_key_path
 
         logger.info("Attempting private key authentication...")
         logger.info(
@@ -114,12 +114,7 @@ def create_snowflake_connection(
             try:
                 key_path = Path(private_key_path)
                 if not key_path.is_absolute():
-                    try:
-                        project_root = Path(config.paths.project_root)
-                        key_path = (project_root / key_path).resolve()
-                    except (AttributeError, TypeError):
-                        # Fallback to CWD when config.paths.project_root is missing.
-                        key_path = (Path.cwd() / key_path).resolve()
+                    key_path = (Path(config.paths.project_root) / key_path).resolve()
 
                 private_key_path = str(key_path)
 
@@ -183,7 +178,7 @@ def create_snowflake_connection(
                 "Using browser-based SSO authentication for Snowflake connection"
             )
         else:
-            password = getattr(config.snowflake, "password", None)
+            password = config.snowflake.password
             if not password:
                 raise ValueError(
                     "Neither private key nor password is configured for Snowflake authentication"

@@ -25,10 +25,6 @@ from box_office.orchestration.tasks.data_tasks import (
     transform_targets,
     validate_snowflake_tables,
 )
-from box_office.orchestration.tasks.metrics_tasks import (
-    log_data_processing_metrics,
-    log_feature_engineering_metrics,
-)
 from box_office.training_frame import (
     PREPROCESSOR_INPUT_COLUMNS,
     build_production_training_frame,
@@ -50,8 +46,6 @@ class DataPhaseResult:
     scaler_path: str
     save_results: dict[str, bool]
     validation_results: dict[str, Any]
-    feature_metrics: dict[str, Any]
-    data_metrics: dict[str, Any]
     feature_names: list[str]
 
 
@@ -77,10 +71,6 @@ def run_data_phase(logger) -> DataPhaseResult:
     X_train_processed, X_val_processed, processor = apply_feature_engineering(
         X_train, X_val
     )
-    feature_metrics = log_feature_engineering_metrics(
-        processor, X_train_processed.columns.tolist()
-    )
-
     X_train_scaled, X_val_scaled, scaler = scale_features(
         X_train_processed, X_val_processed
     )
@@ -136,10 +126,6 @@ def run_data_phase(logger) -> DataPhaseResult:
             f"Snowflake validation failed for tables: {validation_errors}"
         )
 
-    data_metrics = log_data_processing_metrics(
-        X_train.shape, X_val.shape, X_train_processed.shape[1], TARGET_COLUMN
-    )
-
     successful_saves = sum(1 for success in report.results.values() if success)
     logger.info(
         "Data phase complete: %d features, Snowflake saves %d/%d",
@@ -160,8 +146,6 @@ def run_data_phase(logger) -> DataPhaseResult:
         scaler_path=scaler_path,
         save_results=report.results,
         validation_results=validation_results,
-        feature_metrics=feature_metrics,
-        data_metrics=data_metrics,
         feature_names=X_train_processed.columns.tolist(),
     )
 

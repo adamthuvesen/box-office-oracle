@@ -12,8 +12,7 @@ Writes two JSON files to ``web/data/`` (gitignored):
   from the inference API.
 
 Oracle predictions (``web/data/predictions.json``) come from
-``scripts/score_all_movies.py``, not from here. The legacy
-``per_movie_predictions.json`` is removed if present.
+``scripts/score_all_movies.py``, not from here.
 
 Poster/backdrop paths come straight from the parquet — no TMDB API calls,
 no Snowflake.
@@ -305,11 +304,6 @@ def main() -> None:
     movies = build_movie_records(df, no_gross_ids)
     write_json(out_dir / "movies.json", movies)
     print(f"wrote {out_dir / 'movies.json'} ({len(movies)} movies)")
-
-    legacy = out_dir / "per_movie_predictions.json"
-    if legacy.exists():
-        legacy.unlink()
-        print(f"removed legacy {legacy}")
 
     write_json(
         out_dir / "model_meta.json", build_model_meta(api_url, args.per_year_table)

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from box_office.ml.registry_constants import FeatureSchemaVersionMismatch
+from box_office.ml.feature_schema import FeatureSchemaVersionMismatch
 from box_office.ml.text_utils import LiteralEvalTooLarge
 
 from .config import get_settings
@@ -429,11 +429,13 @@ async def get_model_info() -> dict[str, Any]:
                 )
 
             return {
-                "model_id": model_info.model_id,
-                "version": model_info.version,
-                "status": model_info.status,
-                "created_at": model_info.created_at.isoformat(),
-                "metrics": model_info.metrics,
+                "model_id": model_info.get("ModelPackageArn", "unknown"),
+                "version": model_info.get("ModelPackageVersion", 1),
+                "status": model_info.get("ModelApprovalStatus", "unknown"),
+                "created_at": model_info.get(
+                    "CreationTime", datetime.now(UTC)
+                ).isoformat(),
+                "metrics": model_info.get("metrics", {}),
                 "loaded": False,
                 "timestamp": datetime.now(UTC).isoformat(),
             }

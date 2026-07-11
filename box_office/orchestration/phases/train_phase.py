@@ -10,7 +10,6 @@ from box_office.orchestration.phases.data_phase import (
     DataPhaseResult,
     sagemaker_training_frames,
 )
-from box_office.orchestration.tasks.metrics_tasks import log_model_training_summary
 from box_office.orchestration.tasks.training_tasks import (
     download_and_analyze_results,
     train_model,
@@ -57,7 +56,6 @@ def run_train_phase(data: DataPhaseResult, logger) -> TrainPhaseResult:
     )
 
     training_metrics = download_and_analyze_results(estimator, sagemaker_client)
-    log_model_training_summary(training_metrics)
 
     return TrainPhaseResult(
         training_metrics=training_metrics,

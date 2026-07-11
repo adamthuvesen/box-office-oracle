@@ -4,11 +4,11 @@ This repo does not commit datasets. CSV and Parquet files under `data/` are
 gitignored because the pipeline reads private Snowflake data and writes generated
 local outputs.
 
-Use the maintained ingestion CLI for local TMDB discovery and Snowflake loads:
+The canonical local dataset can be refreshed and loaded into Snowflake with:
 
 ```bash
-box-office-ingest --discover-only --start-year 2024 --output data/generated/tmdb/movies_2024.csv
-box-office-ingest --start-year 2024 --load-to-snowflake
+box-office-rich-backfill
+SNOWFLAKE_ROLE=BOX_OFFICE_LOADER uv run python scripts/load_dataset_to_snowflake.py
 ```
 
 Tracked YAML files here are hand-curated inputs to the local dataset:

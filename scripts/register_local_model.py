@@ -45,7 +45,7 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
-from box_office.ml.model import ModelEvaluator
+from box_office.ml.cv import ModelEvaluator
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")

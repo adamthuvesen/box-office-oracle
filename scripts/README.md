@@ -21,8 +21,6 @@ Roughly in dependency order:
 | `train_local.py`              | Local training driver (offline CV + final fit)                      |
 | `evaluate_local_retrain.py`   | Leakage-free CV evaluation of the local retrain                     |
 | `register_local_model.py`     | Register the locally-trained model in the SageMaker Model Registry  |
-| `check_model.py`              | Inspect the registry and decide whether to deploy                   |
-| `backfill_model_manifests.py` | One-shot: backfill SHA256/size metadata on existing model packages  |
 
 ## Snowflake administration (sanctioned write path)
 

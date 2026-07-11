@@ -2,6 +2,7 @@ import os
 from contextlib import contextmanager
 
 import joblib
+import numpy as np
 import pandas as pd
 from prefect import get_run_logger, task
 from prefect.tasks import exponential_backoff
@@ -11,7 +12,6 @@ from snowflake.connector.pandas_tools import write_pandas
 
 from box_office.config import config
 from box_office.ml.artifacts import FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL
-from box_office.ml.data_prep import TargetTransformer
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.utils.snowflake_connection import (
     create_snowflake_connection,
@@ -133,6 +133,10 @@ def run_raw_to_staging_dbt_transformations():
             run_result = runner.invoke(["run", "--select", "staging"])
             logger.info("dbt transformations completed successfully")
 
+            logger.info("Testing dbt staging models...")
+            runner.invoke(["test", "--select", "staging"])
+            logger.info("dbt staging tests completed successfully")
+
         # Log result details
         if hasattr(run_result, "results") and run_result.results:
             logger.info(
@@ -153,7 +157,7 @@ def load_staging_box_office_from_snowflake():
     logger.info("Loading staging data from Snowflake")
 
     key_path_env = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH")
-    key_path_config = getattr(config.snowflake, "private_key_path", None)
+    key_path_config = config.snowflake.private_key_path
     logger.debug(
         f"SNOWFLAKE_PRIVATE_KEY_PATH env var: {'***MASKED***' if key_path_env else 'Not set'}"
     )
@@ -248,9 +252,7 @@ def apply_feature_engineering(X_train, X_val):
     logger.info("Starting feature preprocessing...")
 
     processor = FeaturePreprocessorHigh()
-    processor.fit(X_train)
-
-    X_train_processed = processor.transform(X_train)
+    X_train_processed = processor.fit_transform(X_train)
     X_val_processed = processor.transform(X_val)
 
     logger.info(
@@ -289,10 +291,8 @@ def transform_targets(y_train, y_val):
     logger = get_run_logger()
     logger.info("Applying log transformation to target variables...")
 
-    y_train_log, y_val_log = TargetTransformer.log_transform(y_train, y_val)
-
-    y_train_log = pd.Series(y_train_log, name="GROSS_LOG", index=y_train.index)
-    y_val_log = pd.Series(y_val_log, name="GROSS_LOG", index=y_val.index)
+    y_train_log = pd.Series(np.log1p(y_train), name="GROSS_LOG", index=y_train.index)
+    y_val_log = pd.Series(np.log1p(y_val), name="GROSS_LOG", index=y_val.index)
 
     logger.info("Target transformation complete")
 

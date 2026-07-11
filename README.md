@@ -38,7 +38,7 @@ make test
 Run the pipeline (requires AWS and Snowflake credentials in `.env`):
 
 ```bash
-box-office-pipeline --environment dev --experiment-name "smoke"
+box-office-pipeline --environment dev
 ```
 
 Run the inference API locally:

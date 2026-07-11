@@ -22,7 +22,6 @@ from box_office.inference.app.model_loader import (
     ModelLoader,
     ModelLoadError,
     ModelValidationError,
-    RegistryModelInfo,
 )
 
 
@@ -393,7 +392,7 @@ class TestModelLoader:
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 
-        with pytest.raises(ModelLoadError, match="Invalid S3 URL format"):
+        with pytest.raises(ModelLoadError, match="Invalid S3 URI"):
             loader._download_and_load_model(sample_model_info)
 
     def test_download_and_load_model_s3_error(
@@ -533,36 +532,6 @@ class TestModelLoader:
         ):
             assert not hasattr(loader, attr), f"{attr} should not exist on ModelLoader"
 
-    def test_clear_cache_removes_sha_dirs(self, mock_aws_clients, temp_cache_dir):
-        mock_s3, mock_sagemaker = mock_aws_clients
-        loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
-
-        sha_dir = loader.cache_dir / ("a" * 64)
-        sha_dir.mkdir()
-        (sha_dir / "cached_model.pkl").write_bytes(b"x" * 16)
-
-        loader.clear_cache()
-        assert not sha_dir.exists()
-
-    def test_get_cache_info_counts_sha_dirs(self, mock_aws_clients, temp_cache_dir):
-        mock_s3, mock_sagemaker = mock_aws_clients
-        loader = ModelLoader(
-            "test-group", cache_dir=temp_cache_dir, cache_ttl_seconds=3600
-        )
-
-        info = loader.get_cache_info()
-        assert info["cached_models"] == 0
-        assert info["total_cache_size_bytes"] == 0
-        assert info["cache_ttl_seconds"] == 3600
-
-        sha_dir = loader.cache_dir / ("b" * 64)
-        sha_dir.mkdir()
-        (sha_dir / "cached_model.pkl").write_bytes(b"y" * 32)
-
-        info = loader.get_cache_info()
-        assert info["cached_models"] == 1
-        assert info["total_cache_size_bytes"] >= 32
-
     def test_get_current_model_none(self, mock_aws_clients, temp_cache_dir):
         """Test getting current model when none is loaded."""
         mock_s3, mock_sagemaker = mock_aws_clients
@@ -656,11 +625,9 @@ class TestModelLoader:
         loader._current_model_info = sample_model_info
         loader._last_load_time = datetime.now(UTC)
 
-        with patch.object(
-            loader, "_get_latest_approved_model_info", return_value=sample_model_info
-        ):
-            result = loader.refresh_model_if_needed()
-            assert result is False
+        with patch.object(loader, "load_latest_approved_model") as mock_load:
+            assert loader.refresh_model_if_needed() is False
+            mock_load.assert_not_called()
 
     def test_refresh_model_if_needed_new_version(
         self, mock_aws_clients, temp_cache_dir, sample_model_info
@@ -669,7 +636,7 @@ class TestModelLoader:
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._current_model_info = sample_model_info
-        loader._last_load_time = datetime.now(UTC)
+        loader._last_load_time = datetime.now(UTC) - timedelta(seconds=3601)
 
         new_model_info = sample_model_info.copy()
         new_model_info["ModelPackageArn"] = (
@@ -682,7 +649,7 @@ class TestModelLoader:
             with patch.object(
                 loader,
                 "load_latest_approved_model",
-                return_value=RegistryModelInfo(new_model_info),
+                return_value=new_model_info,
             ) as mock_load:
                 result = loader.refresh_model_if_needed()
                 assert result is True
@@ -774,7 +741,3 @@ class TestModelLoaderIntegration:
                 assert result is not None
                 assert loader.get_current_model() is not None
                 assert isinstance(loader._current_model, MockXGBModel)
-
-                cache_info = loader.get_cache_info()
-                assert cache_info["cached_models"] == 1
-                assert cache_info["current_model_loaded"] is True

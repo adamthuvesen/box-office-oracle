@@ -421,30 +421,6 @@ class AWSModelRegistry:
             "SupportedResponseMIMETypes": ["text/csv", "application/json"],
         }
 
-    def get_training_job_metrics(self, training_job_name: str) -> dict[str, float]:
-        try:
-            response = self.sagemaker_client.describe_training_job(
-                TrainingJobName=training_job_name
-            )
-
-            metrics = {}
-            if "FinalMetricDataList" in response:
-                for metric in response["FinalMetricDataList"]:
-                    metric_name = metric["MetricName"]
-                    metric_value = metric["Value"]
-                    metrics[metric_name] = metric_value
-                    logger.info(
-                        f"Retrieved training metric: {metric_name} = {metric_value}"
-                    )
-            else:
-                logger.info("No FinalMetricDataList found in training job description")
-
-            return metrics
-
-        except Exception as e:
-            logger.warning(f"Could not retrieve training job metrics: {e}")
-            return {}
-
     def _get_account_id(self) -> str:
         """Get AWS account ID via STS.
 

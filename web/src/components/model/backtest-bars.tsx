@@ -13,7 +13,10 @@ import {
 } from "recharts";
 import type { BacktestYear } from "@/lib/types";
 import { ratio } from "@/lib/format";
-import { AXIS_TICK, TooltipCard, TooltipRow } from "./chart-tooltip";
+import {
+  ChartTooltip,
+  numericTick,
+} from "@/components/charts/chart-tooltip";
 
 /**
  * The signature chart: per-year R² (log dollars), model as solid cyan,
@@ -36,13 +39,13 @@ export function BacktestBars({ years }: { years: BacktestYear[] }) {
               dataKey="year"
               tickLine={false}
               axisLine={{ stroke: "var(--color-hairline)" }}
-              tick={AXIS_TICK}
+              tick={numericTick}
             />
             <YAxis
               width={44}
               tickLine={false}
               axisLine={false}
-              tick={AXIS_TICK}
+              tick={numericTick}
               tickFormatter={(v: number) => v.toFixed(2)}
               domain={[
                 (min: number) => Math.min(0, Math.floor(min * 10) / 10),
@@ -98,28 +101,28 @@ function YearTip({ active, payload }: TooltipContentProps) {
   const row: BacktestYear | undefined = payload[0]?.payload;
   if (!row) return null;
   return (
-    <TooltipCard>
-      <p className="font-mono text-ink">
-        {row.year}
-        <span className="ml-2 text-dim">{row.n_movies} movies</span>
-      </p>
-      <div className="mt-1.5 flex min-w-40 flex-col gap-0.5">
-        <TooltipRow
-          label="Baseline R²"
-          value={ratio(row.baseline_r2_log)}
-          valueClass="text-actual"
-        />
-        <TooltipRow
-          label="Model R²"
-          value={ratio(row.model_r2_log)}
-          valueClass="text-predicted"
-        />
-        <TooltipRow
-          label="Gain"
-          value={`${row.gain_r2_log >= 0 ? "+" : ""}${ratio(row.gain_r2_log)}`}
-          valueClass={row.gain_r2_log >= 0 ? "text-over" : "text-under"}
-        />
-      </div>
-    </TooltipCard>
+    <ChartTooltip
+      label={`${row.year} · ${row.n_movies} movies`}
+      rows={[
+        {
+          name: "Baseline R²",
+          value: ratio(row.baseline_r2_log),
+          color: "var(--color-actual)",
+        },
+        {
+          name: "Model R²",
+          value: ratio(row.model_r2_log),
+          color: "var(--color-predicted)",
+        },
+        {
+          name: "Gain",
+          value: `${row.gain_r2_log >= 0 ? "+" : ""}${ratio(row.gain_r2_log)}`,
+          color:
+            row.gain_r2_log >= 0
+              ? "var(--color-over)"
+              : "var(--color-under)",
+        },
+      ]}
+    />
   );
 }

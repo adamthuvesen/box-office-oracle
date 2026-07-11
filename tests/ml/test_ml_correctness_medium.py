@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
-from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -60,11 +58,9 @@ class TestNaNPropagation:
 
         df = self._build_dataframe(with_nan_budget=True)
 
-        # Make sure strict mode is OFF.
-        with mock.patch.dict(os.environ, {"ML_STRICT_FEATURES": ""}, clear=False):
-            pre = FeaturePreprocessorHigh()
-            with caplog.at_level(logging.WARNING):
-                features = pre.fit_transform(df)
+        pre = FeaturePreprocessorHigh()
+        with caplog.at_level(logging.WARNING):
+            features = pre.fit_transform(df)
 
         # PRODUCTION_BUDGET NaN must propagate (or feed dependent features) and
         # NOT be silently zeroed.
@@ -81,17 +77,6 @@ class TestNaNPropagation:
             for rec in caplog.records
         ), "Expected at least one WARNING naming a NaN column"
 
-    def test_strict_mode_raises_on_unexpected_nan(self):
-        """Spec scenario: Unexpected NaN counts raise in strict mode."""
-        from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
-
-        df = self._build_dataframe(with_nan_budget=True)
-
-        with mock.patch.dict(os.environ, {"ML_STRICT_FEATURES": "true"}, clear=False):
-            pre = FeaturePreprocessorHigh()
-            with pytest.raises(ValueError, match="ML_STRICT_FEATURES"):
-                pre.fit_transform(df)
-
 
 # ---------------------------------------------------------------------------
 # Requirement: Out-of-fold predictions SHALL be uniquely indexed across folds
@@ -107,10 +92,8 @@ class TestOOFCollisionDetection:
         After CV the cv_results carry an ``oof_records`` parallel-array with
         one entry per (fold, idx, pred) — guaranteeing no overwrite.
         """
-        from box_office.ml.model import (
-            BoxOfficeXGBoostModel,
-            TimeSeriesCrossValidator,
-        )
+        from box_office.ml.cv import TimeSeriesCrossValidator
+        from box_office.ml.model import BoxOfficeXGBoostModel
 
         np.random.seed(42)
         n = 80
@@ -261,10 +244,9 @@ class TestMissingCoreColumnSurface:
             }
         )
 
-        with mock.patch.dict(os.environ, {"ML_STRICT_FEATURES": ""}, clear=False):
-            transformer = CoreNumericalTransformer()
-            with caplog.at_level(logging.WARNING):
-                out = transformer.transform(df)
+        transformer = CoreNumericalTransformer()
+        with caplog.at_level(logging.WARNING):
+            out = transformer.transform(df)
 
         # Default fill = 0
         assert (out["RUNTIME"] == 0).all()
@@ -272,23 +254,6 @@ class TestMissingCoreColumnSurface:
             "RUNTIME" in rec.message and rec.levelno == logging.WARNING
             for rec in caplog.records
         ), "Expected WARNING naming RUNTIME"
-
-    def test_strict_mode_raises_on_missing_core_column(self):
-        """Spec scenario: Strict mode raises on missing core column."""
-        from box_office.ml.feature_pipeline import CoreNumericalTransformer
-
-        df = pd.DataFrame(
-            {
-                "RELEASE_YEAR": [2020],
-                "PRODUCTION_BUDGET": [30],
-                # RUNTIME deliberately missing
-            }
-        )
-
-        with mock.patch.dict(os.environ, {"ML_STRICT_FEATURES": "true"}, clear=False):
-            transformer = CoreNumericalTransformer()
-            with pytest.raises(KeyError, match="RUNTIME"):
-                transformer.transform(df)
 
 
 # ---------------------------------------------------------------------------
@@ -405,84 +370,3 @@ class TestInflationDirection:
         df = self._row(year=2024, prod_budget=100_000_000.0)
         out = FinancialTransformer().transform(df)
         assert out["BUDGET_INFLATION_ADJUSTED"].iloc[0] == pytest.approx(100_000_000.0)
-
-
-# ---------------------------------------------------------------------------
-# Requirement: Snowflake NaN-to-None conversion SHALL be reliable
-# ---------------------------------------------------------------------------
-
-
-class TestSnowflakeNaNToNone:
-    """Spec: Snowflake NaN-to-None conversion SHALL be reliable."""
-
-    def test_float_column_with_nan_becomes_none(self):
-        """Spec scenario: Float column with NaN is converted to None."""
-        from box_office.utils.snowflake_loader import SnowflakeLoader
-
-        # Constructor only validates identifiers — no live connection needed.
-        loader = SnowflakeLoader(schema="RAW")
-
-        df = pd.DataFrame(
-            {
-                "tmdb_id": ["1", "2"],
-                "worldwide_gross": ["1000.5", "invalid"],  # forces NaN at index 1
-            }
-        )
-        df = loader.validate_schema(df)
-        out = loader.transform_columns(df)
-
-        assert out["worldwide_gross"].iloc[1] is None, (
-            "NaN values should be converted to None (Python singleton)"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Requirement: Ingestion SHALL NOT synthesize target-derived rank
-# ---------------------------------------------------------------------------
-
-
-class TestIngestionDoesNotCreateRank:
-    """Spec: Ingestion does not create target-derived rank."""
-
-    def test_prepare_for_snowflake_does_not_create_rank(self):
-        """Spec scenario: target-derived rank is not produced."""
-        from box_office.ingestion.cli import prepare_for_snowflake
-
-        df = pd.DataFrame(
-            {
-                "tmdb_id": [1, 2, 3],
-                "title": ["A", "B", "C"],
-                "worldwide_gross": [50, 200, 100],
-                "production_budget": [10, 20, 30],
-            }
-        )
-        out = prepare_for_snowflake(df)
-
-        assert "rank" not in out.columns
-
-
-# ---------------------------------------------------------------------------
-# Requirement: Encoded defaults SHALL NOT be synthesized
-# ---------------------------------------------------------------------------
-
-
-class TestEncodedColumnsDropped:
-    """Spec: ingestion no longer creates encoded helper columns."""
-
-    def test_prepare_for_snowflake_drops_encoded_inputs(self):
-        """Spec scenario: encoded columns stay out of RAW contract."""
-        from box_office.ingestion.cli import prepare_for_snowflake
-
-        df = pd.DataFrame(
-            {
-                "tmdb_id": [1, 2, 3, 4, 5],
-                "title": ["A", "B", "C", "D", "E"],
-                "worldwide_gross": [100, 200, 300, 400, 500],
-                "release_type_encoded": [3, np.nan, np.nan, np.nan, np.nan],
-                "mpaa_encoded": [1, 2, 3, 4, 5],
-            }
-        )
-        out = prepare_for_snowflake(df).sort_values("tmdb_id").reset_index(drop=True)
-
-        assert "release_type_encoded" not in out.columns
-        assert "mpaa_encoded" not in out.columns

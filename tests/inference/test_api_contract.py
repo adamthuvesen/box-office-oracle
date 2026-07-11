@@ -25,7 +25,7 @@ from box_office.inference.app.model_loader import (  # noqa: E402
     ModelLoadError,
 )
 from box_office.inference.app.predictor import PredictionResponse  # noqa: E402
-from box_office.ml.registry_constants import FeatureSchemaVersionMismatch  # noqa: E402
+from box_office.ml.feature_schema import FeatureSchemaVersionMismatch  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers

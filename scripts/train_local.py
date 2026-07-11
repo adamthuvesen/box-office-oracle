@@ -54,12 +54,12 @@ from box_office.ml.artifacts import (
 from box_office.ml.cv import TimeSeriesCrossValidator
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
-from box_office.ml.model import BoxOfficeXGBoostModel
-from box_office.ml.registry_constants import (
+from box_office.ml.feature_schema import (
     CURRENT_FEATURE_SCHEMA_VERSION,
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
+from box_office.ml.model import BoxOfficeXGBoostModel
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 ARTIFACT_DIR = Path("artifacts/local")

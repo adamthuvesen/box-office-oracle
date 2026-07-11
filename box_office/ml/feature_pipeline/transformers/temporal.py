@@ -10,8 +10,6 @@ import pandas as pd
 from pandas.tseries.holiday import USMemorialDay, USThanksgivingDay
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from box_office.config import config
-
 logger = logging.getLogger(__name__)
 
 
@@ -37,10 +35,7 @@ class TemporalTransformer(BaseEstimator, TransformerMixin):
         month, day, weekday = date_obj.month, date_obj.day, date_obj.weekday()
         is_memorial = int(_is_in_holiday_weekend(date_obj, USMemorialDay))
         is_thanks = int(_is_in_holiday_weekend(date_obj, USThanksgivingDay))
-        is_covid = int(
-            config.feature_engineering.enable_covid_features
-            and date_obj >= pd.to_datetime("2020-03-01")
-        )
+        is_covid = int(date_obj >= pd.to_datetime("2020-03-01"))
 
         return {
             "RELEASE_MONTH": month,

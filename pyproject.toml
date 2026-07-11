@@ -42,8 +42,6 @@ dependencies = [
     "PyYAML==6.0.2",
 
     # Machine Learning & Optimization
-    "optuna==4.9.0",
-    "optuna-integration==4.9.0",
     "xgboost==3.2.0",
 
     # SageMaker
@@ -60,12 +58,7 @@ dependencies = [
 
     # Workflow Orchestration
     "prefect==3.7.3",
-    "prefect-aws==0.7.9",
     "prefect-dbt==0.7.24",
-    "prefect-github==0.4.2",
-
-    # Additional Core Dependencies
-    "SQLAlchemy==2.0.50",
     "pydantic-settings==2.14.1",
 
 ]
@@ -77,7 +70,6 @@ dev = [
     "pytest-asyncio>=1.0",
     "pytest-cov==7.1.0",
     "ruff==0.15.20",
-    "pip-tools==7.5.3",
     "pre-commit>=3.0.0",
 
     # Jupyter & Notebooks
@@ -85,35 +77,21 @@ dev = [
     "ipykernel==7.2.0",
     "ipython==9.14.0",
 
-    # Infrastructure & Deployment
-    "docker==7.1.0",
-
     # Data & Plotting
-    "seaborn==0.11.1",
     "plotly==6.7.0",
 
     # Machine Learning
+    "optuna==4.9.0",
     "lightgbm==4.6.0",
     "catboost==1.2.10",
-
-    # Utilities
-    "bs4==0.0.2",
-    "beautifulsoup4==4.14.3",
-
-    # AI & LLM APIs
-    "openai==2.39.0",
 
     # PyTorch
     "torch==2.12.0",
 
     # Additional Core Dependencies
     "requests==2.34.2",
-    "Jinja2==3.1.6",
-    "click==8.4.1",
-
     # Data Processing & Validation
     "pydantic==2.13.4",
-    "jsonschema==4.26.0",
 
     # ML Explainability
     "shap==0.46.0",
@@ -136,7 +114,6 @@ test = [
 [project.scripts]
 box-office-pipeline = "box_office.orchestration.flows.ml_pipeline:main"
 box-office-api = "box_office.inference.app.main:cli_main"
-box-office-ingest = "box_office.ingestion.cli:main"
 box-office-rich-backfill = "box_office.ingestion.tmdb_rich_backfill:main"
 box-office-curated-movies = "box_office.ingestion.curated_movies:main"
 box-office-wikipedia-budget-fill = "box_office.ingestion.wikipedia_budget_fill:main"

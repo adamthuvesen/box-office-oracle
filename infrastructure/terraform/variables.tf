@@ -26,12 +26,6 @@ variable "sagemaker_execution_role_name" {
   default     = "sagemaker-execution-role"
 }
 
-variable "model_package_group_name" {
-  description = "Name of the SageMaker model package group"
-  type        = string
-  default     = "box-office-dev-box-office-models"
-}
-
 variable "github_org" {
   description = "GitHub organization name for CI/CD"
   type        = string

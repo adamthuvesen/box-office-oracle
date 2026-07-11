@@ -48,21 +48,6 @@ class TestPipelineImports:
         assert train_model is not None
         assert download_and_analyze_results is not None
 
-    def test_metrics_tasks_imports(self):
-        from box_office.orchestration.tasks.metrics_tasks import (
-            log_data_processing_metrics,
-            log_feature_engineering_metrics,
-            log_model_training_summary,
-            log_pipeline_completion_metrics,
-            log_pipeline_start_metrics,
-        )
-
-        assert log_pipeline_start_metrics is not None
-        assert log_data_processing_metrics is not None
-        assert log_feature_engineering_metrics is not None
-        assert log_model_training_summary is not None
-        assert log_pipeline_completion_metrics is not None
-
 
 class TestConfigSystem:
     def test_config_singleton_imports(self):
@@ -215,7 +200,4 @@ class TestPipelineFlow:
         sig = inspect.signature(ml_pipeline)
 
         assert "environment" in sig.parameters
-        assert "experiment_name" in sig.parameters
-
         assert sig.parameters["environment"].default == "dev"
-        assert sig.parameters["experiment_name"].default == "box-office-predictions"
