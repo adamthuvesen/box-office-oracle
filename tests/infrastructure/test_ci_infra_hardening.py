@@ -286,6 +286,38 @@ def test_dbt_ci_includes_compile_step() -> None:
     )
 
 
+def test_ci_enforces_python_lint_and_formatting() -> None:
+    data = yaml.safe_load(CI_YML.read_text())
+    steps = data["jobs"]["test"]["steps"]
+    commands = "\n".join(step.get("run", "") for step in steps)
+
+    assert "ruff check box_office tests scripts" in commands
+    assert "ruff format --check box_office tests scripts" in commands
+
+
+def test_ci_enforces_web_lint_and_build() -> None:
+    data = yaml.safe_load(CI_YML.read_text())
+    steps = data["jobs"]["web-quality"]["steps"]
+    commands = "\n".join(step.get("run", "") for step in steps)
+
+    assert "pnpm --dir web install --frozen-lockfile" in commands
+    assert "pnpm --dir web lint" in commands
+    assert "pnpm --dir web build" in commands
+
+
+def test_dbt_ci_parses_without_snowflake_credentials() -> None:
+    data = yaml.safe_load(CI_YML.read_text())
+    job = data["jobs"]["dbt-test"]
+    steps = {step["name"]: step for step in job["steps"] if "name" in step}
+
+    assert "if" not in steps["dbt deps"]
+    assert "if" not in steps["dbt parse (validate models)"]
+    assert steps["dbt compile (catch jinja and ref errors)"]["if"] == (
+        "steps.creds.outputs.has_creds == 'true'"
+    )
+    assert "offline" in job["env"]["SNOWFLAKE_ACCOUNT"]
+
+
 # ---------------------------------------------------------------------------
 # 3.12 / Spec: save_dataset_to_snowflake validates table_name first
 # ---------------------------------------------------------------------------
