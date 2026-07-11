@@ -54,6 +54,10 @@ Run only one file:
 uv run pytest tests/orchestration/test_pipeline_failure_semantics.py -v
 ```
 
+Pull requests run the Python suite with coverage, Ruff lint and formatting
+checks, web lint and build, and dbt parse. dbt compile also runs when Snowflake
+credentials are available.
+
 ## Commands you'll actually use
 
 ```bash

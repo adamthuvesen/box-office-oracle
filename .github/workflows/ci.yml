@@ -48,6 +48,11 @@ jobs:
       run: |
         uv sync --extra test --extra inference --frozen
 
+    - name: Check Python lint and formatting
+      run: |
+        uv run ruff check box_office tests scripts
+        uv run ruff format --check box_office tests scripts
+
     - name: Setup Snowflake Private Key for Tests
       # Materialize via printf %s to ${RUNNER_TEMP}: keeps the key out of the
       # workspace, off `set -x` output, and preserves PEM literal-\n payloads.
@@ -102,6 +107,17 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT || 'offline' }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER || 'offline' }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE || 'DBT_RUNNER' }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE || 'COMPUTE_WH' }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE || 'BOX_OFFICE' }}
+      SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW || 'RAW' }}
+      SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING || 'STAGING' }}
+      SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING || 'ML_TRAINING' }}
+      SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE || 'FEATURE_STORE' }}
+      SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
 
     steps:
     - name: Checkout code
@@ -130,78 +146,68 @@ jobs:
       run: |
         uv sync --frozen
 
-    - name: Check Snowflake credentials
+    - name: Configure Snowflake key path for dbt
       id: creds
       env:
         SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
       run: |
         if [ -n "$SNOWFLAKE_PRIVATE_KEY" ]; then
           echo "has_creds=true" >> "$GITHUB_OUTPUT"
+          KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
+          printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
         else
           echo "has_creds=false" >> "$GITHUB_OUTPUT"
-          echo "::notice::Snowflake credentials absent; skipping dbt validation."
+          KEY_PATH="${RUNNER_TEMP}/offline-snowflake-key.p8"
+          echo "::notice::Snowflake credentials absent; running dbt parse only."
         fi
-
-    - name: Setup Snowflake Private Key for dbt
-      if: steps.creds.outputs.has_creds == 'true'
-      env:
-        SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
-      run: |
-        KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
-        printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
-        chmod 600 "$KEY_PATH"
         echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-        echo "Snowflake private key materialized for dbt"
 
     - name: dbt deps
-      if: steps.creds.outputs.has_creds == 'true'
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
-        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
-        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the previous step via $GITHUB_ENV.
-        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
       run: |
         cd transformations
         uv run dbt deps --profiles-dir=.
 
     - name: dbt parse (validate models)
-      if: steps.creds.outputs.has_creds == 'true'
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
-        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
-        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the setup step via $GITHUB_ENV.
-        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
       run: |
         cd transformations
         uv run dbt parse --profiles-dir=.
 
     - name: dbt compile (catch jinja and ref errors)
       if: steps.creds.outputs.has_creds == 'true'
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
-        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
-        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
       run: |
         cd transformations
         uv run dbt compile --profiles-dir=.
+
+  web-quality:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    name: Web Lint and Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+    - name: Set up pnpm
+      uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+      with:
+        version: "11.5.3"
+
+    - name: Set up Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+      with:
+        node-version: "22"
+        cache: pnpm
+        cache-dependency-path: web/pnpm-lock.yaml
+
+    - name: Install web dependencies
+      run: pnpm --dir web install --frozen-lockfile
+
+    - name: Run web lint
+      run: pnpm --dir web lint
+
+    - name: Build web app
+      run: pnpm --dir web build
