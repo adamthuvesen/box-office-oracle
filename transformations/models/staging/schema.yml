@@ -43,8 +43,9 @@ models:
         tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 1900
-              max_value: 2030
+              arguments:
+                min_value: 1900
+                max_value: 2030
       - name: original_language
         description: "Original language of the movie"
         data_type: string
@@ -64,7 +65,8 @@ models:
         data_type: float
         tests:
           - dbt_utils.accepted_range:
-              min_value: 0
+              arguments:
+                min_value: 0
       - name: production_budget_original
         description: "Production budget as originally sourced (0 when missing)"
         data_type: float
@@ -90,7 +92,8 @@ models:
         data_type: float
         tests:
           - dbt_utils.accepted_range:
-              min_value: 0
+              arguments:
+                min_value: 0
       - name: runtime
         description: "Movie runtime in minutes"
         data_type: integer

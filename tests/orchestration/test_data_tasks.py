@@ -3,9 +3,11 @@ Essential tests for orchestration data tasks.
 """
 
 import numpy as np
+import pytest
 
 
-def test_dbt_task_runs_and_tests_staging(tmp_path, monkeypatch):
+@pytest.fixture
+def dbt_task(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import MagicMock
 
@@ -31,16 +33,30 @@ def test_dbt_task_runs_and_tests_staging(tmp_path, monkeypatch):
             ),
         ),
     )
-    monkeypatch.setattr(data_tasks, "PrefectDbtRunner", lambda settings: runner)
+    runner_factory = MagicMock(return_value=runner)
+    monkeypatch.setattr(data_tasks, "PrefectDbtRunner", runner_factory)
+    return data_tasks, runner, runner_factory
+
+
+def test_dbt_task_builds_and_tests_staging(dbt_task):
+    data_tasks, runner, runner_factory = dbt_task
 
     data_tasks.run_raw_to_staging_dbt_transformations.fn()
 
     assert [call.args[0] for call in runner.invoke.call_args_list] == [
         ["deps"],
         ["debug"],
-        ["run", "--select", "staging"],
-        ["test", "--select", "staging"],
+        ["build", "--select", "staging"],
     ]
+    assert runner_factory.call_args.kwargs["raise_on_failure"] is True
+
+
+def test_dbt_task_propagates_build_failure(dbt_task):
+    data_tasks, runner, _ = dbt_task
+    runner.invoke.side_effect = [None, None, ValueError("dbt failed")]
+
+    with pytest.raises(ValueError, match="dbt failed"):
+        data_tasks.run_raw_to_staging_dbt_transformations.fn()
 
 
 class TestFeatureScaling:

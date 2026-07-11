@@ -25,7 +25,7 @@ Operational cost: ~$50/month. Training run: 2-5 min on ~6,080 movies (kept from 
 ```
 ingestion (TMDB/IMDb) → Snowflake RAW
                             ↓
-                    dbt run + test (staging)
+                      dbt build (staging)
                             ↓
                   Snowflake STAGING.stg_box_office
                             ↓
@@ -50,7 +50,7 @@ ingestion (TMDB/IMDb) → Snowflake RAW
 
 | Phase | Module | Responsibility |
 | ----- | ------ | -------------- |
-| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt run/test → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
+| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt build → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
 | Train | [`phases/train_phase.py`](../box_office/orchestration/phases/train_phase.py) | In-memory `(X_TRAIN_SCALED, Y_TRAIN_LOG)` upload to S3 → SageMaker training → parse output metrics |
 | Registry | [`phases/registry_phase.py`](../box_office/orchestration/phases/registry_phase.py) | Register model package → R² gate → optional promotion |
 

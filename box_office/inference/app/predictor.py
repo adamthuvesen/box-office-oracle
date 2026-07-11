@@ -7,7 +7,7 @@ import ast
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Self
 
 import joblib
 import numpy as np
@@ -166,6 +166,23 @@ class ModelInfo(BaseModel):
     created_at: str
     metrics: dict[str, float]
     framework: str = "scikit-learn"
+
+    @classmethod
+    def from_registry_package(cls, package: dict[str, Any]) -> Self:
+        """Normalize a SageMaker model package summary for API and runtime use."""
+        created_at = package.get("CreationTime")
+        return cls(
+            model_id=package.get("ModelPackageArn", "unknown"),
+            version=package.get("ModelPackageVersion", 1),
+            status=package.get("ModelApprovalStatus", "unknown"),
+            created_at=(
+                created_at.isoformat()
+                if hasattr(created_at, "isoformat")
+                else str(created_at or "unknown")
+            ),
+            metrics=package.get("metrics", {}),
+            framework=package.get("framework", "unknown"),
+        )
 
 
 class PredictionEngine:

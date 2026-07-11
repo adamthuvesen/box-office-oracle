@@ -10,6 +10,7 @@ from box_office.inference.app.model_loader import (
     ModelLoadError,
 )
 from box_office.inference.app.predictor import (
+    ModelInfo,
     PredictionEngine,
     PredictionRequest,
     PredictionResponse,
@@ -36,20 +37,7 @@ class ModelRuntime:
 
         if refreshed or not self._engine.is_loaded():
             paths = self._loader.get_model_artifacts_paths()
-            raw = current[1]
-            created_at = raw.get("CreationTime")
-            metadata = {
-                "model_id": raw.get("ModelPackageArn", "unknown"),
-                "version": raw.get("ModelPackageVersion", 1),
-                "status": raw.get("ModelApprovalStatus", "unknown"),
-                "created_at": (
-                    created_at.isoformat()
-                    if hasattr(created_at, "isoformat")
-                    else str(created_at or "unknown")
-                ),
-                "metrics": raw.get("metrics", {}),
-                "framework": raw.get("framework", "unknown"),
-            }
+            metadata = ModelInfo.from_registry_package(current[1]).model_dump()
             self._engine.load_model_artifacts(
                 model_path=paths["model"],
                 preprocessor_path=paths["preprocessor"],
