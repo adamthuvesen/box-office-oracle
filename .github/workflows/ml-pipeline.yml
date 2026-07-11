@@ -11,16 +11,6 @@ on:
         options:
           - dev
           - prod
-      run_after_deploy:
-        description: 'Run the pipeline after deployment'
-        required: false
-        default: true
-        type: boolean
-      experiment_name:
-        description: 'SageMaker box office prediction experiment name'
-        required: false
-        default: 'box-office-predictions'
-        type: string
 
 # Least privilege by default; jobs opt into exactly what they need.
 permissions: {}
@@ -30,109 +20,6 @@ env:
   AWS_REGION: "eu-north-1"
 
 jobs:
-  run-dbt-transformations:
-    name: Run dbt Data Transformations
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-
-    - name: Set up Python
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
-      with:
-        version: "0.5.13"
-
-    - name: Cache uv dependencies
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-      with:
-        path: ~/.cache/uv
-        key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-uv-
-
-    - name: Install dependencies
-      run: |
-        uv sync --frozen
-
-    - name: Set deployment environment
-      id: set-env
-      run: |
-        echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-
-    - name: Setup Snowflake Private Key for dbt
-      # Materialize the key via printf %s to $RUNNER_TEMP; see ci.yml for the full rationale.
-      env:
-        SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
-      run: |
-        if [ -z "$SNOWFLAKE_PRIVATE_KEY" ]; then
-          echo "SNOWFLAKE_PRIVATE_KEY secret is not set"
-          exit 1
-        fi
-        KEY_PATH="${RUNNER_TEMP}/snowflake_key.p8"
-        printf '%s' "$SNOWFLAKE_PRIVATE_KEY" > "$KEY_PATH"
-        chmod 600 "$KEY_PATH"
-        echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-        echo "Snowflake private key materialized at \$RUNNER_TEMP for dbt"
-
-    - name: dbt deps
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
-        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the setup step via $GITHUB_ENV.
-        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
-      run: |
-        cd transformations
-        uv run dbt deps --profiles-dir=.
-
-    - name: dbt run (staging models for ML pipeline)
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
-        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the setup step via $GITHUB_ENV.
-        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
-      run: |
-        cd transformations
-        uv run dbt run --select staging --profiles-dir=.
-
-    - name: dbt test (validate staging data)
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
-        # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the setup step via $GITHUB_ENV.
-        SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
-      run: |
-        cd transformations
-        uv run dbt test --select staging --profiles-dir=.
-
   run-ml-pipeline:
     name: Execute ML Pipeline
     runs-on: ubuntu-latest
@@ -140,8 +27,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    needs: [run-dbt-transformations]
-
     steps:
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -230,20 +115,18 @@ jobs:
         echo "Executing ML Pipeline..."
         echo "Environment: ${{ steps.set-env.outputs.environment }}"
         echo "GitHub SHA: ${{ github.sha }}"
-        echo "Experiment: ${{ inputs.experiment_name || 'box-office-predictions' }}"
-
         # Run the ML pipeline using the console script entry point
-        uv run box-office-pipeline --environment ${{ steps.set-env.outputs.environment }} --experiment-name "${{ inputs.experiment_name || 'box-office-predictions' }}"
+        uv run box-office-pipeline --environment ${{ steps.set-env.outputs.environment }}
 
         echo "ML Pipeline execution completed!"
-        echo "Check artifacts for results and metrics."
+        echo "Check the job logs for training and registry results."
 
   notify:
     if: ${{ always() }}
     name: Notify Pipeline Status
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [run-dbt-transformations, run-ml-pipeline]
+    needs: [run-ml-pipeline]
 
     steps:
     - name: Determine environment
@@ -255,16 +138,11 @@ jobs:
       run: |
         echo "## ML Pipeline Summary" >> $GITHUB_STEP_SUMMARY
         echo "- **Environment**: ${{ steps.env.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **dbt Transformations**: ${{ needs.run-dbt-transformations.result }}" >> $GITHUB_STEP_SUMMARY
         echo "- **ML Pipeline Execution**: ${{ needs.run-ml-pipeline.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Experiment**: ${{ inputs.experiment_name || 'box-office-predictions' }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Check overall success
         OVERALL_SUCCESS="true"
-        if [ "${{ needs.run-dbt-transformations.result }}" != "success" ]; then
-          OVERALL_SUCCESS="false"
-        fi
         if [ "${{ needs.run-ml-pipeline.result }}" != "success" ]; then
           OVERALL_SUCCESS="false"
         fi
@@ -281,10 +159,7 @@ jobs:
         else
           echo "**ML Pipeline failed or incomplete**" >> $GITHUB_STEP_SUMMARY
           echo "Please check the logs for details." >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.run-dbt-transformations.result }}" != "success" ]; then
-            echo "- dbt transformations failed - check data quality and Snowflake connectivity" >> $GITHUB_STEP_SUMMARY
-          fi
           if [ "${{ needs.run-ml-pipeline.result }}" != "success" ]; then
-            echo "- ML pipeline execution failed - check model training and SageMaker configuration" >> $GITHUB_STEP_SUMMARY
+            echo "- ML pipeline execution failed - check dbt, Snowflake, model training, and SageMaker logs" >> $GITHUB_STEP_SUMMARY
           fi
         fi

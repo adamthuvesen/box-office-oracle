@@ -17,7 +17,6 @@ DOCUMENTED_ENV_VARS = {
     "AWS_S3_BUCKET",
     "S3_BUCKET_NAME",
     "SAGEMAKER_BUCKET",
-    "AWS_ACCOUNT_ID",
     "SAGEMAKER_ROLE_ARN",
     "SNOWFLAKE_USER",
     "SNOWFLAKE_PASSWORD",
@@ -30,10 +29,6 @@ DOCUMENTED_ENV_VARS = {
     "SNOWFLAKE_SCHEMA_STAGING",
     "SNOWFLAKE_SCHEMA_FEATURE_STORE",
     "SNOWFLAKE_SCHEMA_ML_TRAINING",
-    "TMDB_START_YEAR",
-    "TMDB_END_YEAR",
-    "TMDB_MIN_REVENUE",
-    "TMDB_PAGE_LIMIT",
 }
 
 
@@ -79,9 +74,7 @@ class TestSettingsBasics(unittest.TestCase):
             # Static views surface stable defaults.
             self.assertEqual(s.model.cross_validation.cv_folds, 8)
             self.assertEqual(s.model.cross_validation.end_year, 2024)
-            self.assertEqual(s.feature_engineering.max_genre_features, 8)
             self.assertEqual(s.sagemaker.instance_type, "ml.m5.large")
-            self.assertEqual(s.ingestion.tmdb.start_year, 2024)
 
 
 class TestEnvCoverage(unittest.TestCase):

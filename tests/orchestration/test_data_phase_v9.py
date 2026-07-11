@@ -106,8 +106,6 @@ def test_run_data_phase_x_train_has_13_v9_features():
             return_value={"X_TRAIN": 30},
         ),
         patch.object(data_phase, "save_artifacts", return_value=("/tmp/p", "/tmp/s")),
-        patch.object(data_phase, "log_data_processing_metrics", return_value={}),
-        patch.object(data_phase, "log_feature_engineering_metrics", return_value={}),
     ):
         result = data_phase.run_data_phase(_Logger())
 

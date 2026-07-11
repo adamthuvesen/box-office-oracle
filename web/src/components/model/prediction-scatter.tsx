@@ -14,7 +14,10 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import { dollarsCompact, percent } from "@/lib/format";
-import { AXIS_TICK, TooltipCard, TooltipRow } from "./chart-tooltip";
+import {
+  ChartTooltip,
+  numericTick,
+} from "@/components/charts/chart-tooltip";
 
 /** Trimmed prediction row — just what the scatter needs over the wire. */
 export interface BlindGuess {
@@ -84,7 +87,7 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
               tickFormatter={(v: number) => dollarsCompact(10 ** v)}
               tickLine={false}
               axisLine={{ stroke: "var(--color-hairline)" }}
-              tick={AXIS_TICK}
+              tick={numericTick}
             />
             <YAxis
               type="number"
@@ -95,7 +98,7 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
               tickFormatter={(v: number) => dollarsCompact(10 ** v)}
               tickLine={false}
               axisLine={false}
-              tick={AXIS_TICK}
+              tick={numericTick}
               width={52}
             />
             <ZAxis type="number" range={[28, 28]} />
@@ -229,23 +232,21 @@ function GuessTip({ active, payload }: TooltipContentProps) {
   const point: ScatterPoint | undefined = payload[0]?.payload;
   if (!point) return null;
   return (
-    <TooltipCard>
-      <p className="text-ink">
-        {point.title} <span className="text-dim">({point.release_year})</span>
-      </p>
-      <div className="mt-1.5 flex min-w-44 flex-col gap-0.5">
-        <TooltipRow
-          label="Actual"
-          value={dollarsCompact(point.y_true)}
-          valueClass="text-actual"
-        />
-        <TooltipRow
-          label="Predicted"
-          value={dollarsCompact(point.y_pred)}
-          valueClass="text-predicted"
-        />
-        <TooltipRow label="APE" value={percent(point.ape)} />
-      </div>
-    </TooltipCard>
+    <ChartTooltip
+      label={`${point.title} (${point.release_year})`}
+      rows={[
+        {
+          name: "Actual",
+          value: dollarsCompact(point.y_true),
+          color: "var(--color-actual)",
+        },
+        {
+          name: "Predicted",
+          value: dollarsCompact(point.y_pred),
+          color: "var(--color-predicted)",
+        },
+        { name: "APE", value: percent(point.ape) },
+      ]}
+    />
   );
 }

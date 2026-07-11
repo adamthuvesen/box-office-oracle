@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from box_office.ml.model import BoxOfficeXGBoostModel, ModelEvaluator
+from box_office.ml.cv import ModelEvaluator
+from box_office.ml.model import BoxOfficeXGBoostModel
 
 
 class TestBoxOfficeXGBoostModel(unittest.TestCase):

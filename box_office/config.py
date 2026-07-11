@@ -26,7 +26,6 @@ def model_registry_group_name(
 class _AwsView:
     region: str
     s3_bucket: str
-    account_id: str | None
     sagemaker_role_arn: str
 
 
@@ -75,21 +74,13 @@ class _ModelView:
     # Minimum pooled OOF R² (dollar space) for promotion, calibrated against
     # the leakage-free local backtest (see docs/internal/model.md, local-only).
     promotion_threshold: float = 0.55
-    auto_approve_models: bool = False
     artifacts_dir: str = "artifacts"
     hyperparameters: _ModelHyperparams = _ModelHyperparams()
     cross_validation: _ModelCV = _ModelCV()
 
 
 @dataclass(frozen=True)
-class _FeatureEngineeringView:
-    max_genre_features: int = 8
-    enable_covid_features: bool = True
-
-
-@dataclass(frozen=True)
 class _PathsView:
-    data_dir: str = "data"
     transformations_dir: str = "transformations"
     project_root: str = "."
 
@@ -99,26 +90,6 @@ class _SagemakerView:
     instance_type: str = "ml.m5.large"
     framework_version: str = "1.7-1"
     s3_prefix: str = "box-office"
-
-
-@dataclass(frozen=True)
-class _TmdbView:
-    start_year: int
-    end_year: int | None
-    min_revenue: int
-    page_limit: int
-
-
-@dataclass(frozen=True)
-class _HeuristicsView:
-    enabled: bool = True
-    seed: int = 42
-
-
-@dataclass(frozen=True)
-class _IngestionView:
-    tmdb: _TmdbView
-    heuristics: _HeuristicsView = _HeuristicsView()
 
 
 class Settings(BaseSettings):
@@ -135,7 +106,6 @@ class Settings(BaseSettings):
             "AWS_S3_BUCKET", "S3_BUCKET_NAME", "SAGEMAKER_BUCKET"
         ),
     )
-    AWS_ACCOUNT_ID: str | None = None
     SAGEMAKER_ROLE_ARN: str
 
     SNOWFLAKE_USER: str
@@ -150,11 +120,6 @@ class Settings(BaseSettings):
     SNOWFLAKE_SCHEMA_FEATURE_STORE: str = "FEATURE_STORE"
     SNOWFLAKE_SCHEMA_ML_TRAINING: str = "ML_TRAINING"
 
-    TMDB_START_YEAR: int = 2024
-    TMDB_END_YEAR: int | None = None
-    TMDB_MIN_REVENUE: int = 50_000_000
-    TMDB_PAGE_LIMIT: int = 10
-
     def model_post_init(self, __context) -> None:
         """Pre-compute the nested view dataclasses once.
 
@@ -167,7 +132,6 @@ class Settings(BaseSettings):
             _AwsView(
                 region=self.AWS_REGION,
                 s3_bucket=self.AWS_S3_BUCKET,
-                account_id=self.AWS_ACCOUNT_ID,
                 sagemaker_role_arn=self.SAGEMAKER_ROLE_ARN,
             ),
         )
@@ -191,21 +155,8 @@ class Settings(BaseSettings):
             ),
         )
         object.__setattr__(self, "_model", _ModelView())
-        object.__setattr__(self, "_feature_engineering", _FeatureEngineeringView())
         object.__setattr__(self, "_paths", _PathsView())
         object.__setattr__(self, "_sagemaker", _SagemakerView())
-        object.__setattr__(
-            self,
-            "_ingestion",
-            _IngestionView(
-                tmdb=_TmdbView(
-                    start_year=self.TMDB_START_YEAR,
-                    end_year=self.TMDB_END_YEAR,
-                    min_revenue=self.TMDB_MIN_REVENUE,
-                    page_limit=self.TMDB_PAGE_LIMIT,
-                ),
-            ),
-        )
 
     @property
     def aws(self) -> _AwsView:
@@ -220,20 +171,12 @@ class Settings(BaseSettings):
         return self._model
 
     @property
-    def feature_engineering(self) -> _FeatureEngineeringView:
-        return self._feature_engineering
-
-    @property
     def paths(self) -> _PathsView:
         return self._paths
 
     @property
     def sagemaker(self) -> _SagemakerView:
         return self._sagemaker
-
-    @property
-    def ingestion(self) -> _IngestionView:
-        return self._ingestion
 
 
 config = Settings()

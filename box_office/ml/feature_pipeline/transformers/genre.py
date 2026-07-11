@@ -6,7 +6,6 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import CountVectorizer
 
-from box_office.config import config
 from box_office.ml.feature_pipeline.constants import GENRE_VOCABULARY
 from box_office.ml.text_utils import process_text_list
 
@@ -55,7 +54,7 @@ class GenreTransformer(BaseEstimator, TransformerMixin):
     """Binary genre indicators + super-genre encoding from `GENRES` column."""
 
     def __init__(self) -> None:
-        self.max_features = config.feature_engineering.max_genre_features
+        self.max_features = 8
         self.vocabulary = list(GENRE_VOCABULARY[: self.max_features])
         self.vectorizer = CountVectorizer(
             vocabulary=self.vocabulary,

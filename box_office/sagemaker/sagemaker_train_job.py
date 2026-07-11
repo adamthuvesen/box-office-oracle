@@ -11,21 +11,8 @@ from sagemaker.xgboost.estimator import XGBoost
 
 from box_office.config import config
 from box_office.utils.aws_helpers import BOTO3_CONFIG
-from box_office.utils.snowflake_connection import (
-    create_snowflake_connection,
-    enforce_data_types,
-)
-from box_office.utils.snowflake_loader import fully_qualified_name
 
 logger = logging.getLogger(__name__)
-
-
-def setup_logging():
-    """Configure logging - call explicitly from main execution to avoid import-time side effects."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
 
 
 class SageMakerClient:
@@ -52,82 +39,6 @@ class SageMakerClient:
         logger.info(f"Region: {self.region}")
         logger.info(f"S3 Bucket: {self.s3_bucket}")
         logger.info(f"S3 Prefix: {self.s3_prefix}")
-
-
-def load_processed_data_from_snowflake():
-    try:
-        logger.info("Connecting to Snowflake...")
-        logger.info(f"Account: {config.snowflake.account}")
-        logger.info(f"User: {config.snowflake.user}")
-        logger.info(f"Database: {config.snowflake.database}")
-        logger.info(f"Schema: {config.snowflake.schemas.ml_training}")
-
-        # Release both objects if a query fails mid-fetch.
-        conn = create_snowflake_connection(
-            schema=config.snowflake.schemas.ml_training, use_private_key=True
-        )
-        try:
-            with conn.cursor() as cursor:
-                logger.info(
-                    "Loading training data with JOIN on ROW_ID to ensure alignment..."
-                )
-                # Validate the env-driven database/schema identifiers before
-                # interpolating them into the query (the table names are
-                # literals). Mirrors the hardening already applied in
-                # snowflake_loader.py and data_tasks.py so no execute site
-                # interpolates an unvalidated identifier.
-                database = config.snowflake.database
-                schema = config.snowflake.schemas.ml_training
-                x_train_scaled = fully_qualified_name(
-                    database, schema, "X_TRAIN_SCALED"
-                )
-                x_train = fully_qualified_name(database, schema, "X_TRAIN")
-                y_train_log = fully_qualified_name(database, schema, "Y_TRAIN_LOG")
-
-                # Single query with JOIN on ROW_ID guarantees perfect row alignment
-                query = f"""
-            SELECT
-                xs.*,
-                x.RELEASE_YEAR as RELEASE_YEAR_ORIGINAL,
-                y.GROSS_LOG
-            FROM {x_train_scaled} xs
-            INNER JOIN {x_train} x
-                ON xs.ROW_ID = x.ROW_ID
-            INNER JOIN {y_train_log} y
-                ON xs.ROW_ID = y.ROW_ID
-            ORDER BY xs.ROW_ID
-        """
-                cursor.execute(query)
-                combined_data = cursor.fetch_pandas_all()
-            combined_data = enforce_data_types(combined_data, table_type="features")
-
-            logger.info(
-                f"Combined data loaded: {combined_data.shape[0]:,} rows x {combined_data.shape[1]} columns (aligned by ROW_ID)"
-            )
-        finally:
-            conn.close()
-
-        # Split into features and target, using original RELEASE_YEAR from unscaled table
-        X_train_with_dates = combined_data.drop(columns=["GROSS_LOG"])
-        X_train_with_dates["RELEASE_YEAR"] = combined_data["RELEASE_YEAR_ORIGINAL"]
-
-        y_train = combined_data[["GROSS_LOG"]].copy()
-
-        logger.info("Successfully loaded all training data from Snowflake!")
-        logger.info(f"Total dataset size: {X_train_with_dates.shape[0]:,} samples")
-        logger.info(f"Feature dimensions: {X_train_with_dates.shape[1]} features")
-        logger.info(
-            f"Date range: {X_train_with_dates['RELEASE_YEAR'].min()} - {X_train_with_dates['RELEASE_YEAR'].max()}"
-        )
-        logger.info(
-            "Target column: GROSS_LOG (log-transformed worldwide gross revenue)"
-        )
-
-    except Exception as e:
-        logger.error(f"Error loading data from Snowflake: {e}")
-        raise e
-
-    return X_train_with_dates, y_train
 
 
 def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):

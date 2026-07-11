@@ -65,7 +65,7 @@ make format                         # ruff format box_office tests scripts
 
 box-office-pipeline                 # three-phase Prefect flow
 box-office-api                      # inference service CLI (uvicorn)
-box-office-ingest                   # ingestion CLI (Parquet / Snowflake load paths)
+box-office-rich-backfill            # refresh rich local TMDB data
 
 cd transformations && uv run dbt run --select staging --profiles-dir=.
 ```

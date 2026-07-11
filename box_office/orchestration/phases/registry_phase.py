@@ -20,14 +20,6 @@ class RegistryPhaseResult:
     promotion_result: dict[str, Any] | None
     aws_promotion_result: dict[str, Any] | None
 
-    @property
-    def model_registry_metrics(self) -> dict[str, Any]:
-        return {
-            "model_registration": self.registration_result,
-            "model_promotion_validation": self.promotion_result,
-            "aws_promotion": self.aws_promotion_result,
-        }
-
 
 def run_registry_phase(
     training_metrics: dict[str, Any],

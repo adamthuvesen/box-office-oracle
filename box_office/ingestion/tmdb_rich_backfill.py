@@ -1,9 +1,4 @@
-"""Local-only rich TMDB backfill.
-
-This module deliberately stays separate from ``box-office-ingest``. The older
-CLI writes the compact 20-column shape used by Snowflake; this command archives
-rich TMDB payloads first, then derives flat local analysis files from them.
-"""
+"""Archive rich TMDB payloads and derive local analysis files."""
 
 from __future__ import annotations
 

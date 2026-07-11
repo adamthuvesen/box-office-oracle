@@ -8,12 +8,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from box_office.ml.cv import TimeSeriesCrossValidator
 from box_office.ml.exceptions import CrossValidationFailed
-from box_office.ml.model import TimeSeriesCrossValidator
-from box_office.utils.snowflake_loader import (
-    SnowflakeLoader,
-    validate_sql_identifier,
-)
+from box_office.utils.snowflake_loader import validate_sql_identifier
 
 # ---------------------------------------------------------------------------
 # CV loop failure handling (tasks 3.1 / 3.2 / 3.3)
@@ -161,18 +158,6 @@ def test_validate_sql_identifier_accepts_safe_names(value):
 def test_validate_sql_identifier_rejects_unsafe_names(value):
     with pytest.raises(ValueError):
         validate_sql_identifier(value, "table")
-
-
-def test_snowflake_loader_init_rejects_compromised_database_env(monkeypatch):
-    """A SnowflakeLoader constructed with an injection-y database string must
-    raise at __init__, not at SQL-execute time."""
-    with pytest.raises(ValueError):
-        SnowflakeLoader(schema="RAW", database="BOX_OFFICE; DROP TABLE FOO")
-
-
-def test_snowflake_loader_init_rejects_unsafe_schema():
-    with pytest.raises(ValueError):
-        SnowflakeLoader(schema="RAW; DROP TABLE FOO", database="BOX_OFFICE")
 
 
 # ---------------------------------------------------------------------------

@@ -1,18 +1,10 @@
 import logging
-import os
-from datetime import datetime
 
 from prefect import flow, get_run_logger
 
-from box_office.config import config
 from box_office.orchestration.phases.data_phase import run_data_phase
 from box_office.orchestration.phases.registry_phase import run_registry_phase
 from box_office.orchestration.phases.train_phase import run_train_phase
-from box_office.orchestration.tasks.metrics_tasks import (
-    log_pipeline_completion_metrics,
-    log_pipeline_start_metrics,
-    save_metrics_to_json,
-)
 from box_office.utils.env_setup import configure_environment
 
 
@@ -35,7 +27,6 @@ def get_logger():
 
 def run_ml_pipeline_logic(
     environment: str = "dev",
-    experiment_name: str = "box-office-predictions",
     logger=None,
 ):
     """
@@ -44,36 +35,13 @@ def run_ml_pipeline_logic(
     if logger is None:
         logger = get_logger()
 
-    logger.info(
-        "Running ML Pipeline with environment=%r experiment=%r",
-        environment,
-        experiment_name,
-    )
-
-    pipeline_start_metrics = log_pipeline_start_metrics()
+    logger.info("Running ML Pipeline with environment=%r", environment)
 
     data = run_data_phase(logger)
     train = run_train_phase(data, logger)
     registry = run_registry_phase(
         train.training_metrics, environment=environment, logger=logger
     )
-
-    final_metrics = log_pipeline_completion_metrics(
-        pipeline_start_metrics,
-        data.data_metrics,
-        data.feature_metrics,
-        train.training_metrics,
-        registry.model_registry_metrics,
-    )
-
-    metrics_dir = os.path.join(config.model.artifacts_dir, "metrics")
-    os.makedirs(metrics_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    metrics_path = os.path.join(
-        metrics_dir, f"pipeline_execution_metrics_{timestamp}.json"
-    )
-    save_metrics_to_json(final_metrics, metrics_path)
-    logger.info("Metrics saved to: %s", metrics_path)
 
     estimator = train.estimator
     return {
@@ -104,14 +72,12 @@ def run_ml_pipeline_logic(
     name="Box Office ML Pipeline",
     description="End-to-end ML pipeline for box office prediction using dbt, Snowflake, and SageMaker",
 )
-def ml_pipeline(
-    environment: str = "dev", experiment_name: str = "box-office-predictions"
-):
+def ml_pipeline(environment: str = "dev"):
     """Complete ML pipeline from data loading to preprocessing, training and saving model artifacts."""
     configure_environment()
     logger = get_logger()
     logger.info("Starting ML Pipeline...")
-    result = run_ml_pipeline_logic(environment, experiment_name, logger)
+    result = run_ml_pipeline_logic(environment, logger)
 
     logger.info("ML Pipeline completed!")
     if result and isinstance(result, dict):
@@ -148,11 +114,6 @@ def main():
         help="Environment to run the pipeline in",
     )
     parser.add_argument(
-        "--experiment-name",
-        default="box-office-predictions",
-        help="Name of the SageMaker experiment",
-    )
-    parser.add_argument(
         "--serve",
         action="store_true",
         help="Run the pipeline in serve mode (Prefect server)",
@@ -163,15 +124,10 @@ def main():
     if args.serve:
         ml_pipeline.serve(
             name="box-office-ml-pipeline",
-            parameters={
-                "environment": args.environment,
-                "experiment_name": args.experiment_name,
-            },
+            parameters={"environment": args.environment},
         )
     else:
-        result = ml_pipeline(
-            environment=args.environment, experiment_name=args.experiment_name
-        )
+        result = ml_pipeline(environment=args.environment)
         get_logger().info("Pipeline completed with result: %s", result)
 
 

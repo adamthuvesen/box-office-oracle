@@ -70,11 +70,11 @@ docker-test: docker-build ## Test Docker image
 		-c "import fastapi, mangum, boto3, pandas, numpy, sklearn, xgboost, pydantic; print('All dependencies available')"
 
 pipeline-run: install-dev ## Run ML pipeline (requires environment variables)
-	uv run box-office-pipeline --environment dev --experiment-name "box-office-predictions"
+	uv run box-office-pipeline --environment dev
 
 web-data: install-dev ## Export web/data JSON snapshots for the Next.js app (local dataset, no Snowflake)
 	uv run python scripts/score_all_movies.py
 	uv run python scripts/export_web_data.py
 
-datasets: install-dev ## Pull a raw box-office snapshot from Snowflake into analysis/ (requires Snowflake creds)
-	uv run box-office-ingest --output analysis/box_office_raw.parquet
+datasets: install-dev ## Refresh the rich local TMDB dataset
+	uv run box-office-rich-backfill

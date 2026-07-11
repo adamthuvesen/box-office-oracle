@@ -25,7 +25,7 @@ Operational cost: ~$50/month. Training run: 2-5 min on ~6,080 movies (kept from 
 ```
 ingestion (TMDB/IMDb) → Snowflake RAW
                             ↓
-                       dbt run (staging)
+                    dbt run + test (staging)
                             ↓
                   Snowflake STAGING.stg_box_office
                             ↓
@@ -50,21 +50,21 @@ ingestion (TMDB/IMDb) → Snowflake RAW
 
 | Phase | Module | Responsibility |
 | ----- | ------ | -------------- |
-| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
+| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt run/test → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
 | Train | [`phases/train_phase.py`](../box_office/orchestration/phases/train_phase.py) | In-memory `(X_TRAIN_SCALED, Y_TRAIN_LOG)` upload to S3 → SageMaker training → parse output metrics |
 | Registry | [`phases/registry_phase.py`](../box_office/orchestration/phases/registry_phase.py) | Register model package → R² gate → optional promotion |
 
-Snowflake `ML_TRAINING` tables remain the **audit/canonical store** after each data phase. SageMaker upload uses **in-memory frames** after successful saves (no Snowflake reload in the default flow). For manual/debug reload, use `sagemaker_train_job.load_processed_data_from_snowflake()`.
+Snowflake `ML_TRAINING` tables remain the **audit/canonical store** after each data phase. SageMaker upload uses **in-memory frames** after successful saves.
 
 Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/data_tasks.py) and [`training_tasks`](../box_office/orchestration/tasks/training_tasks.py) retain retries and logging.
 
 ## Feature engineering
 
-`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of five augmenting transformers plus a final raw-column strip. It turns pre-release raw columns into **53 engineered features** (including three pass-through IP/franchise inputs), then projects them to the **13-feature** runtime contract.
+`build_feature_pipeline()` ([`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)) returns a single sklearn `Pipeline` of five augmenting transformers plus a final raw-column strip. Pre-release raw columns are turned into **52 engineered features** (including three pass-through IP/franchise inputs), then projected to the **13-feature** runtime contract.
 
 | Step                  | Adds | What it captures                                                                              |
 | --------------------- | ---- | --------------------------------------------------------------------------------------------- |
-| Core numerical        | 3    | Numeric pass-through with type coercion + missing-column fill                                 |
+| Core numerical        | 6    | Numeric pass-through with type coercion + missing-column fill                                 |
 | Temporal              | 18   | Release timing — summer/holiday windows, COVID era, day-of-week                               |
 | Genre                 | 9    | Binary genre vectors + super-genre encoding                                                   |
 | Industry              | 6    | Frequency encoding of director / studio / actor / MPAA                                        |

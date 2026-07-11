@@ -14,7 +14,8 @@ class TestCrossValidationIndexHandling:
         Data is constructed deterministically with a fixed number of rows per
         year so every fold the splitter produces is non-empty.
         """
-        from box_office.ml.model import BoxOfficeXGBoostModel, TimeSeriesCrossValidator
+        from box_office.ml.cv import TimeSeriesCrossValidator
+        from box_office.ml.model import BoxOfficeXGBoostModel
 
         np.random.seed(42)
 
@@ -61,7 +62,8 @@ class TestCrossValidationIndexHandling:
 
     def test_oof_predictions_align_with_source_rows(self):
         """OOF predictions preserve their source-row alignment."""
-        from box_office.ml.model import BoxOfficeXGBoostModel, TimeSeriesCrossValidator
+        from box_office.ml.cv import TimeSeriesCrossValidator
+        from box_office.ml.model import BoxOfficeXGBoostModel
 
         np.random.seed(7)
         n_samples = 60

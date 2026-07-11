@@ -27,30 +27,11 @@ class Settings(BaseSettings):
 
     # AWS Configuration
     aws_region: str = Field(default="eu-north-1", description="AWS region")
-    aws_account_id: str | None = Field(default=None, description="AWS account ID")
-
     # Model Registry Configuration
     model_registry_group_name: str | None = Field(
         default=None,
         description="SageMaker Model Registry group name. Composed from project_name and environment when unset.",
     )
-
-    # S3 Configuration
-    s3_bucket_name: str = Field(default="", description="S3 bucket for model artifacts")
-    s3_model_prefix: str = Field(
-        default="models/", description="S3 prefix for model files"
-    )
-
-    # Lambda Configuration
-    lambda_timeout: int = Field(
-        default=30, description="Lambda timeout in seconds", ge=1, le=900
-    )
-    lambda_memory: int = Field(
-        default=3008, description="Lambda memory in MB", ge=128, le=10240
-    )
-
-    # Logging Configuration
-    log_level: str = Field(default="INFO", description="Logging level")
 
     # Authentication Configuration
     api_key_header: str = Field(default="X-API-Key", description="API key header name")
@@ -64,9 +45,6 @@ class Settings(BaseSettings):
 
     # Performance Configuration
     model_cache_ttl: int = Field(default=3600, description="Model cache TTL in seconds")
-    max_request_size: int = Field(
-        default=1048576, description="Max request size in bytes (1MB)"
-    )
     max_stale_seconds: int = Field(
         default=3600,
         description=(

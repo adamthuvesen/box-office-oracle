@@ -23,46 +23,18 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
-from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
-from box_office.ml.registry_constants import (
+from box_office.ml.feature_schema import (
     CURRENT_FEATURE_SCHEMA_VERSION,
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
-from box_office.utils.aws_helpers import BOTO3_CONFIG
+from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.utils.aws_helpers import BOTO3_CONFIG, parse_s3_uri
 from box_office.utils.safe_tarfile import extractall_data_filter
 
 from .integrity import ArtifactIntegrityError, compute_sha256, verify_artifact
 
 logger = logging.getLogger(__name__)
-
-
-class RegistryModelInfo:
-    """Model information wrapper with to_dict() method."""
-
-    def __init__(self, model_data: dict[str, Any]):
-        self.model_id = model_data.get("ModelPackageArn", "unknown")
-        self.version = model_data.get("ModelPackageVersion", 1)
-        self.status = model_data.get("ModelApprovalStatus", "unknown")
-        self.created_at = model_data.get("CreationTime", datetime.now(UTC))
-        self.metrics = model_data.get("metrics", {})
-        self.framework = model_data.get("framework", "unknown")
-        self._raw_data = model_data
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary format expected by prediction engine."""
-        return {
-            "model_id": self.model_id,
-            "version": self.version,
-            "status": self.status,
-            "created_at": (
-                self.created_at.isoformat()
-                if hasattr(self.created_at, "isoformat")
-                else str(self.created_at)
-            ),
-            "metrics": self.metrics,
-            "framework": self.framework,
-        }
 
 
 class ModelLoadError(Exception):
@@ -131,7 +103,7 @@ class ModelLoader:
 
         logger.info(f"ModelLoader initialized for group: {model_package_group_name}")
 
-    def load_latest_approved_model(self) -> RegistryModelInfo | None:
+    def load_latest_approved_model(self) -> dict[str, Any] | None:
         try:
             model_info_dict = self._get_latest_approved_model_info()
             if not model_info_dict:
@@ -152,7 +124,7 @@ class ModelLoader:
             self._last_load_time = datetime.now(UTC)
 
             logger.info(f"Successfully loaded model: {model_package_arn}")
-            return RegistryModelInfo(model_info_dict)
+            return model_info_dict
 
         except (
             ModelLoadError,
@@ -181,21 +153,12 @@ class ModelLoader:
         return cache_age < self.cache_ttl_seconds
 
     def refresh_model_if_needed(self) -> bool:
-        """Refresh model if cache expired or new version available."""
+        """Refresh the model after the cache TTL expires."""
+        if self.is_model_cache_valid():
+            return False
+
         try:
-            if self.is_model_cache_valid():
-                latest_info = self._get_latest_approved_model_info()
-                if latest_info and self._current_model_info:
-                    current_arn = self._current_model_info.get("ModelPackageArn")
-                    latest_arn = latest_info.get("ModelPackageArn")
-
-                    if current_arn == latest_arn:
-                        logger.debug(
-                            "Current model is still the latest approved version"
-                        )
-                        return False
-
-            logger.info("Refreshing model due to cache expiry or new version")
+            logger.info("Refreshing model because the cache TTL expired")
             loaded = self.load_latest_approved_model()
         except ModelLoadError as e:
             logger.error(f"Failed to refresh model: {e}")
@@ -274,7 +237,7 @@ class ModelLoader:
             model_data_url = self._model_data_url(package_details)
 
             logger.info(f"Downloading model from: {model_data_url}")
-            bucket, key = self._parse_s3_url(model_data_url)
+            bucket, key = parse_s3_uri(model_data_url)
 
             customer_meta = package_details.get("CustomerMetadataProperties", {}) or {}
             expected_sha256 = self._validated_manifest_sha256(
@@ -353,12 +316,6 @@ class ModelLoader:
             raise ModelLoadError("No model data URL found in container specification")
         return cast(str, model_data_url)
 
-    def _parse_s3_url(self, model_data_url: str) -> tuple[str, str]:
-        if not model_data_url.startswith("s3://"):
-            raise ModelLoadError(f"Invalid S3 URL format: {model_data_url}")
-        bucket, key = model_data_url[5:].split("/", 1)
-        return bucket, key
-
     def _validated_manifest_sha256(
         self, model_package_arn: str, customer_meta: dict[str, Any]
     ) -> str:
@@ -367,7 +324,7 @@ class ModelLoader:
             raise ArtifactIntegrityError(
                 f"Model package {model_package_arn} has no 'sha256' in "
                 "CustomerMetadataProperties; refusing to load unverified artifact. "
-                "Run scripts/backfill_model_manifests.py against this group."
+                "Register a new model package with manifest metadata."
             )
 
         artifact_schema_version = customer_meta.get(SCHEMA_VERSION_METADATA_KEY)
@@ -617,51 +574,8 @@ class ModelLoader:
             except OSError as e:
                 logger.warning(f"Could not reap stale cache entry {entry}: {e}")
 
-    def clear_cache(self) -> None:
-        """Remove all SHA256-keyed extract directories under ``cache_dir``."""
-        import shutil
-
-        try:
-            for entry in self.cache_dir.iterdir():
-                if entry.is_dir():
-                    shutil.rmtree(entry, ignore_errors=True)
-                elif entry.is_file():
-                    entry.unlink()
-            self._extracted_artifacts_cache.clear()
-            logger.info("Cleared model cache")
-        except OSError as e:
-            logger.warning(f"Failed to clear cache: {e}")
-
-    def get_cache_info(self) -> dict[str, Any]:
-        try:
-            cache_dirs = (
-                [p for p in self.cache_dir.iterdir() if p.is_dir()]
-                if self.cache_dir.exists()
-                else []
-            )
-            total_size = 0
-            for entry in cache_dirs:
-                for f in entry.rglob("*"):
-                    if f.is_file():
-                        total_size += f.stat().st_size
-
-            return {
-                "cache_dir": str(self.cache_dir),
-                "cached_models": len(cache_dirs),
-                "total_cache_size_bytes": total_size,
-                "cache_ttl_seconds": self.cache_ttl_seconds,
-                "current_model_loaded": self._current_model is not None,
-                "last_load_time": (
-                    self._last_load_time.isoformat() if self._last_load_time else None
-                ),
-            }
-        except OSError as e:
-            logger.error(f"Failed to get cache info: {e}")
-            return {"error": str(e)}
-
-    def get_latest_approved_model_info(self) -> RegistryModelInfo | None:
-        model_info_dict = self._get_latest_approved_model_info()
-        return RegistryModelInfo(model_info_dict) if model_info_dict else None
+    def get_latest_approved_model_info(self) -> dict[str, Any] | None:
+        return self._get_latest_approved_model_info()
 
     def get_model_artifacts_paths(self) -> dict[str, str]:
         """Get paths to model artifacts, reusing cached extracted artifacts."""

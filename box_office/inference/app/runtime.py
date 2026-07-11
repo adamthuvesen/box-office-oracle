@@ -8,7 +8,6 @@ from typing import Any
 from box_office.inference.app.model_loader import (
     ModelLoader,
     ModelLoadError,
-    RegistryModelInfo,
 )
 from box_office.inference.app.predictor import (
     PredictionEngine,
@@ -37,7 +36,20 @@ class ModelRuntime:
 
         if refreshed or not self._engine.is_loaded():
             paths = self._loader.get_model_artifacts_paths()
-            metadata = RegistryModelInfo(current[1]).to_dict()
+            raw = current[1]
+            created_at = raw.get("CreationTime")
+            metadata = {
+                "model_id": raw.get("ModelPackageArn", "unknown"),
+                "version": raw.get("ModelPackageVersion", 1),
+                "status": raw.get("ModelApprovalStatus", "unknown"),
+                "created_at": (
+                    created_at.isoformat()
+                    if hasattr(created_at, "isoformat")
+                    else str(created_at or "unknown")
+                ),
+                "metrics": raw.get("metrics", {}),
+                "framework": raw.get("framework", "unknown"),
+            }
             self._engine.load_model_artifacts(
                 model_path=paths["model"],
                 preprocessor_path=paths["preprocessor"],
@@ -54,9 +66,6 @@ class ModelRuntime:
 
     def get_model_info(self):
         return self._engine.get_model_info()
-
-    def get_cache_info(self) -> dict[str, Any]:
-        return self._loader.get_cache_info()
 
 
 def get_runtime() -> ModelRuntime:

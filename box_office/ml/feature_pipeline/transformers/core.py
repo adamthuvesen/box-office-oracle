@@ -8,9 +8,6 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from box_office.ml.feature_pipeline.constants import CORE_NUMERICAL_FEATURES
-from box_office.utils.feature_flags import (
-    strict_features_enabled as _strict_features_enabled,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +15,8 @@ logger = logging.getLogger(__name__)
 class CoreNumericalTransformer(BaseEstimator, TransformerMixin):
     """Pass-through type-coercion for the core numerical columns.
 
-    Strict mode (``ML_STRICT_FEATURES=true``) raises ``KeyError`` on any
-    missing core column instead of silently filling with zero — keeps an
-    upstream typo from masquerading as a real prediction.
+    Missing core columns are logged and filled with zero for the inference
+    defaults defined by the feature contract.
     """
 
     def fit(self, X: pd.DataFrame, y=None) -> CoreNumericalTransformer:
@@ -30,10 +26,6 @@ class CoreNumericalTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         missing = [c for c in CORE_NUMERICAL_FEATURES if c not in X.columns]
         if missing:
-            if _strict_features_enabled():
-                raise KeyError(
-                    f"ML_STRICT_FEATURES=true and core columns missing from input: {missing}"
-                )
             for col in missing:
                 logger.warning(
                     "Core feature column %r missing from input; filling with default 0.",

@@ -1,4 +1,3 @@
-const THIN_SPACE = " ";
 const TRUE_MINUS = "−";
 
 /** Compact dollars: $1.2B, $845M, $92K. The app-wide default for figures. */
@@ -14,22 +13,6 @@ export function dollarsCompact(value: number): string {
 function trimmed(n: number): string {
   const s = n >= 100 ? n.toFixed(0) : n.toFixed(1);
   return s.endsWith(".0") ? s.slice(0, -2) : s;
-}
-
-/** Full dollars with thin-space grouping, for hero figures: $1 234 567 890. */
-export function dollarsFull(value: number): string {
-  const sign = value < 0 ? TRUE_MINUS : "";
-  const grouped = Math.round(Math.abs(value))
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, THIN_SPACE);
-  return `${sign}$${grouped}`;
-}
-
-/** Signed delta in compact dollars with a true minus: −$120M / +$85M. */
-export function dollarsDelta(value: number): string {
-  return value < 0
-    ? dollarsCompact(value)
-    : `+${dollarsCompact(value)}`;
 }
 
 export function percent(value: number, decimals = 0): string {

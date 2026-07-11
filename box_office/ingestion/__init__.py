@@ -1,8 +1,3 @@
-"""Movie data ingestion pipeline.
-
-Modules:
-- tmdb_discovery: Discover movies from TMDB API
-- cli: Unified ingestion CLI
-"""
+"""TMDB backfill, curation, and budget enrichment."""
 
 __all__: list[str] = []

@@ -18,13 +18,6 @@ from box_office.sagemaker import sagemaker_train_job
 from box_office.utils.aws_helpers import BOTO3_CONFIG
 from box_office.utils.format_helpers import safe_format
 
-# S3 error codes that indicate a missing object (legitimate "no metrics yet" path).
-_S3_NOT_FOUND_CODES = frozenset({"NoSuchKey", "404", "NoSuchBucket"})
-
-# SageMaker describe_training_job error codes that indicate the job legitimately
-# does not exist; everything else (throttling, IAM, network) must propagate.
-_SAGEMAKER_VALIDATION_CODE = "ValidationException"
-
 
 @task(
     cache_policy=NO_CACHE,
@@ -63,7 +56,6 @@ def train_model(
     train_input,
     X_train_shape,
     artifacts_s3_uris=None,
-    experiment_name="box-office-predictions",
 ):
     logger = get_run_logger()
     logger.info("Training XGBoost model with comprehensive metrics logging...")
@@ -119,7 +111,7 @@ def train_model(
     logger.info(f"Total parameters: {len(hyperparameters)} parameters")
 
     # Build SageMaker Experiment configuration to attach the training job directly
-    experiment_config = {"ExperimentName": experiment_name}
+    experiment_config = {"ExperimentName": "box-office-predictions"}
 
     # Launch training job
     estimator = sagemaker_train_job.train_xgboost_model_with_timeseries_cv_framework(
@@ -339,25 +331,6 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         )
         logger.info(f"Created: {model_package.get('CreationTime', 'Unknown')}")
 
-        # Check if auto-approval is enabled
-        auto_approve = getattr(config.model, "auto_approve_models", False)
-
-        if auto_approve:
-            logger.info("Auto-approving model (bypass metric validation)")
-            logger.info("Auto-approval enabled in configuration")
-            return {
-                "promote": True,
-                "validation_details": {
-                    "auto_approved": True,
-                    "model_package_arn": model_package_arn,
-                    "model_package_status": model_package.get(
-                        "ModelPackageStatus", "Unknown"
-                    ),
-                    "reason": "Auto-approval enabled - bypassing metric validation",
-                },
-                "validation_time_seconds": time.time() - start_time,
-            }
-
         # Perform actual validation using OOF R2 score from model package metrics
         # Metrics are stored in CustomerMetadataProperties (not ModelMetrics)
         customer_metadata = model_package.get("CustomerMetadataProperties", {})
@@ -388,9 +361,6 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
 
         if oof_r2 is None:
             logger.warning("Could not extract OOF R² from model package metrics")
-            logger.info(
-                "Consider enabling auto_approve_models in config for development"
-            )
             return {
                 "promote": False,
                 "validation_details": {

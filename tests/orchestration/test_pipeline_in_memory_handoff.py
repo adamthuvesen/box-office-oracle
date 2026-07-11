@@ -20,8 +20,6 @@ def test_train_phase_does_not_call_snowflake_reload():
         scaler_path="/tmp/s.pkl",
         save_results={},
         validation_results={},
-        feature_metrics={},
-        data_metrics={},
         feature_names=["A"],
     )
 
@@ -42,7 +40,6 @@ def test_train_phase_does_not_call_snowflake_reload():
             "download_and_analyze_results",
             return_value={"job_name": "j", "duration": 0, "model_data_url": None},
         ),
-        patch.object(train_phase, "log_model_training_summary"),
         patch.object(
             train_phase.sagemaker_train_job,
             "SageMakerClient",
@@ -88,8 +85,6 @@ def test_sagemaker_training_frames_upload_raw_frame_with_unscaled_release_year()
         scaler_path="/tmp/s.pkl",
         save_results={},
         validation_results={},
-        feature_metrics={},
-        data_metrics={},
         feature_names=["RELEASE_YEAR", "A"],
     )
 

@@ -10,9 +10,8 @@ gitignored; production code lives in `box_office/`.
   Snowflake-era model. Read by `scripts/evaluate_local_retrain.py` as the
   old-model comparison baseline. Not regenerable — don't delete.
 
-To pull a fresh raw snapshot from Snowflake for notebook work (requires
-Snowflake credentials in `.env`, see project root `README.md`):
+To refresh the local TMDB dataset for notebook work:
 
 ```bash
-uv run box-office-ingest --output analysis/box_office_raw.parquet
+uv run box-office-rich-backfill
 ```

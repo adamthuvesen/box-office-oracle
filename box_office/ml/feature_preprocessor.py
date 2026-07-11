@@ -12,12 +12,8 @@ import logging
 
 import pandas as pd
 
-from box_office.ml.data_prep import DataSplitter, TargetTransformer
 from box_office.ml.feature_pipeline import build_feature_pipeline
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
-from box_office.utils.feature_flags import (
-    strict_features_enabled as _strict_features_enabled,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +74,6 @@ class FeaturePreprocessorHigh:
                     col,
                     int(count),
                 )
-            if _strict_features_enabled():
-                offenders = {str(c): int(n) for c, n in nan_columns.items()}
-                raise ValueError(
-                    f"ML_STRICT_FEATURES=true and NaN values present in: {offenders}"
-                )
-
         return out
 
     def get_feature_names(self) -> list[str]:
@@ -123,6 +113,4 @@ _SCHEMA_FIXTURE = pd.DataFrame(
 __all__ = [
     "FeaturePreprocessorHigh",
     "FeatureNameCollisionError",
-    "DataSplitter",
-    "TargetTransformer",
 ]

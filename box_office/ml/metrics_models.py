@@ -1,36 +1,10 @@
-"""Typed pipeline and training metrics (Pydantic)."""
+"""Typed SageMaker training-output metrics."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class PipelineStartMetrics(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    pipeline_start_time: str
-    pipeline_id: str
-    framework: str = "prefect-xgboost-sagemaker"
-
-
-class DataProcessingMetrics(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    training_samples: int
-    validation_samples: int
-    feature_count: int
-    target_column: str
-    train_val_ratio: float
-
-
-class FeatureEngineeringMetrics(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    total_features: int
-    feature_categories: dict[str, int]
-    feature_names: list[str]
 
 
 class CvResultsMetrics(BaseModel):
@@ -85,78 +59,3 @@ class TrainingMetrics(BaseModel):
 
     def to_performance_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)
-
-
-class AwsRegistrationResult(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    status: str
-    model_package_arn: str | None = None
-    approval_status: str | None = None
-    error: str | None = None
-
-
-class ModelRegistrationResult(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    status: str
-    aws_result: AwsRegistrationResult | None = None
-
-    @classmethod
-    def from_task_dict(cls, data: dict[str, Any]) -> ModelRegistrationResult:
-        aws = data.get("aws_result")
-        if isinstance(aws, dict):
-            data = {**data, "aws_result": AwsRegistrationResult.model_validate(aws)}
-        return cls.model_validate(data)
-
-
-class PromotionValidationResult(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    promote: bool = False
-    validation_details: dict[str, Any] = Field(default_factory=dict)
-
-
-class AwsPromotionResult(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    status: str
-    error: str | None = None
-    promotion_time_seconds: float | None = None
-
-
-class ModelRegistryMetrics(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    model_registration: ModelRegistrationResult | None = None
-    model_promotion_validation: PromotionValidationResult | None = None
-    aws_promotion: AwsPromotionResult | None = None
-
-    @classmethod
-    def from_task_dict(cls, data: dict[str, Any] | None) -> ModelRegistryMetrics | None:
-        if data is None:
-            return None
-        return cls.model_validate(data)
-
-
-class PipelineExecutionSummary(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    pipeline_id: str
-    execution_time: dict[str, Any]
-    data_summary: dict[str, Any]
-    feature_summary: dict[str, Any]
-    training_summary: dict[str, Any]
-    model_registry_summary: dict[str, Any] | None = None
-    status: str = "completed_successfully"
-
-
-class PipelineMetrics(BaseModel):
-    """Alias for the final JSON-serializable pipeline summary."""
-
-    model_config = ConfigDict(extra="allow")
-
-    summary: PipelineExecutionSummary
-
-    def to_dict(self) -> dict[str, Any]:
-        return self.summary.model_dump()
