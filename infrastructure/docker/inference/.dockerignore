@@ -14,9 +14,8 @@ keys/
 .git/
 .github/
 
-# Tests and openspec (not needed in the inference image)
+# Tests (not needed in the inference image)
 tests/
-openspec/
 
 # Dataset checkouts and dbt build artifacts
 data/

@@ -22,9 +22,6 @@ wheels/
 *.egg
 MANIFEST
 
-# Openspec
-openspec/
-
 # Environment files
 .env
 .env.*

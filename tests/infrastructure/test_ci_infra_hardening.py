@@ -175,7 +175,6 @@ REQUIRED_DOCKERIGNORE_ENTRIES = (
     "tests/",
     "**/__pycache__",
     "*.pyc",
-    "openspec/",
     "data/",
     "transformations/target/",
 )
