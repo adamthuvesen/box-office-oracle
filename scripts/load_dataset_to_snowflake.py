@@ -33,6 +33,7 @@ import pandas as pd
 import yaml
 
 from box_office.config import config
+from box_office.utils.approval import require_approval
 from box_office.utils.snowflake_connection import create_snowflake_connection
 from box_office.utils.snowflake_loader import (
     fully_qualified_name,
@@ -255,7 +256,8 @@ class DatasetLoader:
         self.schema = validate_sql_identifier(schema, "schema")
         self.use_browser_auth = use_browser_auth
 
-    def run(self, parquet_path: Path) -> None:
+    def run(self, parquet_path: Path, approved: bool = False) -> None:
+        require_approval("replacing the production RAW dataset in Snowflake", approved)
         df = read_source_frame(parquet_path)
         expected_rows = len(df)
         expected_nulls = expected_null_budget_count(df)
@@ -403,6 +405,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print the planned actions without touching Snowflake",
     )
+    parser.add_argument(
+        "--approved",
+        action="store_true",
+        help="Approve the CREATE OR REPLACE of the production dataset.",
+    )
     return parser.parse_args(argv)
 
 
@@ -421,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
             schema=args.schema,
             use_browser_auth=args.browser_auth,
         )
-        loader.run(args.parquet)
+        loader.run(args.parquet, approved=args.approved)
     except Exception as exc:
         logger.error("Load failed: %s", exc)
         print(f"ERROR: {exc}", file=sys.stderr)

@@ -19,10 +19,13 @@ docs/              Public docs; docs/internal/ is gitignored, local-only
 ## Quickstart
 
 ```bash
-make install-dev                                  # uv sync --extra dev
-uv run pytest tests/                              # CI gate
-make lint                                         # ruff
+make check     # locked sync, ruff, fast tests (what CI runs first; under 15 s)
+make fix       # ruff --fix and ruff format
+make slow      # full test suite and offline dbt parse
+make verify    # verify skill: not built yet, exits 1
 ```
+
+Python 3.14 (`.python-version`); `uv sync --extra dev --extra inference` sets up the environment.
 
 Web app: `pnpm --dir web dev` (regenerate data first with `make web-data` after a retrain). Live /predict needs `INFERENCE_API_URL` + `INFERENCE_API_KEY` in `web/.env.local`; without them it runs in mock mode.
 

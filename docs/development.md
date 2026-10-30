@@ -34,6 +34,8 @@ If a schema/table ever ends up owned by the wrong role (symptom: a runtime role 
 uv run python scripts/apply_snowflake_grants.py   # connects as ACCOUNTADMIN
 ```
 
+Every command that spends money or writes to production refuses until it gets the approval flag: `box-office-pipeline`, `load_dataset_to_snowflake.py`, `apply_snowflake_grants.py`, and `register_local_model.py`. The refusal message names the flag. `--dry-run` prints the plan and needs no approval. In code, the same gate is the `approved` argument of the function that spends (`box_office/utils/approval.py`).
+
 ## Test discipline
 
 - Tests live in [`tests/`](../tests), in subdirectories that mirror the `box_office/` package layout (plus `tests/scripts/` for `scripts/` and `tests/infrastructure/` for Terraform/CI posture). Name `test_*.py`.

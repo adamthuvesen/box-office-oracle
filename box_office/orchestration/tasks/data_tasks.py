@@ -14,6 +14,7 @@ from snowflake.connector.pandas_tools import write_pandas
 from box_office.config import config
 from box_office.ml.artifacts import FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
+from box_office.utils.approval import require_approval
 from box_office.utils.snowflake_connection import (
     create_snowflake_connection,
     enforce_data_types,
@@ -48,11 +49,12 @@ def _scoped_env(updates: dict):
 
 
 @task(retries=3, retry_delay_seconds=exponential_backoff(backoff_factor=5))
-def run_raw_to_staging_dbt_transformations():
+def run_raw_to_staging_dbt_transformations(approved=False):
     """
     Run dbt transformations to create staging models from raw data.
     Uses PrefectDbtRunner for better integration with Prefect flows.
     """
+    require_approval("building dbt staging models in Snowflake", approved)
     logger = get_run_logger()
     logger.info("Running dbt transformations from raw to staging using PrefectDbtRunner")
 
@@ -299,9 +301,10 @@ def save_artifacts(processor, scaler, artifact_dir=None):
 
 
 def save_dataset_to_snowflake_impl(
-    df: pd.DataFrame, table_name: str, schema: str | None = None
+    df: pd.DataFrame, table_name: str, schema: str | None = None, approved: bool = False
 ) -> bool:
     """Save a DataFrame to Snowflake (plain function for batch saves and tests)."""
+    require_approval("writing a table to Snowflake", approved)
     if schema is None:
         schema = config.snowflake.schemas.ml_training
 

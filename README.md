@@ -41,6 +41,8 @@ Run the pipeline (requires AWS and Snowflake credentials in `.env`):
 box-office-pipeline --environment dev
 ```
 
+The pipeline runs dbt, writes Snowflake tables, starts a SageMaker job, and writes to the model registry. It refuses until you pass the approval flag, and the refusal message names it.
+
 Run the inference API locally:
 
 ```bash

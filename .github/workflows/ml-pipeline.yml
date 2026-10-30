@@ -116,7 +116,8 @@ jobs:
         echo "Environment: ${{ steps.set-env.outputs.environment }}"
         echo "GitHub SHA: ${{ github.sha }}"
         # Run the ML pipeline using the console script entry point
-        uv run box-office-pipeline --environment ${{ steps.set-env.outputs.environment }}
+        # A manual workflow_dispatch run is the approval for the spend.
+        uv run box-office-pipeline --approved --environment ${{ steps.set-env.outputs.environment }}
 
         echo "ML Pipeline execution completed!"
         echo "Check the job logs for training and registry results."

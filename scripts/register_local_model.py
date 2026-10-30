@@ -47,6 +47,7 @@ from box_office.ml.artifacts import (
 )
 from box_office.ml.cv import ModelEvaluator
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.utils.approval import require_approval
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("register_local_model")
@@ -133,7 +134,14 @@ def main() -> None:
         action="store_true",
         help="Compute metrics and build the tarball, but do not touch AWS.",
     )
+    parser.add_argument(
+        "--approved",
+        action="store_true",
+        help="Approve the S3 upload and the registry writes.",
+    )
     args = parser.parse_args()
+    if not args.dry_run:
+        require_approval("uploading and registering the local model", args.approved)
 
     cv_results = json.loads((ARTIFACT_DIR / "cv_results.json").read_text())
     metadata = json.loads((ARTIFACT_DIR / "metadata.json").read_text())
@@ -162,7 +170,7 @@ def main() -> None:
         logger.info("Uploaded model artifact to %s", model_data_url)
 
     group_name = AWSModelRegistry.get_model_group_name()
-    registry.create_model_package_group(group_name)
+    registry.create_model_package_group(group_name, approved=args.approved)
 
     result = registry.register_model_package(
         model_package_group_name=group_name,
@@ -171,6 +179,7 @@ def main() -> None:
         model_approval_status="PendingManualApproval",
         metrics=metrics,
         metadata=provenance_metadata(metadata),
+        approved=args.approved,
     )
     model_package_arn = result["model_package_arn"]
     logger.info("Registered model package: %s", model_package_arn)
@@ -192,6 +201,7 @@ def main() -> None:
                 f"Local v9 model; pooled OOF R2={oof_r2:.4f} >= {threshold} gate. "
                 "SageMaker training quota-blocked."
             ),
+            approved=args.approved,
         )
         logger.info("PROMOTED to Approved: %s", model_package_arn)
     else:

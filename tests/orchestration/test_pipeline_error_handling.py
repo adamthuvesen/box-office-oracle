@@ -84,7 +84,7 @@ class TestModelRegistryErrorClassification:
             "ModelPackageGroupArn": "arn:aws:sagemaker:eu-north-1:123:model-package-group/foo"
         }
 
-        result = registry.create_model_package_group("foo")
+        result = registry.create_model_package_group("foo", approved=True)
         assert result["status"] == "created"
 
     def test_create_group_propagates_access_denied(self):
@@ -93,7 +93,7 @@ class TestModelRegistryErrorClassification:
             "AccessDeniedException", "Not authorized."
         )
         with pytest.raises(ClientError):
-            registry.create_model_package_group("foo")
+            registry.create_model_package_group("foo", approved=True)
 
     def test_register_model_package_raises_on_hard_failure(self):
         registry = self._make_registry()
@@ -109,6 +109,7 @@ class TestModelRegistryErrorClassification:
                 registry.register_model_package(
                     model_package_group_name="foo",
                     model_data_url="s3://bucket/key.tar.gz",
+                    approved=True,
                 )
             # Cause chain preserved (the `raise` re-raises the same exception).
             assert excinfo.value.response["Error"]["Code"] == "ThrottlingException"

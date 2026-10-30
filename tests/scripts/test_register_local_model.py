@@ -14,8 +14,7 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
-
-register = pytest.importorskip("scripts.register_local_model")
+from scripts import register_local_model as register
 
 
 def _write_artifacts(artifact_dir):
@@ -109,9 +108,7 @@ def test_build_metrics_carries_gate_and_cv_fields():
 
 
 def test_provenance_metadata_marks_local_quota_blocked():
-    meta = register.provenance_metadata(
-        {"training_rows": 6077, "eval_years": "2015-2023"}
-    )
+    meta = register.provenance_metadata({"training_rows": 6077, "eval_years": "2015-2023"})
     assert meta["trained_on"] == "local"
     assert meta["code_path"] == "container-identical"
     assert "quota" in meta["provenance_note"].lower()

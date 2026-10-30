@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 import pandas as pd
@@ -49,9 +50,9 @@ class DataPhaseResult:
     feature_names: list[str]
 
 
-def run_data_phase(logger) -> DataPhaseResult:
+def run_data_phase(logger, approved: bool = False) -> DataPhaseResult:
     """Run dbt through Snowflake validation; return in-memory frames for training."""
-    run_raw_to_staging_dbt_transformations()
+    run_raw_to_staging_dbt_transformations(approved=approved)
 
     staging_data = load_staging_box_office_from_snowflake()
 
@@ -94,7 +95,7 @@ def run_data_phase(logger) -> DataPhaseResult:
         TableSaveSpec(y_val_log.to_frame("GROSS_LOG"), "Y_VAL_LOG", ml_schema),
         TableSaveSpec(feature_metadata, "FEATURE_METADATA", fs_schema),
     ]
-    report = save_tables(specs, save_dataset_to_snowflake_impl)
+    report = save_tables(specs, partial(save_dataset_to_snowflake_impl, approved=approved))
     log_table_operations_summary(report.operations, logger)
 
     expected_tables = [s.table_name for s in specs if s.schema == ml_schema]

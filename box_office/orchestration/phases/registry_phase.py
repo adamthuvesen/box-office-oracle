@@ -25,6 +25,7 @@ def run_registry_phase(
     training_metrics: dict[str, Any],
     environment: str,
     logger,
+    approved: bool = False,
 ) -> RegistryPhaseResult:
     """Register model package and optionally promote to Approved."""
     aws_registry = AWSModelRegistry(config.aws.region)
@@ -35,6 +36,7 @@ def run_registry_phase(
         aws_registry=aws_registry,
         performance_metrics=training_metrics,
         environment=environment,
+        approved=approved,
     )
 
     promotion_result = None
@@ -59,6 +61,7 @@ def run_registry_phase(
             aws_promotion_result = promote_model_in_aws_registry(
                 model_package_arn=aws_model_package_arn,
                 approval_description=approval_description,
+                approved=approved,
             )
 
             if aws_promotion_result.get("status") == "success":

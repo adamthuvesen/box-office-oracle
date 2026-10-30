@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+from box_office.utils.approval import require_approval
+
 logger = logging.getLogger("apply_snowflake_grants")
 
 SQL_FILE = Path(__file__).with_name("snowflake_role_grants.sql")
@@ -57,6 +59,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print the statements without connecting to Snowflake",
     )
+    parser.add_argument(
+        "--approved",
+        action="store_true",
+        help="Approve running the grants as ACCOUNTADMIN.",
+    )
     args = parser.parse_args(argv)
 
     if not SQL_FILE.exists():
@@ -73,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[{i:2d}] {stmt}")
         print(f"\n[dry-run] {len(statements)} statements; nothing executed")
         return 0
+
+    return apply_statements(statements, approved=args.approved)
+
+
+def apply_statements(statements: list[str], approved: bool = False) -> int:
+    require_approval("applying Snowflake grants as ACCOUNTADMIN", approved)
 
     # Administration path: force ACCOUNTADMIN irrespective of the pipeline role.
     os.environ["SNOWFLAKE_ROLE"] = "ACCOUNTADMIN"

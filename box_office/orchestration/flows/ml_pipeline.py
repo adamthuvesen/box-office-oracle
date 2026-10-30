@@ -26,6 +26,7 @@ def get_logger():
 def run_ml_pipeline_logic(
     environment: str = "dev",
     logger=None,
+    approved: bool = False,
 ):
     """
     Core ML pipeline: data phase, SageMaker training (in-memory handoff), registry.
@@ -35,9 +36,11 @@ def run_ml_pipeline_logic(
 
     logger.info("Running ML Pipeline with environment=%r", environment)
 
-    data = run_data_phase(logger)
-    train = run_train_phase(data, logger)
-    registry = run_registry_phase(train.training_metrics, environment=environment, logger=logger)
+    data = run_data_phase(logger, approved=approved)
+    train = run_train_phase(data, logger, approved=approved)
+    registry = run_registry_phase(
+        train.training_metrics, environment=environment, logger=logger, approved=approved
+    )
 
     estimator = train.estimator
     return {
@@ -68,12 +71,12 @@ def run_ml_pipeline_logic(
     name="Box Office ML Pipeline",
     description="End-to-end ML pipeline for box office prediction using dbt, Snowflake, and SageMaker",
 )
-def ml_pipeline(environment: str = "dev"):
+def ml_pipeline(environment: str = "dev", approved: bool = False):
     """Complete ML pipeline from data loading to preprocessing, training and saving model artifacts."""
     configure_environment()
     logger = get_logger()
     logger.info("Starting ML Pipeline...")
-    result = run_ml_pipeline_logic(environment, logger)
+    result = run_ml_pipeline_logic(environment, logger, approved=approved)
 
     logger.info("ML Pipeline completed!")
     if result and isinstance(result, dict):
@@ -106,6 +109,11 @@ def main():
         help="Environment to run the pipeline in",
     )
     parser.add_argument(
+        "--approved",
+        action="store_true",
+        help="Approve the paid and production-writing steps of this run",
+    )
+    parser.add_argument(
         "--serve",
         action="store_true",
         help="Run the pipeline in serve mode (Prefect server)",
@@ -116,10 +124,10 @@ def main():
     if args.serve:
         ml_pipeline.serve(
             name="box-office-ml-pipeline",
-            parameters={"environment": args.environment},
+            parameters={"environment": args.environment, "approved": args.approved},
         )
     else:
-        result = ml_pipeline(environment=args.environment)
+        result = ml_pipeline(environment=args.environment, approved=args.approved)
         get_logger().info("Pipeline completed with result: %s", result)
 
 

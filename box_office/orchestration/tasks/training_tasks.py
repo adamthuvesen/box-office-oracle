@@ -16,6 +16,7 @@ from box_office.ml.model_registry.aws_model_registry import (
     ModelRegistryRegistrationError,
 )
 from box_office.sagemaker import sagemaker_train_job
+from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import BOTO3_CONFIG
 
 
@@ -24,13 +25,14 @@ from box_office.utils.aws_helpers import BOTO3_CONFIG
     retries=3,
     retry_delay_seconds=exponential_backoff(backoff_factor=5),
 )
-def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
+def upload_processed_data_to_s3(sagemaker_client, X_train, y_train, approved=False):
+    require_approval("uploading training data to S3", approved)
     logger = get_run_logger()
     logger.info("Uploading processed data to S3...")
 
     start_time = time.time()
     train_input = sagemaker_train_job.upload_processed_data_to_s3(
-        sagemaker_client, X_train, y_train
+        sagemaker_client, X_train, y_train, approved=approved
     )
     upload_time = time.time() - start_time
 
@@ -54,7 +56,9 @@ def train_model(
     train_input,
     X_train_shape,
     artifacts_s3_uris=None,
+    approved=False,
 ):
+    require_approval("launching a SageMaker training job", approved)
     logger = get_run_logger()
     logger.info("Training XGBoost model with comprehensive metrics logging...")
 
@@ -118,6 +122,7 @@ def train_model(
         X_train_shape,
         hyperparameters,
         experiment_config=experiment_config,
+        approved=approved,
     )
 
     training_duration = time.time() - training_start
@@ -198,8 +203,10 @@ def register_model_in_registry(
     aws_registry,
     performance_metrics=None,
     environment="dev",
+    approved=False,
 ):
     """Register the trained model in AWS Model Registry with comprehensive metrics."""
+    require_approval("registering a model package", approved)
     logger = get_run_logger()
     logger.info("Registering model in AWS SageMaker Model Registry...")
 
@@ -216,7 +223,7 @@ def register_model_in_registry(
         logger.info(f"Using model group name: {group_name}")
 
         # Create model package group (if not exists)
-        group_result = aws_registry.create_model_package_group(group_name)
+        group_result = aws_registry.create_model_package_group(group_name, approved=approved)
         if group_result.get("status") == "error":
             raise ModelRegistryRegistrationError(
                 f"Failed to create model package group: {group_result.get('error')}"
@@ -243,6 +250,7 @@ def register_model_in_registry(
             metrics=performance_metrics,
             metadata=metadata,
             training_job_name=job_name,
+            approved=approved,
         )
 
         if aws_result.get("status") == "success":
@@ -262,8 +270,11 @@ def register_model_in_registry(
 
 
 @task(cache_policy=NO_CACHE)
-def upload_preprocessing_artifacts_to_s3(sagemaker_client, processor_path, scaler_path):
+def upload_preprocessing_artifacts_to_s3(
+    sagemaker_client, processor_path, scaler_path, approved=False
+):
     """Upload fitted preprocessing artifacts to S3 for SageMaker training job."""
+    require_approval("uploading preprocessing artifacts to S3", approved)
     logger = get_run_logger()
     logger.info("Uploading preprocessing artifacts to S3...")
 
@@ -402,10 +413,11 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
 
 
 @task
-def promote_model_in_aws_registry(model_package_arn, approval_description=None):
+def promote_model_in_aws_registry(model_package_arn, approval_description=None, approved=False):
     """
     Promote a model package to Approved status in AWS SageMaker Model Registry.
     """
+    require_approval("promoting a model package to Approved", approved)
     logger = get_run_logger()
     logger.info("Promoting model package to Approved status...")
     logger.info(f"Model Package ARN: {model_package_arn}")
@@ -425,6 +437,7 @@ def promote_model_in_aws_registry(model_package_arn, approval_description=None):
             approval_status="Approved",
             approval_description=approval_description
             or f"Automatically approved based on performance criteria - {datetime.now(UTC).isoformat()}",
+            approved=approved,
         )
 
         promotion_time = time.time() - start_time

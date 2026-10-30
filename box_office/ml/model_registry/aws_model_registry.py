@@ -10,6 +10,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
+from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import compute_sha256_stream, parse_s3_uri
 
 # Validation constants
@@ -80,7 +81,7 @@ class AWSModelRegistry:
         return _group_name(project_name=project_name, environment=environment)
 
     def create_model_package_group(
-        self, group_name: str, description: str | None = None
+        self, group_name: str, description: str | None = None, approved: bool = False
     ) -> dict[str, Any]:
         """Create the package group, or return ``status="exists"`` if it already does.
 
@@ -88,6 +89,7 @@ class AWSModelRegistry:
         but any non-not-found ClientError (AccessDenied, throttling) propagates
         instead of being downgraded to a status dict.
         """
+        require_approval("creating a model package group", approved)
         # ResourceNotFound is the legitimate "create it" path; any other
         # ClientError (auth, throttling) means infra is broken and propagates.
         try:
@@ -127,6 +129,7 @@ class AWSModelRegistry:
         metrics: dict[str, float] | None = None,
         metadata: dict[str, Any] | None = None,
         training_job_name: str | None = None,
+        approved: bool = False,
     ) -> dict[str, Any]:
         """
         Register a model package in the AWS Model Registry.
@@ -144,6 +147,7 @@ class AWSModelRegistry:
         Returns:
             Dictionary with registration result
         """
+        require_approval("registering a model package", approved)
         if inference_specification is None:
             inference_specification = self._get_default_inference_spec(framework, framework_version)
 
@@ -269,6 +273,7 @@ class AWSModelRegistry:
         model_package_arn: str,
         approval_status: str,
         approval_description: str | None = None,
+        approved: bool = False,
     ) -> dict[str, Any]:
         """
         Update the approval status of a model package.
@@ -284,6 +289,7 @@ class AWSModelRegistry:
         Raises:
             ValueError: If ARN format is invalid or approval_status is not valid
         """
+        require_approval("changing a model package approval status", approved)
         # Validate ARN format
         if not ARN_PATTERN.match(model_package_arn):
             raise ValueError(

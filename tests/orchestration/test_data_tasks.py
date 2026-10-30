@@ -41,7 +41,7 @@ def dbt_task(tmp_path, monkeypatch):
 def test_dbt_task_builds_and_tests_staging(dbt_task):
     data_tasks, runner, runner_factory = dbt_task
 
-    data_tasks.run_raw_to_staging_dbt_transformations.fn()
+    data_tasks.run_raw_to_staging_dbt_transformations.fn(approved=True)
 
     assert [call.args[0] for call in runner.invoke.call_args_list] == [
         ["deps"],
@@ -56,7 +56,7 @@ def test_dbt_task_propagates_build_failure(dbt_task):
     runner.invoke.side_effect = [None, None, ValueError("dbt failed")]
 
     with pytest.raises(ValueError, match="dbt failed"):
-        data_tasks.run_raw_to_staging_dbt_transformations.fn()
+        data_tasks.run_raw_to_staging_dbt_transformations.fn(approved=True)
 
 
 class TestFeatureScaling:

@@ -10,13 +10,15 @@ from sagemaker.inputs import TrainingInput
 from sagemaker.xgboost.estimator import XGBoost
 
 from box_office.config import config
+from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import BOTO3_CONFIG
 
 logger = logging.getLogger(__name__)
 
 
 class SageMakerClient:
-    def __init__(self, region=None, role=None):
+    def __init__(self, region=None, role=None, approved=False):
+        require_approval("opening a SageMaker session", approved)
         logger.info("Initializing SageMaker client...")
         # Use configuration system with fallback to parameters
         self.region = region or config.aws.region
@@ -39,7 +41,8 @@ class SageMakerClient:
         logger.info(f"S3 Prefix: {self.s3_prefix}")
 
 
-def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
+def upload_processed_data_to_s3(sagemaker_client, X_train, y_train, approved=False):
+    require_approval("uploading training data to S3", approved)
     logger.info(
         f"Using S3 bucket: {sagemaker_client.s3_bucket} with prefix: {sagemaker_client.s3_prefix}"
     )
@@ -194,9 +197,11 @@ def train_xgboost_model_with_timeseries_cv_framework(
     X_train_shape,
     hyperparameters,
     experiment_config=None,
+    approved=False,
 ):
     """Launch a SageMaker training job using the XGBoost Framework Estimator,
     running the in-container time-series CV training script."""
+    require_approval("launching a SageMaker training job", approved)
 
     XGBOOST_PARAM_KEYS = {
         "n_estimators",
