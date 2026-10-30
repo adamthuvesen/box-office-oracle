@@ -215,29 +215,6 @@ def test_promote_task_approves_when_approved(task_logger):
 # --- Snowflake and dbt -------------------------------------------------------
 
 
-def test_save_dataset_refuses_without_approval():
-    with (
-        patch.object(data_tasks, "create_snowflake_connection") as connect,
-        patch.object(data_tasks, "write_pandas") as write,
-    ):
-        with pytest.raises(ApprovalRequired):
-            data_tasks.save_dataset_to_snowflake_impl(pd.DataFrame({"a": [1]}), "X_TRAIN")
-        connect.assert_not_called()
-        write.assert_not_called()
-
-
-def test_save_dataset_writes_when_approved():
-    with (
-        patch.object(data_tasks, "create_snowflake_connection") as connect,
-        patch.object(data_tasks, "write_pandas", return_value=(True, 1, 1, [])) as write,
-    ):
-        assert data_tasks.save_dataset_to_snowflake_impl(
-            pd.DataFrame({"a": [1]}), "X_TRAIN", approved=True
-        )
-        connect.assert_called_once()
-        write.assert_called_once()
-
-
 def test_dbt_build_refuses_without_approval(task_logger):
     with patch.object(data_tasks, "PrefectDbtRunner") as runner_class:
         with pytest.raises(ApprovalRequired):

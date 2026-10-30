@@ -13,7 +13,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from box_office.config import MODEL_HYPERPARAMETERS
+from box_office.config import MODEL_HYPERPARAMETERS, ModelHyperparameters
+from box_office.eval_windows import ITERATION_CV_FOLDS, ITERATION_END_YEAR, START_EVAL_YEAR
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
@@ -21,7 +22,7 @@ from box_office.ml.artifacts import (
 )
 from box_office.ml.cv import ModelEvaluator, TimeSeriesCrossValidator
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
-from box_office.ml.model import BoxOfficeXGBoostModel
+from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
 from box_office.utils.aws_helpers import parse_s3_uri, resolve_aws_region
 
 try:
@@ -63,11 +64,9 @@ def parse_args():
 
     # Custom parameters injected via Estimator.environment. The lowercase names are the
     # contract with the training job's environment dict (see sagemaker_train_job.py).
-    args.cv_folds = int(os.environ.get("cv_folds", "8"))  # noqa: SIM112
-    args.end_year = int(os.environ.get("end_year", "2024"))  # noqa: SIM112
-    args.backtest_years = int(os.environ.get("backtest_years", "5"))  # noqa: SIM112
-    derived_start = args.end_year - args.backtest_years + 1
-    args.start_eval_year = int(os.environ.get("start_eval_year", str(derived_start)))  # noqa: SIM112
+    args.cv_folds = int(os.environ.get("cv_folds", str(ITERATION_CV_FOLDS)))  # noqa: SIM112
+    args.end_year = int(os.environ.get("end_year", str(ITERATION_END_YEAR)))  # noqa: SIM112
+    args.start_eval_year = int(os.environ.get("start_eval_year", str(START_EVAL_YEAR)))  # noqa: SIM112
 
     processor_uri = os.environ.get("processor_s3_uri", "None")  # noqa: SIM112
     args.processor_s3_uri = None if processor_uri == "None" else processor_uri
@@ -123,28 +122,11 @@ def load_data(train_path):
     return X_train, y_train_log, dates
 
 
-def train_final_model(X_train, y_train_log, cv_results, args):
-    """Train final model on all data using best iteration from CV."""
-
-    # Use mean best iteration from CV to avoid overfitting on the full dataset.
-    best_iteration = int(cv_results.get("mean_best_iteration", args.n_estimators))
-    logger.info(f"Training final model with {best_iteration} estimators based on CV.")
-
-    model = BoxOfficeXGBoostModel(
-        n_estimators=best_iteration,
-        learning_rate=args.learning_rate,
-        max_depth=args.max_depth,
-        min_child_weight=args.min_child_weight,
-        subsample=args.subsample,
-        colsample_bytree=args.colsample_bytree,
-        reg_alpha=args.reg_alpha,
-        reg_lambda=args.reg_lambda,
-        random_state=42,
+def hyperparameters_from_args(args) -> ModelHyperparameters:
+    """The XGBoost hyperparameters the estimator passed, validated by their owner."""
+    return ModelHyperparameters(
+        **{name: getattr(args, name) for name in ModelHyperparameters.model_fields}
     )
-
-    model.fit(X_train, y_train_log)
-    logger.info("Final model training completed.")
-    return model
 
 
 def load_preprocessing_artifacts(args):
@@ -446,14 +428,9 @@ def train(args):
         early_stopping_rounds=args.early_stopping_rounds,
     )
 
+    hyperparameters = hyperparameters_from_args(args)
     model_kwargs = {
-        "n_estimators": args.n_estimators,
-        "learning_rate": args.learning_rate,
-        "max_depth": args.max_depth,
-        "subsample": args.subsample,
-        "colsample_bytree": args.colsample_bytree,
-        "reg_alpha": args.reg_alpha,
-        "reg_lambda": args.reg_lambda,
+        **hyperparameters.model_dump(exclude={"early_stopping_rounds"}),
         "random_state": 42,
     }
 
@@ -476,7 +453,13 @@ def train(args):
     # training row is legitimately past).
     preprocessor, scaler, processor_path, scaler_path = load_preprocessing_artifacts(args)
     X_train_scaled = transform_for_final_fit(X_train, preprocessor, scaler)
-    final_model = train_final_model(X_train_scaled, y_train_log, cv_results, args)
+    logger.info(
+        "Training final model with %d estimators based on CV.",
+        int(cv_results["mean_best_iteration"]),
+    )
+    final_model = fit_final_model(
+        X_train_scaled, y_train_log, cv_results["mean_best_iteration"], hyperparameters
+    )
 
     save_results(final_model, cv_results, oof_results, args, processor_path, scaler_path)
 

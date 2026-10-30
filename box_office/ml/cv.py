@@ -8,6 +8,12 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
 
 from box_office.config import MODEL_HYPERPARAMETERS
+from box_office.eval_windows import (
+    ITERATION_CV_FOLDS,
+    ITERATION_END_YEAR,
+    START_EVAL_YEAR,
+    refuse_confirmation_years,
+)
 from box_office.ml.exceptions import CrossValidationFailed, OOFIndexCollision
 from box_office.ml.regression_metrics import rmse_on_log_scale, spearman_rank_corr
 from box_office.ml.target import from_log_target
@@ -86,11 +92,14 @@ class TimeSeriesCrossValidator:
 
     def __init__(
         self,
-        cv_folds: int = 10,
-        start_eval_year: int = 2015,
-        end_year: int = 2024,
+        cv_folds: int = ITERATION_CV_FOLDS,
+        start_eval_year: int = START_EVAL_YEAR,
+        end_year: int = ITERATION_END_YEAR,
         early_stopping_rounds: int = MODEL_HYPERPARAMETERS.early_stopping_rounds,
+        *,
+        allow_confirmation_years: bool = False,
     ):
+        refuse_confirmation_years(end_year, allow_confirmation_years=allow_confirmation_years)
         self.cv_folds = cv_folds
         self.start_eval_year = start_eval_year
         self.end_year = end_year

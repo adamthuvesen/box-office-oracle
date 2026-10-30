@@ -12,7 +12,7 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 
 | Layer | Tech |
 | --- | --- |
-| **Warehouse** | Snowflake (`RAW` → `STAGING` → `ML_TRAINING`) |
+| **Warehouse** | Snowflake (`RAW` → `STAGING`) |
 | **Transform** | dbt-core + dbt-snowflake |
 | **Features** | scikit-learn `Pipeline`: pre-release raw columns → 52 engineered → 13 selected |
 | **Training** | XGBoost on SageMaker `ml.m5.large` |
@@ -80,7 +80,7 @@ falling back to code defaults. Required variables:
 
 ```text
 SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_DATABASE, SNOWFLAKE_WAREHOUSE
-SNOWFLAKE_SCHEMA_{RAW,STAGING,ML_TRAINING,FEATURE_STORE}
+SNOWFLAKE_SCHEMA_{RAW,STAGING}
 SNOWFLAKE_PRIVATE_KEY_PATH, SNOWFLAKE_ROLE
 AWS_REGION, SAGEMAKER_ROLE_ARN, AWS_S3_BUCKET
 TMDB_API_TOKEN

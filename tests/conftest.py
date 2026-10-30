@@ -33,8 +33,6 @@ _test_env = {
     # Snowflake Schemas (optional but good to have)
     "SNOWFLAKE_SCHEMA_RAW": "RAW",
     "SNOWFLAKE_SCHEMA_STAGING": "STAGING",
-    "SNOWFLAKE_SCHEMA_ML_TRAINING": "ML_TRAINING",
-    "SNOWFLAKE_SCHEMA_FEATURE_STORE": "FEATURE_STORE",
 }
 
 # Apply env vars now so ``box_office.config`` gets sane values during the

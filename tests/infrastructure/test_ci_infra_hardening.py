@@ -29,8 +29,6 @@ CI_YML = WORKFLOWS_DIR / "ci.yml"
 ML_PIPELINE_YML = WORKFLOWS_DIR / "ml-pipeline.yml"
 CD_INFRA_YML = WORKFLOWS_DIR / "cd-infrastructure.yml"
 
-DATA_TASKS_PY = REPO_ROOT / "box_office" / "orchestration" / "tasks" / "data_tasks.py"
-
 
 def _strip_hcl_comments(text: str) -> str:
     """Strip ``#``/``//`` line comments and ``/* */`` blocks from HCL."""
@@ -310,31 +308,3 @@ def test_dbt_ci_parses_without_snowflake_credentials() -> None:
         "steps.creds.outputs.has_creds == 'true'"
     )
     assert "offline" in job["env"]["SNOWFLAKE_ACCOUNT"]
-
-
-# ---------------------------------------------------------------------------
-# 3.12 / Spec: save_dataset_to_snowflake validates table_name first
-# ---------------------------------------------------------------------------
-
-
-def test_save_dataset_to_snowflake_validates_identifier() -> None:
-    text = DATA_TASKS_PY.read_text()
-    # Find the save_dataset_to_snowflake function body.
-    m = re.search(
-        r"^def save_dataset_to_snowflake_impl\([\s\S]*?\) -> bool:(?P<body>[\s\S]*?)(?=^def )",
-        text,
-        flags=re.MULTILINE,
-    )
-    assert m is not None, "save_dataset_to_snowflake_impl function not found"
-    body = m.group("body")
-    # The validate call for table_name MUST come before write_pandas.
-    validate_idx = body.find('validate_sql_identifier(table_name, "table")')
-    write_idx = body.find("write_pandas(")
-    assert validate_idx != -1, (
-        "Release hardening M66: save_dataset_to_snowflake must call "
-        'validate_sql_identifier(table_name, "table") before write_pandas.'
-    )
-    assert write_idx != -1, "write_pandas call missing"
-    assert validate_idx < write_idx, (
-        "validate_sql_identifier(table_name, ...) must precede write_pandas."
-    )

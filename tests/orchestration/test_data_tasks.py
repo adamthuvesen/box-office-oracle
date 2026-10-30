@@ -86,31 +86,3 @@ class TestFeatureScaling:
         assert np.abs(train_stds - 1.0).max() < 0.1, "Scaled train set not standardized"
 
         assert list(X_train_scaled.columns) == list(X_train.columns)
-
-
-class TestFeatureMetadata:
-    def test_create_feature_metadata(self, monkeypatch):
-        from unittest.mock import MagicMock
-
-        import box_office.orchestration.tasks.data_tasks as data_tasks
-        from box_office.orchestration.tasks.data_tasks import create_feature_metadata
-
-        monkeypatch.setattr(data_tasks, "get_run_logger", lambda: MagicMock())
-
-        feature_names = ["FEATURE_1", "FEATURE_2", "FEATURE_3"]
-        processor_path = "/path/to/processor.pkl"
-        scaler_path = "/path/to/scaler.pkl"
-
-        metadata = create_feature_metadata.fn(feature_names, processor_path, scaler_path)
-
-        assert len(metadata) == 3
-        assert "FEATURE_NAME" in metadata.columns
-        assert "FEATURE_INDEX" in metadata.columns
-        assert "CREATED_AT" in metadata.columns
-        assert "PROCESSOR_PATH" in metadata.columns
-        assert "SCALER_PATH" in metadata.columns
-
-        assert list(metadata["FEATURE_INDEX"]) == [0, 1, 2]
-
-        assert metadata["PROCESSOR_PATH"].iloc[0] == processor_path
-        assert metadata["SCALER_PATH"].iloc[0] == scaler_path

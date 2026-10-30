@@ -32,37 +32,23 @@ import json
 import sys
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 
+from box_office.inference.app.predictor import PredictionEngine
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
 from box_office.ml.target import from_log_target
+from box_office.training_frame import PREPROCESSOR_INPUT_COLUMNS
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 DROPPED_PATH = Path("data/generated/training/dropped_rows_1980_2026.csv")
 ARTIFACT_DIR = Path("artifacts/local")
 PARQUET_OUT = Path("data/generated/training/predictions_all_1980_2026.parquet")
 WEB_JSON_OUT = Path("web/data/predictions.json")
-
-PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
-    "RELEASE_YEAR",
-    "RELEASE_DATE",
-    "PRODUCTION_BUDGET",
-    "RUNTIME",
-    "MPAA",
-    "GENRES",
-    "DIRECTOR",
-    "PRODUCTION_COMPANY",
-    "ACTORS",
-    "IP_TIER",
-    "PRIOR_FRANCHISE_GROSS_LOG",
-    "IS_FRANCHISE_FOLLOWUP",
-)
 
 # Drop reasons whose recorded gross is not a real theatrical actual: future
 # releases (placeholder gross) and the documented $100M+ gross artifacts.
@@ -77,7 +63,7 @@ IN_SAMPLE = "in_sample"
 NO_ACTUALS = "no_actuals"
 
 
-def load_artifacts() -> tuple[object, object, object, dict]:
+def load_artifacts() -> tuple[PredictionEngine, dict]:
     paths = {
         "model": ARTIFACT_DIR / MODEL_PKL,
         "preprocessor": ARTIFACT_DIR / FEATURE_PREPROCESSOR_PKL,
@@ -89,18 +75,20 @@ def load_artifacts() -> tuple[object, object, object, dict]:
         raise SystemExit(
             f"missing artifacts: {missing}. Run `uv run python scripts/train_local.py` first."
         )
-    model = joblib.load(paths["model"])
-    preprocessor = joblib.load(paths["preprocessor"])
-    scaler = joblib.load(paths["scaler"])
+    engine = PredictionEngine()
+    engine.load_model_artifacts(
+        model_path=str(paths["model"]),
+        preprocessor_path=str(paths["preprocessor"]),
+        scaler_path=str(paths["scaler"]),
+        model_metadata={"model_id": "local-tmdb-1980-2026", "version": 1},
+    )
     cv_results = json.loads(paths["cv_results"].read_text())
-    return model, preprocessor, scaler, cv_results
+    return engine, cv_results
 
 
-def final_model_predictions(rows: pd.DataFrame, model, preprocessor, scaler) -> np.ndarray:
-    """transform -> scale -> predict -> from_log_target, the serving convention."""
-    X = preprocessor.transform(rows[list(PREPROCESSOR_INPUT_COLUMNS)])
-    X_scaled = pd.DataFrame(scaler.transform(X), columns=X.columns, index=X.index)
-    pred_dollars = from_log_target(model.predict(X_scaled))
+def final_model_predictions(rows: pd.DataFrame, engine: PredictionEngine) -> np.ndarray:
+    """Final-model predictions in USD through the serving engine."""
+    pred_dollars = engine.predict_frame(rows[list(PREPROCESSOR_INPUT_COLUMNS)])
     if not np.all(np.isfinite(pred_dollars)):
         bad = int((~np.isfinite(pred_dollars)).sum())
         raise AssertionError(f"{bad} non-finite final-model predictions")
@@ -131,13 +119,11 @@ def build_records(
     frame: pd.DataFrame,
     dropped: pd.DataFrame,
     oof_dollars: dict[int, float],
-    model,
-    preprocessor,
-    scaler,
+    engine: PredictionEngine,
 ) -> pd.DataFrame:
     records: list[dict] = []
 
-    frame_pred_final = final_model_predictions(frame, model, preprocessor, scaler)
+    frame_pred_final = final_model_predictions(frame, engine)
     for position, row in enumerate(frame.itertuples(index=False)):
         oof = oof_dollars.get(position)
         predicted = oof if oof is not None else float(frame_pred_final[position])
@@ -154,7 +140,7 @@ def build_records(
             }
         )
 
-    dropped_pred = final_model_predictions(dropped, model, preprocessor, scaler)
+    dropped_pred = final_model_predictions(dropped, engine)
     for position, row in enumerate(dropped.itertuples(index=False)):
         gross_unreliable = any(reason in row.DROP_REASON for reason in UNRELIABLE_GROSS_REASONS)
         actual = None if gross_unreliable else float(row.WORLDWIDE_GROSS)
@@ -205,10 +191,10 @@ def main() -> None:
 
     frame = pd.read_parquet(FRAME_PATH)
     dropped = pd.read_csv(DROPPED_PATH)
-    model, preprocessor, scaler, cv_results = load_artifacts()
+    engine, cv_results = load_artifacts()
     oof_dollars = oof_dollars_by_position(cv_results, len(frame))
 
-    result = build_records(frame, dropped, oof_dollars, model, preprocessor, scaler)
+    result = build_records(frame, dropped, oof_dollars, engine)
 
     PARQUET_OUT.parent.mkdir(parents=True, exist_ok=True)
     result.to_parquet(PARQUET_OUT, index=False)

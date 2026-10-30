@@ -295,13 +295,24 @@ class PredictionEngine:
             )
 
     def preprocess_features(self, request: PredictionRequest) -> np.ndarray:
-        """Preprocess features for prediction."""
+        """Preprocess one request's features for prediction."""
+        return self._preprocess_frame(self._prepare_dataframe(request))
+
+    def predict_frame(self, frame: pd.DataFrame) -> np.ndarray:
+        """Predict worldwide gross in USD for each row of a preprocessor-input frame.
+
+        This is the serving path: transform, scale, predict, and invert the log
+        target. Batch scoring calls it so its numbers match ``/predict``.
+        """
+        if not self.is_loaded():
+            raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
+        return from_log_target(self.model.predict(self._preprocess_frame(frame)))
+
+    def _preprocess_frame(self, df: pd.DataFrame) -> np.ndarray:
         if not self.is_loaded():
             raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
 
         try:
-            df = self._prepare_dataframe(request)
-
             logger.debug("Applying feature preprocessing")
             features_processed = self.preprocessor.transform(df)
             self._assert_feature_contract(features_processed)
@@ -325,11 +336,7 @@ class PredictionEngine:
         start_time = datetime.now(UTC)
 
         try:
-            features = self.preprocess_features(request)
-
-            logger.debug("Making model prediction")
-            prediction = self.model.predict(features)[0]
-            prediction_value = from_log_target(prediction)
+            prediction_value = self.predict_frame(self._prepare_dataframe(request))[0]
 
             prediction_interval_heuristic = None
             if request.return_confidence:

@@ -5,6 +5,7 @@ import pandas as pd
 import xgboost as xgb
 
 from box_office.config import MODEL_HYPERPARAMETERS as _HP
+from box_office.config import ModelHyperparameters
 
 logger = logging.getLogger(__name__)
 
@@ -85,3 +86,24 @@ class BoxOfficeXGBoostModel:
         if not self.is_fitted:
             raise ValueError("Model must be fitted to access best iteration")
         return getattr(self.model, "best_iteration", self.params["n_estimators"])
+
+
+def fit_final_model(
+    X_scaled: pd.DataFrame,
+    y_log: pd.Series,
+    mean_best_iteration: float,
+    hyperparameters: ModelHyperparameters = _HP,
+) -> BoxOfficeXGBoostModel:
+    """Fit the deployment model on all rows at the CV-mean best iteration.
+
+    Early stopping needs a held-out set, so the final fit has none; the CV-mean
+    best iteration stands in for it. The local and the SageMaker paths both
+    call this function.
+    """
+    model = BoxOfficeXGBoostModel(
+        **hyperparameters.model_dump(exclude={"n_estimators", "early_stopping_rounds"}),
+        n_estimators=int(mean_best_iteration),
+        random_state=42,
+    )
+    model.fit(X_scaled, y_log)
+    return model

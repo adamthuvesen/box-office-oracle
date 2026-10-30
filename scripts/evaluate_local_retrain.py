@@ -33,6 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from box_office.eval_windows import CONFIRMATION_END_YEAR, ITERATION_END_YEAR, START_EVAL_YEAR
 from box_office.ml.backtest import render_metrics_table_markdown
 from box_office.ml.backtest_report import build_report
 from box_office.ml.cv import TimeSeriesCrossValidator
@@ -61,9 +62,6 @@ PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
     "IS_FRANCHISE_FOLLOWUP",
 )
 
-START_EVAL_YEAR = 2015
-ITERATION_END_YEAR = 2023  # iterate against <= 2023 only
-CONFIRM_END_YEAR = 2025  # touched once, for the frozen confirmation
 RECENT_WINDOW_START = 2023
 
 DISCIPLINE_RULE = (
@@ -106,7 +104,7 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def run_headline_cv(frame: pd.DataFrame, end_eval_year: int) -> dict:
+def run_headline_cv(frame: pd.DataFrame, end_eval_year: int, *, burn_holdout: bool = False) -> dict:
     """One leakage-free CV run on the full frame (NaN budgets pass through)."""
     X_input = frame[list(PREPROCESSOR_INPUT_COLUMNS)].reset_index(drop=True)
     y_raw = frame["WORLDWIDE_GROSS"].astype(float).reset_index(drop=True)
@@ -117,6 +115,7 @@ def run_headline_cv(frame: pd.DataFrame, end_eval_year: int) -> dict:
         cv_folds=end_eval_year - START_EVAL_YEAR + 1,
         start_eval_year=START_EVAL_YEAR,
         end_year=end_eval_year,
+        allow_confirmation_years=burn_holdout,
     )
     cv_results = cv.cross_validate(
         BoxOfficeXGBoostModel,
@@ -214,7 +213,7 @@ def render_recent_window_markdown(recent_table: pd.DataFrame, recent_summary: di
 
 def main() -> None:
     args = parse_args()
-    end_eval_year = CONFIRM_END_YEAR if args.confirm else ITERATION_END_YEAR
+    end_eval_year = CONFIRMATION_END_YEAR if args.confirm else ITERATION_END_YEAR
     mode = "confirm" if args.confirm else "iteration"
 
     for path in (FRAME_PATH, DROPPED_PATH, FLAGGED_PATH):
@@ -223,7 +222,7 @@ def main() -> None:
 
     frame = pd.read_parquet(FRAME_PATH)
 
-    headline = run_headline_cv(frame, end_eval_year)
+    headline = run_headline_cv(frame, end_eval_year, burn_holdout=args.burn_holdout)
     cv_results = headline["cv_results"]
 
     full_table = build_per_year_table(frame, cv_results)

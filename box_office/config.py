@@ -13,8 +13,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cache
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from box_office.eval_windows import (
+    ITERATION_CV_FOLDS,
+    ITERATION_END_YEAR,
+    START_EVAL_YEAR,
+    refuse_confirmation_years,
+)
 
 
 def model_registry_group_name(
@@ -36,8 +43,6 @@ class _AwsView:
 class _SnowflakeSchemas:
     raw: str
     staging: str
-    feature_store: str
-    ml_training: str
 
 
 @dataclass(frozen=True)
@@ -71,11 +76,24 @@ class ModelHyperparameters(BaseModel):
 MODEL_HYPERPARAMETERS = ModelHyperparameters()
 
 
-@dataclass(frozen=True)
-class _ModelCV:
-    cv_folds: int = 8
-    start_eval_year: int = 2015
-    end_year: int = 2024
+class CrossValidationWindow(BaseModel):
+    """The cloud path's CV window. Defaults are the local iteration window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+    cv_folds: int = Field(default=ITERATION_CV_FOLDS, ge=2, le=20)
+    start_eval_year: int = Field(default=START_EVAL_YEAR, ge=1900, le=2030)
+    end_year: int = Field(default=ITERATION_END_YEAR, ge=1900, le=2030)
+
+    @model_validator(mode="after")
+    def _check_window(self) -> CrossValidationWindow:
+        if self.start_eval_year >= self.end_year:
+            raise ValueError("start_eval_year must be less than end_year")
+        refuse_confirmation_years(self.end_year)
+        return self
+
+
+CROSS_VALIDATION_WINDOW = CrossValidationWindow()
 
 
 @dataclass(frozen=True)
@@ -85,7 +103,7 @@ class _ModelView:
     promotion_threshold: float = 0.55
     artifacts_dir: str = "artifacts"
     hyperparameters: ModelHyperparameters = MODEL_HYPERPARAMETERS
-    cross_validation: _ModelCV = _ModelCV()
+    cross_validation: CrossValidationWindow = CROSS_VALIDATION_WINDOW
 
 
 @dataclass(frozen=True)
@@ -124,8 +142,6 @@ class Settings(BaseSettings):
     SNOWFLAKE_DATABASE: str
     SNOWFLAKE_SCHEMA_RAW: str = "RAW"
     SNOWFLAKE_SCHEMA_STAGING: str = "STAGING"
-    SNOWFLAKE_SCHEMA_FEATURE_STORE: str = "FEATURE_STORE"
-    SNOWFLAKE_SCHEMA_ML_TRAINING: str = "ML_TRAINING"
 
     def model_post_init(self, __context) -> None:
         """Pre-compute the nested view dataclasses once.
@@ -156,8 +172,6 @@ class Settings(BaseSettings):
                 schemas=_SnowflakeSchemas(
                     raw=self.SNOWFLAKE_SCHEMA_RAW,
                     staging=self.SNOWFLAKE_SCHEMA_STAGING,
-                    feature_store=self.SNOWFLAKE_SCHEMA_FEATURE_STORE,
-                    ml_training=self.SNOWFLAKE_SCHEMA_ML_TRAINING,
                 ),
             ),
         )

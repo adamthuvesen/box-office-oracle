@@ -51,8 +51,6 @@ def run_ml_pipeline_logic(
         "validation_samples": data.X_val_shape[0],
         "processor_path": data.processor_path,
         "scaler_path": data.scaler_path,
-        "save_results": data.save_results,
-        "validation_results": data.validation_results,
         "feature_names": data.feature_names,
         "model_registry": {
             "registration_result": registry.registration_result,

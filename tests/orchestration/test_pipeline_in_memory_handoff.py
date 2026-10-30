@@ -18,8 +18,6 @@ def test_train_phase_does_not_call_snowflake_reload():
         X_val_shape=(1, 1),
         processor_path="/tmp/p.pkl",
         scaler_path="/tmp/s.pkl",
-        save_results={},
-        validation_results={},
         feature_names=["A"],
     )
 
@@ -81,8 +79,6 @@ def test_sagemaker_training_frames_upload_raw_frame_with_unscaled_release_year()
         X_val_shape=(0, 3),
         processor_path="/tmp/p.pkl",
         scaler_path="/tmp/s.pkl",
-        save_results={},
-        validation_results={},
         feature_names=["RELEASE_YEAR", "A"],
     )
 

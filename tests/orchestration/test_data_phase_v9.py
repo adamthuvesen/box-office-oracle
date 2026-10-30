@@ -25,7 +25,7 @@ class _Logger:
 
 def _staging_frame() -> pd.DataFrame:
     rows = []
-    # Years span the split boundary (config end_year=2024) so both train and
+    # Years span the split boundary (the 2024 confirmation start) so both train and
     # val are non-empty; <2026 so the future-year gate keeps them.
     for i in range(40):
         year = 2016 + (i % 9)  # 2016..2024
@@ -58,23 +58,10 @@ def _staging_frame() -> pd.DataFrame:
 
 
 def test_run_data_phase_x_train_has_13_v9_features():
-    from box_office.orchestration.phases import data_phase
-
-    captured: dict[str, pd.DataFrame] = {}
-
-    def fake_save_tables(specs, _impl):
-        for spec in specs:
-            captured[spec.table_name] = spec.df
-        from box_office.orchestration.persistence import TableSaveReport
-
-        return TableSaveReport(
-            results={s.table_name: True for s in specs},
-            operations=[],
-        )
-
     from unittest.mock import MagicMock
 
     import box_office.orchestration.tasks.data_tasks as data_tasks
+    from box_office.orchestration.phases import data_phase
 
     # Run the pure Prefect tasks as plain functions (no Prefect API round-trip).
     with (
@@ -93,26 +80,12 @@ def test_run_data_phase_x_train_has_13_v9_features():
         ),
         patch.object(data_phase, "scale_features", data_phase.scale_features.fn),
         patch.object(data_phase, "transform_targets", data_phase.transform_targets.fn),
-        patch.object(
-            data_phase,
-            "create_feature_metadata",
-            data_phase.create_feature_metadata.fn,
-        ),
-        patch.object(data_phase, "save_tables", side_effect=fake_save_tables),
-        patch.object(data_phase, "log_table_operations_summary"),
-        patch.object(
-            data_phase,
-            "validate_snowflake_tables",
-            return_value={"X_TRAIN": 30},
-        ),
         patch.object(data_phase, "save_artifacts", return_value=("/tmp/p", "/tmp/s")),
     ):
         result = data_phase.run_data_phase(_Logger())
 
     assert list(result.X_train_processed.columns) == list(SELECTED_FEATURES)
     assert result.X_train_processed.shape[1] == 13
-    assert "X_TRAIN" in captured
-    assert list(captured["X_TRAIN"].columns) == list(SELECTED_FEATURES)
     # RAW frame kept for the leakage-free SageMaker upload.
     assert "ACTORS" in result.X_train_raw.columns
     assert "RELEASE_YEAR" in result.X_train_raw.columns
@@ -159,9 +132,8 @@ def test_container_train_passes_preprocessor_factory():
     args = type("Args", (), {})()
     args.train = "/unused"
     args.cv_folds = 3
-    args.start_eval_year = 2022
-    args.end_year = 2024
-    args.backtest_years = 3
+    args.start_eval_year = 2021
+    args.end_year = 2023
     for k, v in {
         "n_estimators": 10,
         "learning_rate": 0.04,

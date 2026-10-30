@@ -229,7 +229,6 @@ ignore_imports = [
     "box_office.sagemaker.training_output -> boto3",
     "box_office.inference.app.model_loader -> boto3",
     "box_office.utils.snowflake_connection -> snowflake.connector",
-    "box_office.orchestration.tasks.data_tasks -> snowflake.connector.pandas_tools",
     "scripts.load_dataset_to_snowflake -> snowflake.connector.pandas_tools",
 ]
 

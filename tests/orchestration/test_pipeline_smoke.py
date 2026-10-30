@@ -23,7 +23,6 @@ class TestPipelineImports:
             apply_feature_engineering,
             load_staging_box_office_from_snowflake,
             save_artifacts,
-            save_dataset_to_snowflake_impl,
             scale_features,
             split_data,
             transform_targets,
@@ -35,7 +34,6 @@ class TestPipelineImports:
         assert scale_features is not None
         assert transform_targets is not None
         assert save_artifacts is not None
-        assert save_dataset_to_snowflake_impl is not None
 
     def test_training_tasks_imports(self):
         from box_office.orchestration.tasks.training_tasks import (

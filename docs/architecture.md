@@ -7,7 +7,7 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 
 | Layer               | Tool                         | Notes                                                                                                               |
 | ------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Data warehouse      | Snowflake                    | RAW → STAGING → ML_TRAINING schemas                                                                                 |
+| Data warehouse      | Snowflake                    | RAW → STAGING schemas                                                                                               |
 | Transformations     | dbt-core + dbt-snowflake     | `[transformations/](../transformations/)`                                                                           |
 | Feature engineering | scikit-learn + pandas        | Single `Pipeline` built by [`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)                 |
 | Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV                                                                                       |
@@ -29,11 +29,11 @@ ingestion (TMDB/IMDb) → Snowflake RAW
                             ↓
                   Snowflake STAGING.stg_box_office
                             ↓
-              build_feature_pipeline() (13 pre-release features)
+            v9 training frame (years before 2024)
                             ↓
-                   Snowflake ML_TRAINING.{X,Y}_TRAIN
+                  upload the raw frame to S3
                             ↓
-                       upload to S3
+       SageMaker CV (eval 2015-2023, per-fold preprocessor)
                             ↓
                   SageMaker training (XGBoost)
                             ↓
@@ -50,11 +50,9 @@ ingestion (TMDB/IMDb) → Snowflake RAW
 
 | Phase | Module | Responsibility |
 | ----- | ------ | -------------- |
-| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt build → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
-| Train | [`phases/train_phase.py`](../box_office/orchestration/phases/train_phase.py) | In-memory `(X_TRAIN_SCALED, Y_TRAIN_LOG)` upload to S3 → SageMaker training → parse output metrics |
+| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt build → staging load → v9 training frame → split at the 2024 confirmation set → fit the deployment preprocessor and scaler → artifacts |
+| Train | [`phases/train_phase.py`](../box_office/orchestration/phases/train_phase.py) | In-memory raw training frame and log target upload to S3 → SageMaker training → parse output metrics |
 | Registry | [`phases/registry_phase.py`](../box_office/orchestration/phases/registry_phase.py) | Register model package → R² gate → optional promotion |
-
-Snowflake `ML_TRAINING` tables remain the **audit/canonical store** after each data phase. SageMaker upload uses **in-memory frames** after successful saves.
 
 Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/data_tasks.py) and [`training_tasks`](../box_office/orchestration/tasks/training_tasks.py) retain retries and logging.
 
@@ -108,12 +106,8 @@ Each registration writes a SHA256 manifest of the artifact tarball into `Custome
 BOX_OFFICE database
 ├── RAW              (source data ingested via box_office.ingestion)
 │   └── BOX_OFFICE_V4
-├── STAGING          (dbt-transformed)
-│   └── STG_BOX_OFFICE
-├── ML_TRAINING      (processed datasets)
-│   ├── X_TRAIN / X_TRAIN_SCALED
-│   └── Y_TRAIN / Y_TRAIN_LOG
-└── FEATURE_STORE    (feature metadata + lineage)
+└── STAGING          (dbt-transformed)
+    └── STG_BOX_OFFICE
 ```
 
 ### Which role runs what

@@ -27,8 +27,6 @@ DOCUMENTED_ENV_VARS = {
     "SNOWFLAKE_DATABASE",
     "SNOWFLAKE_SCHEMA_RAW",
     "SNOWFLAKE_SCHEMA_STAGING",
-    "SNOWFLAKE_SCHEMA_FEATURE_STORE",
-    "SNOWFLAKE_SCHEMA_ML_TRAINING",
 }
 
 
@@ -71,8 +69,9 @@ class TestSettingsBasics(unittest.TestCase):
         with patch.dict(os.environ, _required_env(), clear=True):
             s = Settings(_env_file=None)
             # Static views surface stable defaults.
-            self.assertEqual(s.model.cross_validation.cv_folds, 8)
-            self.assertEqual(s.model.cross_validation.end_year, 2024)
+            self.assertEqual(s.model.cross_validation.start_eval_year, 2015)
+            self.assertEqual(s.model.cross_validation.end_year, 2023)
+            self.assertEqual(s.model.cross_validation.cv_folds, 9)
             self.assertEqual(s.sagemaker.instance_type, "ml.m5.large")
 
 

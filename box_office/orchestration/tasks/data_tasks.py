@@ -8,9 +8,9 @@ from prefect import get_run_logger, task
 from prefect.tasks import exponential_backoff
 from prefect_dbt import PrefectDbtRunner, PrefectDbtSettings
 from sklearn.preprocessing import StandardScaler
-from snowflake.connector.pandas_tools import write_pandas
 
 from box_office.config import config
+from box_office.eval_windows import CONFIRMATION_START_YEAR
 from box_office.ml.artifacts import FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.target import to_log_target
@@ -186,11 +186,11 @@ def load_staging_box_office_from_snowflake():
 
 @task
 def split_data(df, target_column, split_year=None):
-    """Split the data into training and validation sets based on RELEASE_YEAR."""
+    """Split the frame at the confirmation set: training rows are the years before it."""
     logger = get_run_logger()
 
     if split_year is None:
-        split_year = config.model.cross_validation.end_year
+        split_year = CONFIRMATION_START_YEAR
 
     logger.info("Splitting data into train/validation sets based on RELEASE_YEAR")
     logger.info(f"Training set: RELEASE_YEAR < {split_year}")
@@ -298,102 +298,3 @@ def save_artifacts(processor, scaler, artifact_dir=None):
     logger.info("Artifacts saved successfully")
 
     return processor_path, scaler_path
-
-
-def save_dataset_to_snowflake_impl(
-    df: pd.DataFrame, table_name: str, schema: str | None = None, approved: bool = False
-) -> bool:
-    """Save a DataFrame to Snowflake (plain function for batch saves and tests)."""
-    require_approval("writing a table to Snowflake", approved)
-    if schema is None:
-        schema = config.snowflake.schemas.ml_training
-
-    database = validate_sql_identifier(config.snowflake.database, "database")
-    schema = validate_sql_identifier(schema, "schema")
-    validate_sql_identifier(table_name, "table")
-
-    conn = create_snowflake_connection(schema=schema)
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(f"USE DATABASE {database}")
-            cursor.execute(f"USE SCHEMA {schema}")
-
-        df_clean = df.reset_index(drop=False)
-        df_clean = df_clean.rename(columns={"index": "ROW_ID"})
-
-        success, _nchunks, _nrows, _ = write_pandas(
-            conn=conn,
-            df=df_clean,
-            table_name=table_name.upper(),
-            schema=schema,
-            auto_create_table=True,
-            overwrite=True,
-        )
-        return success
-    finally:
-        conn.close()
-
-
-@task
-def create_feature_metadata(feature_names, processor_path, scaler_path):
-    """Create feature metadata DataFrame."""
-    logger = get_run_logger()
-    logger.info("Creating feature metadata...")
-
-    feature_metadata = pd.DataFrame(
-        {
-            "FEATURE_NAME": feature_names,
-            "FEATURE_INDEX": range(len(feature_names)),
-            "CREATED_AT": pd.Timestamp.now(),
-            "PROCESSOR_PATH": processor_path,
-            "SCALER_PATH": scaler_path,
-        }
-    )
-
-    logger.info(f"Created metadata for {len(feature_names)} features")
-    return feature_metadata
-
-
-@task
-def validate_snowflake_tables(expected_tables, schema=None):
-    """Validate that all expected tables exist in Snowflake with data."""
-    logger = get_run_logger()
-    logger.info("Validating saved datasets in Snowflake...")
-
-    if schema is None:
-        schema = config.snowflake.schemas.ml_training
-
-    # Validate every identifier before SQL interpolation. Caller-supplied
-    # ``expected_tables`` strings are validated per-iteration so a single
-    # bad entry doesn't poison the others.
-    database = validate_sql_identifier(config.snowflake.database, "database")
-    schema = validate_sql_identifier(schema, "schema")
-
-    try:
-        conn = create_snowflake_connection(schema=schema, use_private_key=True)
-
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(f"USE DATABASE {database}")
-                cursor.execute(f"USE SCHEMA {schema}")
-
-                validation_results = {}
-
-                for table in expected_tables:
-                    try:
-                        validate_sql_identifier(table, "table")
-                        cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                        row_count = cursor.fetchone()[0]
-                        validation_results[table] = row_count
-                        logger.info(f"{table}: {row_count} rows")
-                    except Exception as e:
-                        validation_results[table] = f"Error: {e}"
-                        logger.error(f"{table}: {e}")
-        finally:
-            conn.close()
-
-        return validation_results
-
-    except Exception as e:
-        logger.error(f"Error during validation: {e}")
-        return {"error": str(e)}

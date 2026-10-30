@@ -107,8 +107,6 @@ jobs:
         SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
         SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
         SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
         # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the setup step via $GITHUB_ENV.
         SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
       run: |
@@ -155,7 +153,6 @@ jobs:
 
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "- Check the artifacts directory for model outputs" >> $GITHUB_STEP_SUMMARY
-          echo "- Review Snowflake ML_TRAINING and FEATURE_STORE schemas for processed data" >> $GITHUB_STEP_SUMMARY
           echo "- Check SageMaker for training job details and model registry" >> $GITHUB_STEP_SUMMARY
         else
           echo "**ML Pipeline failed or incomplete**" >> $GITHUB_STEP_SUMMARY

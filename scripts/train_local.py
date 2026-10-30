@@ -2,7 +2,7 @@
 
 Runs offline CV with the production ``TimeSeriesCrossValidator`` +
 ``BoxOfficeXGBoostModel``, then a final fit on all data at the CV-mean best
-iteration (as in ``box_office.ml.model_training.train_final_model``). Runs
+iteration (``box_office.ml.model.fit_final_model``, shared with SageMaker). Runs
 entirely locally: no Snowflake, no SageMaker, no AWS.
 
 Steps:
@@ -44,6 +44,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
+from box_office.eval_windows import CONFIRMATION_END_YEAR, ITERATION_END_YEAR, START_EVAL_YEAR
 from box_office.inference.app.integrity import compute_sha256
 from box_office.inference.app.predictor import PredictionEngine, PredictionRequest
 from box_office.ml.artifacts import (
@@ -59,7 +60,7 @@ from box_office.ml.feature_schema import (
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
-from box_office.ml.model import BoxOfficeXGBoostModel
+from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
 from box_office.ml.target import to_log_target
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
@@ -80,9 +81,6 @@ PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
     "IS_FRANCHISE_FOLLOWUP",
 )
 
-START_EVAL_YEAR = 2015
-ITERATION_END_YEAR = 2023  # iterate against <= 2023 only
-HOLDOUT_END_YEAR = 2025  # 2024-2025: spent confirmation set; 2026 not final
 
 EVAL_DISCIPLINE_NOTE = (
     "v9 adopted on 2015-2023 iteration evidence; 2024-2025 are a spent "
@@ -118,7 +116,12 @@ def json_default(obj: object) -> object:
 
 
 def run_cross_validation(
-    X_input: pd.DataFrame, y_log: pd.Series, dates: pd.Series, end_eval_year: int
+    X_input: pd.DataFrame,
+    y_log: pd.Series,
+    dates: pd.Series,
+    end_eval_year: int,
+    *,
+    burn_holdout: bool = False,
 ) -> dict:
     """Leakage-free CV: each fold fits a fresh preprocessor on train years
     only, so frequency features cannot see the eval year."""
@@ -126,6 +129,7 @@ def run_cross_validation(
         cv_folds=end_eval_year - START_EVAL_YEAR + 1,
         start_eval_year=START_EVAL_YEAR,
         end_year=end_eval_year,
+        allow_confirmation_years=burn_holdout,
     )
     return cv.cross_validate(
         BoxOfficeXGBoostModel,
@@ -134,16 +138,6 @@ def run_cross_validation(
         dates,
         preprocessor_factory=FeaturePreprocessorHigh,
     )
-
-
-def train_final_model(
-    X_scaled: pd.DataFrame, y_log: pd.Series, cv_results: dict
-) -> BoxOfficeXGBoostModel:
-    """Final fit on all data at the CV-mean best iteration (production convention)."""
-    best_iteration = int(cv_results["mean_best_iteration"])
-    model = BoxOfficeXGBoostModel(n_estimators=best_iteration, random_state=42)
-    model.fit(X_scaled, y_log)
-    return model
 
 
 def save_artifact(
@@ -227,7 +221,7 @@ def smoke_check_inference_path(paths: dict[str, Path]) -> float:
 
 def main() -> None:
     args = parse_args()
-    end_eval_year = HOLDOUT_END_YEAR if args.burn_holdout else ITERATION_END_YEAR
+    end_eval_year = CONFIRMATION_END_YEAR if args.burn_holdout else ITERATION_END_YEAR
     if args.burn_holdout:
         print(
             "WARNING: evaluating the spent 2024-2025 confirmation set "
@@ -245,7 +239,9 @@ def main() -> None:
     y_log = pd.Series(to_log_target(frame["WORLDWIDE_GROSS"].astype(float)), name="GROSS_LOG")
     dates = frame["RELEASE_YEAR"].astype(int)
 
-    cv_results = run_cross_validation(X_input, y_log, dates, end_eval_year)
+    cv_results = run_cross_validation(
+        X_input, y_log, dates, end_eval_year, burn_holdout=args.burn_holdout
+    )
 
     # Deployment artifact: one preprocessor fit on ALL data (correct for
     # serving — at prediction time every training row is legitimately past).
@@ -256,7 +252,7 @@ def main() -> None:
     # StandardScaler is NaN-aware (nanmean/nanvar); missing budgets stay NaN.
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns, index=X.index)
-    model = train_final_model(X_scaled, y_log, cv_results)
+    model = fit_final_model(X_scaled, y_log, cv_results["mean_best_iteration"])
 
     paths = save_artifact(
         model,

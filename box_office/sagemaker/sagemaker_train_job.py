@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from sagemaker.inputs import TrainingInput
 from sagemaker.xgboost.estimator import XGBoost
 
-from box_office.config import ModelHyperparameters, config
+from box_office.config import CrossValidationWindow, ModelHyperparameters, config
 from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import BOTO3_CONFIG
 
@@ -98,7 +98,6 @@ def _validate_hyperparameters(hyperparameters, logger):
     """Validate hyperparameters and log any validation errors clearly."""
     validation_errors = []
 
-    # Define expected parameter ranges and types
     try:
         ModelHyperparameters.model_validate(
             {k: v for k, v in hyperparameters.items() if k in XGBOOST_PARAM_KEYS}
@@ -108,37 +107,16 @@ def _validate_hyperparameters(hyperparameters, logger):
             f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()
         )
 
-    validation_rules = {
-        "cv_folds": {"type": int, "min": 2, "max": 20},
-        "start_eval_year": {"type": int, "min": 1900, "max": 2030},
-        "end_year": {"type": int, "min": 1900, "max": 2030},
-    }
-
-    # Validate each parameter
-    for param, value in hyperparameters.items():
-        if param in validation_rules:
-            rules = validation_rules[param]
-
-            # Check type
-            if not isinstance(value, rules["type"]):
-                validation_errors.append(
-                    f"{param}: Expected {rules['type']}, got {type(value).__name__} ({value})"
-                )
-                continue
-
-            # Check range
-            if "min" in rules and value < rules["min"]:
-                validation_errors.append(f"{param}: Value {value} is below minimum {rules['min']}")
-            if "max" in rules and value > rules["max"]:
-                validation_errors.append(f"{param}: Value {value} is above maximum {rules['max']}")
-
-    # Check logical constraints
-    if (
-        "start_eval_year" in hyperparameters
-        and "end_year" in hyperparameters
-        and hyperparameters["start_eval_year"] >= hyperparameters["end_year"]
-    ):
-        validation_errors.append("start_eval_year must be less than end_year")
+    cv_keys = set(CrossValidationWindow.model_fields)
+    try:
+        CrossValidationWindow.model_validate(
+            {k: v for k, v in hyperparameters.items() if k in cv_keys}
+        )
+    except ValidationError as e:
+        validation_errors.extend(
+            f"{'.'.join(map(str, err['loc'])) or 'cross_validation'}: {err['msg']}"
+            for err in e.errors()
+        )
 
     # Log validation results
     if validation_errors:
@@ -162,7 +140,7 @@ def _log_hyperparameters_block(hyperparameters, logger):
     for param, value in hyperparameters.items():
         if param in XGBOOST_PARAM_KEYS:
             model_params[param] = value
-        elif param in ["cv_folds", "start_eval_year", "end_year"]:
+        elif param in CrossValidationWindow.model_fields:
             cv_params[param] = value
         else:
             other_params[param] = value
