@@ -41,6 +41,7 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.target import from_log_target
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 DROPPED_PATH = Path("data/generated/training/dropped_rows_1980_2026.csv")
@@ -96,10 +97,10 @@ def load_artifacts() -> tuple[object, object, object, dict]:
 
 
 def final_model_predictions(rows: pd.DataFrame, model, preprocessor, scaler) -> np.ndarray:
-    """transform -> scale -> predict -> expm1, the serving convention."""
+    """transform -> scale -> predict -> from_log_target, the serving convention."""
     X = preprocessor.transform(rows[list(PREPROCESSOR_INPUT_COLUMNS)])
     X_scaled = pd.DataFrame(scaler.transform(X), columns=X.columns, index=X.index)
-    pred_dollars = np.expm1(model.predict(X_scaled))
+    pred_dollars = from_log_target(model.predict(X_scaled))
     if not np.all(np.isfinite(pred_dollars)):
         bad = int((~np.isfinite(pred_dollars)).sum())
         raise AssertionError(f"{bad} non-finite final-model predictions")
@@ -116,7 +117,7 @@ def oof_dollars_by_position(cv_results: dict, n_rows: int) -> dict[int, float]:
                 f"OOF idx {idx} outside the frame (n={n_rows}); cv_results.json "
                 "does not match the current training frame — rerun train_local."
             )
-        positions[idx] = float(np.expm1(record["pred"]))
+        positions[idx] = float(from_log_target(record["pred"]))
     return positions
 
 

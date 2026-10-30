@@ -74,6 +74,7 @@ dev = [
     "ruff==0.17.4",
     "pre-commit>=3.0.0",
     "httpx==0.28.1",
+    "import-linter==2.16",
 ]
 
 inference = [
@@ -124,8 +125,38 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004", "TID251"]
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.system".msg = "Process spawning is banned. There is no owner file for it."
+"os.popen".msg = "Process spawning is banned. There is no owner file for it."
+"os.execl".msg = "Process spawning is banned. There is no owner file for it."
+"os.execle".msg = "Process spawning is banned. There is no owner file for it."
+"os.execlp".msg = "Process spawning is banned. There is no owner file for it."
+"os.execlpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.execv".msg = "Process spawning is banned. There is no owner file for it."
+"os.execve".msg = "Process spawning is banned. There is no owner file for it."
+"os.execvp".msg = "Process spawning is banned. There is no owner file for it."
+"os.execvpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnl".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnle".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnlp".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnlpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnv".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnve".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnvp".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnvpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.posix_spawn".msg = "Process spawning is banned. There is no owner file for it."
+"os.posix_spawnp".msg = "Process spawning is banned. There is no owner file for it."
+"asyncio.subprocess".msg = "Process spawning is banned. There is no owner file for it."
+"asyncio.create_subprocess_exec".msg = "Process spawning is banned. There is no owner file for it."
+"asyncio.create_subprocess_shell".msg = "Process spawning is banned. There is no owner file for it."
+"numpy.expm1".msg = "Convert the log target with box_office.ml.target.from_log_target."
+
+[tool.ruff.lint.per-file-ignores]
+"box_office/ml/target.py" = ["TID251"]
+"tests/**" = ["TID251"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -145,3 +176,66 @@ markers = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
+
+[tool.importlinter]
+root_packages = ["box_office", "scripts", "tests", "snowflake", "urllib", "http"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: config, utils, ml, then sagemaker and inference, then orchestration"
+type = "layers"
+layers = [
+    "box_office.orchestration",
+    "box_office.sagemaker | box_office.inference",
+    "box_office.ml",
+    "box_office.utils",
+    "box_office.config",
+]
+
+[[tool.importlinter.contracts]]
+name = "Process modules are banned everywhere"
+type = "forbidden"
+source_modules = ["box_office", "scripts", "tests"]
+forbidden_modules = ["subprocess", "pty"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Network clients only in the ingestion owners"
+type = "forbidden"
+source_modules = ["box_office", "scripts"]
+forbidden_modules = ["requests", "httpx", "urllib.request", "http.client", "socket"]
+allow_indirect_imports = true
+ignore_imports = [
+    "box_office.ingestion.curated_movies -> requests",
+    "box_office.ingestion.wikipedia_budget_fill -> requests",
+    "box_office.ingestion.tmdb_rich_backfill -> requests",
+    "scripts.export_web_data -> requests",
+    "scripts.refetch_collections -> requests",
+]
+
+[[tool.importlinter.contracts]]
+name = "Cloud and warehouse SDKs only in their owner modules"
+type = "forbidden"
+source_modules = ["box_office", "scripts"]
+forbidden_modules = ["boto3", "sagemaker", "snowflake.connector"]
+allow_indirect_imports = true
+ignore_imports = [
+    "box_office.ml.model_training -> boto3",
+    "box_office.ml.model_registry.aws_model_registry -> boto3",
+    "box_office.ml.model_registry.aws_model_registry -> sagemaker",
+    "box_office.orchestration.tasks.training_tasks -> boto3",
+    "box_office.sagemaker.sagemaker_train_job -> boto3",
+    "box_office.sagemaker.sagemaker_train_job -> sagemaker",
+    "box_office.sagemaker.training_output -> boto3",
+    "box_office.inference.app.model_loader -> boto3",
+    "box_office.utils.snowflake_connection -> snowflake.connector",
+    "box_office.orchestration.tasks.data_tasks -> snowflake.connector.pandas_tools",
+    "scripts.load_dataset_to_snowflake -> snowflake.connector.pandas_tools",
+]
+
+[[tool.importlinter.contracts]]
+name = "The Lambda path does not import the model registry writer"
+type = "forbidden"
+source_modules = ["box_office.inference"]
+forbidden_modules = ["box_office.ml.model_registry"]
+allow_indirect_imports = true

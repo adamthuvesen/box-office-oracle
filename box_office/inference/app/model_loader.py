@@ -27,7 +27,6 @@ from box_office.ml.feature_schema import (
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
-from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.utils.aws_helpers import BOTO3_CONFIG, parse_s3_uri
 from box_office.utils.safe_tarfile import extractall_data_filter
 
@@ -81,8 +80,6 @@ class ModelLoader:
             self.sagemaker_client = boto3.client(
                 "sagemaker", region_name=aws_region, config=BOTO3_CONFIG
             )
-
-            self.model_registry = AWSModelRegistry(region_name=aws_region)
 
         except NoCredentialsError as e:
             logger.error(f"AWS credentials not configured: {e}")
@@ -197,7 +194,15 @@ class ModelLoader:
 
     def _get_latest_approved_model_info(self) -> dict[str, Any] | None:
         try:
-            return self.model_registry.get_latest_approved_model(self.model_package_group_name)
+            response = self.sagemaker_client.list_model_packages(
+                ModelPackageGroupName=self.model_package_group_name,
+                ModelApprovalStatus="Approved",
+                SortBy="CreationTime",
+                SortOrder="Descending",
+                MaxResults=1,
+            )
+            summaries = response.get("ModelPackageSummaryList", [])
+            return summaries[0] if summaries else None
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]

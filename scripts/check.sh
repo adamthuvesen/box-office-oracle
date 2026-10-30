@@ -24,6 +24,7 @@ start_lane() {
 
 start_lane ruff-check uv run --no-sync ruff check box_office tests scripts
 start_lane ruff-format uv run --no-sync ruff format --check box_office tests scripts
+start_lane boundaries scripts/check_boundaries.sh
 start_lane fast-tests uv run --no-sync pytest tests/ -m "not integration and not slow"
 
 failed=0

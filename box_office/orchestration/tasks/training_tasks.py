@@ -72,17 +72,7 @@ def train_model(
     training_start = time.time()
 
     # XGBoost hyperparameters using framework mode
-    xgboost_hyperparameters = {
-        "n_estimators": config.model.hyperparameters.n_estimators,
-        "learning_rate": config.model.hyperparameters.learning_rate,
-        "max_depth": config.model.hyperparameters.max_depth,
-        "min_child_weight": config.model.hyperparameters.min_child_weight,
-        "subsample": config.model.hyperparameters.subsample,
-        "colsample_bytree": config.model.hyperparameters.colsample_bytree,
-        "reg_alpha": config.model.hyperparameters.reg_alpha,
-        "reg_lambda": config.model.hyperparameters.reg_lambda,
-        "early_stopping_rounds": config.model.hyperparameters.early_stopping_rounds,
-    }
+    xgboost_hyperparameters = config.model.hyperparameters.model_dump()
 
     # Custom script parameters for the training script
     script_parameters = {

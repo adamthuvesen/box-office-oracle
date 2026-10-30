@@ -60,6 +60,7 @@ from box_office.ml.feature_schema import (
     FeatureSchemaVersionMismatch,
 )
 from box_office.ml.model import BoxOfficeXGBoostModel
+from box_office.ml.target import to_log_target
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 ARTIFACT_DIR = Path("artifacts/local")
@@ -241,7 +242,7 @@ def main() -> None:
 
     frame = pd.read_parquet(FRAME_PATH)
     X_input = frame[list(PREPROCESSOR_INPUT_COLUMNS)]
-    y_log = pd.Series(np.log1p(frame["WORLDWIDE_GROSS"].astype(float)), name="GROSS_LOG")
+    y_log = pd.Series(to_log_target(frame["WORLDWIDE_GROSS"].astype(float)), name="GROSS_LOG")
     dates = frame["RELEASE_YEAR"].astype(int)
 
     cv_results = run_cross_validation(X_input, y_log, dates, end_eval_year)

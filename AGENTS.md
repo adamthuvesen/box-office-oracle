@@ -33,6 +33,8 @@ Web app: `pnpm --dir web dev` (regenerate data first with `make web-data` after 
 
 - **Snowflake CLI is read-only `SELECT`** (with `LIMIT` on unknown tables). Data changes go through the committed scripts (`scripts/load_dataset_to_snowflake.py`, `scripts/apply_snowflake_grants.py`) or the UI — never ad-hoc write SQL.
 - **Roles**: `DBT_RUNNER` for pipeline/dbt, `BOX_OFFICE_LOADER` for RAW loads, `ACCOUNTADMIN` for admin only. Role table: [docs/architecture.md](docs/architecture.md).
+- **Spend and production writes refuse without approval** inside the function that spends (`box_office/utils/approval.py`). Never pass the approval flag or `approved=True` on your own; ask the user.
+- **Boundaries**: import contracts and module bans live in `pyproject.toml` (`[tool.importlinter]`, ruff `banned-api`); `make check` runs them. Add an owner to the contract, not a bypass.
 - **Eval discipline**: iterate against years ≤2023 only. 2024–2025 is a spent confirmation set — never tune against it.
 - **No secrets in git** — `.env`, `keys/`, `*.pem`, `*.p8`. CI secrets go to `${RUNNER_TEMP}` only.
 - **No push / PR / force-push / `--no-verify`** without explicit user permission.

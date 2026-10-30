@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
+from box_office.config import MODEL_HYPERPARAMETERS as _HP
+
 logger = logging.getLogger(__name__)
 
 
@@ -12,14 +14,14 @@ class BoxOfficeXGBoostModel:
 
     def __init__(
         self,
-        n_estimators: int = 1500,
-        learning_rate: float = 0.04,
-        max_depth: int = 4,
-        min_child_weight: int = 2,
-        subsample: float = 0.8,
-        colsample_bytree: float = 0.8,
-        reg_alpha: float = 0.01,
-        reg_lambda: float = 0.2,
+        n_estimators: int = _HP.n_estimators,
+        learning_rate: float = _HP.learning_rate,
+        max_depth: int = _HP.max_depth,
+        min_child_weight: int = _HP.min_child_weight,
+        subsample: float = _HP.subsample,
+        colsample_bytree: float = _HP.colsample_bytree,
+        reg_alpha: float = _HP.reg_alpha,
+        reg_lambda: float = _HP.reg_lambda,
         early_stopping_rounds: int | None = None,
         random_state: int = 42,
     ):

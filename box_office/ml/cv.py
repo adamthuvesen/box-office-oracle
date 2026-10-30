@@ -7,8 +7,10 @@ from typing import Any
 import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
 
+from box_office.config import MODEL_HYPERPARAMETERS
 from box_office.ml.exceptions import CrossValidationFailed, OOFIndexCollision
 from box_office.ml.regression_metrics import rmse_on_log_scale, spearman_rank_corr
+from box_office.ml.target import from_log_target
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,7 @@ class _CrossValidationState:
             "mean_best_iteration": (
                 np.mean(self.best_iterations)
                 if self.best_iterations
-                else model_kwargs.get("n_estimators", 1500)
+                else model_kwargs.get("n_estimators", MODEL_HYPERPARAMETERS.n_estimators)
             ),
             "oof_predictions": {
                 str(idx): pred
@@ -87,7 +89,7 @@ class TimeSeriesCrossValidator:
         cv_folds: int = 10,
         start_eval_year: int = 2015,
         end_year: int = 2024,
-        early_stopping_rounds: int = 50,
+        early_stopping_rounds: int = MODEL_HYPERPARAMETERS.early_stopping_rounds,
     ):
         self.cv_folds = cv_folds
         self.start_eval_year = start_eval_year
@@ -311,7 +313,7 @@ class TimeSeriesCrossValidator:
         fold_best_iteration = (
             fold_model.best_iteration
             if hasattr(fold_model, "best_iteration")
-            else model_kwargs.get("n_estimators", 1500)
+            else model_kwargs.get("n_estimators", MODEL_HYPERPARAMETERS.n_estimators)
         )
         state.best_iterations.append(fold_best_iteration)
         state.fold_importances.append(fold_model.feature_importances_)
@@ -335,8 +337,8 @@ class TimeSeriesCrossValidator:
     def _dollar_scale_metrics(y_fold_val: Any, y_pred: np.ndarray) -> tuple[float, float]:
         # Inputs above log(~1e308) overflow expm1; emit NaN rather than break CV.
         with np.errstate(over="ignore", invalid="ignore"):
-            y_true_dollars = np.expm1(y_fold_val.to_numpy())
-            y_pred_dollars = np.expm1(y_pred)
+            y_true_dollars = from_log_target(y_fold_val.to_numpy())
+            y_pred_dollars = from_log_target(y_pred)
         if not (np.all(np.isfinite(y_true_dollars)) and np.all(np.isfinite(y_pred_dollars))):
             return float("nan"), float("nan")
 
@@ -365,9 +367,8 @@ class ModelEvaluator:
         y_train_log = y_train_log.reset_index(drop=True)
         y_true_log = y_train_log.iloc[indices].values
 
-        # expm1 inverts log1p applied to the target during training.
-        oof_preds = np.expm1(oof_preds_log)
-        y_true = np.expm1(y_true_log)
+        oof_preds = from_log_target(oof_preds_log)
+        y_true = from_log_target(y_true_log)
 
         oof_r2 = r2_score(y_true, oof_preds)
         oof_mae = mean_absolute_error(y_true, oof_preds)

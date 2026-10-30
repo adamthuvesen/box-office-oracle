@@ -22,6 +22,7 @@ from pydantic import (
 )
 
 from box_office.ml.feature_schema import FeatureContractMismatch
+from box_office.ml.target import from_log_target
 from box_office.ml.text_utils import MAX_LITERAL_EVAL_BYTES, LiteralEvalTooLarge
 
 logger = logging.getLogger(__name__)
@@ -328,7 +329,7 @@ class PredictionEngine:
 
             logger.debug("Making model prediction")
             prediction = self.model.predict(features)[0]
-            prediction_value = np.expm1(prediction)  # Inverse of log1p
+            prediction_value = from_log_target(prediction)
 
             prediction_interval_heuristic = None
             if request.return_confidence:

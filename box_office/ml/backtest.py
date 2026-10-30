@@ -18,6 +18,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
 from box_office.ml.regression_metrics import spearman_rank_corr
+from box_office.ml.target import from_log_target, to_log_target
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class BaselineFoldResult:
 class LogBudgetBaseline:
     """`log1p(worldwide_gross) ~ log1p(production_budget)` linear regression.
 
-    Predictions are returned on the log scale; callers `expm1` to compare on
+    Predictions are returned on the log scale; callers `from_log_target` to compare on
     dollar scale. Rows with non-positive or NaN budget are dropped at fit
     time and predicted as the training-mean log-target at predict time —
     keeps the baseline well-defined without leaking the target.
@@ -84,7 +85,7 @@ def compute_baseline_per_year(
     score R² on dollar scale (matching how model R² is reported).
     """
     results: list[BaselineFoldResult] = []
-    target_log = np.log1p(df[target_col].astype(float))
+    target_log = to_log_target(df[target_col].astype(float))
 
     for year in sorted(eval_years):
         train_mask = df[year_col] < year
@@ -102,7 +103,7 @@ def compute_baseline_per_year(
         y_pred_log = baseline.predict_log(df.loc[val_mask, budget_col])
         y_true_log = target_log.loc[val_mask].to_numpy()
         y_true_dollars = df.loc[val_mask, target_col].to_numpy()
-        y_pred_dollars = np.expm1(y_pred_log)
+        y_pred_dollars = from_log_target(y_pred_log)
 
         # Score on the same three lenses as the model: log-space R² (matches
         # the model's objective), rank correlation (ordering quality), and

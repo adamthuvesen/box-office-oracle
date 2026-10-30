@@ -72,14 +72,6 @@ class TestModelLoader:
             yield mock_s3, mock_sagemaker
 
     @pytest.fixture
-    def mock_model_registry(self):
-        """Mock AWSModelRegistry for testing."""
-        with patch("box_office.inference.app.model_loader.AWSModelRegistry") as mock_registry_class:
-            mock_registry = Mock()
-            mock_registry_class.return_value = mock_registry
-            yield mock_registry
-
-    @pytest.fixture
     def temp_cache_dir(self):
         """Create temporary cache directory for testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -169,31 +161,31 @@ class TestModelLoader:
         ):
             ModelLoader("test-group")
 
-    def test_get_latest_approved_model_info_with_registry(
-        self, mock_aws_clients, mock_model_registry, temp_cache_dir, sample_model_info
+    def test_get_latest_approved_model_info_lists_approved_packages(
+        self, mock_aws_clients, temp_cache_dir, sample_model_info
     ):
-        """Test getting latest approved model info using model registry."""
-        _mock_s3, _mock_sagemaker = mock_aws_clients
-        mock_model_registry.get_latest_approved_model.return_value = sample_model_info
+        """The newest Approved package in the group is returned."""
+        _mock_s3, mock_sagemaker = mock_aws_clients
+        mock_sagemaker.list_model_packages.return_value = {
+            "ModelPackageSummaryList": [sample_model_info]
+        }
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         result = loader._get_latest_approved_model_info()
 
         assert result == sample_model_info
-        mock_model_registry.get_latest_approved_model.assert_called_once_with("test-group")
+        mock_sagemaker.list_model_packages.assert_called_once_with(
+            ModelPackageGroupName="test-group",
+            ModelApprovalStatus="Approved",
+            SortBy="CreationTime",
+            SortOrder="Descending",
+            MaxResults=1,
+        )
 
-    def test_model_loader_requires_registry(self, mock_aws_clients, temp_cache_dir):
-        """ModelLoader always uses AWSModelRegistry (no list_model_packages fallback)."""
-        _mock_s3, _mock_sagemaker = mock_aws_clients
-        loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
-        assert loader.model_registry is not None
-
-    def test_get_latest_approved_model_info_not_found(
-        self, mock_aws_clients, mock_model_registry, temp_cache_dir
-    ):
+    def test_get_latest_approved_model_info_not_found(self, mock_aws_clients, temp_cache_dir):
         """Test getting model info when no approved model exists."""
-        _mock_s3, _mock_sagemaker = mock_aws_clients
-        mock_model_registry.get_latest_approved_model.return_value = None
+        _mock_s3, mock_sagemaker = mock_aws_clients
+        mock_sagemaker.list_model_packages.return_value = {"ModelPackageSummaryList": []}
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         result = loader._get_latest_approved_model_info()
@@ -201,12 +193,12 @@ class TestModelLoader:
         assert result is None
 
     def test_get_latest_approved_model_info_validation_error(
-        self, mock_aws_clients, mock_model_registry, temp_cache_dir
+        self, mock_aws_clients, temp_cache_dir
     ):
         """Test handling of validation error when model group doesn't exist."""
-        _mock_s3, _mock_sagemaker = mock_aws_clients
+        _mock_s3, mock_sagemaker = mock_aws_clients
         error_response = {"Error": {"Code": "ValidationException"}}
-        mock_model_registry.get_latest_approved_model.side_effect = ClientError(
+        mock_sagemaker.list_model_packages.side_effect = ClientError(
             error_response, "ListModelPackages"
         )
 
@@ -696,17 +688,14 @@ class TestModelLoaderIntegration:
 
             mock_s3.download_file.side_effect = mock_download_file
 
-            with patch(
-                "box_office.inference.app.model_loader.AWSModelRegistry"
-            ) as mock_registry_class:
-                mock_registry = Mock()
-                mock_registry.get_latest_approved_model.return_value = sample_model_info
-                mock_registry_class.return_value = mock_registry
+            mock_sagemaker.list_model_packages.return_value = {
+                "ModelPackageSummaryList": [sample_model_info]
+            }
 
-                cache_dir = tmp_path / "cache"
-                loader = ModelLoader("test-group", cache_dir=str(cache_dir))
-                result = loader.load_latest_approved_model()
+            cache_dir = tmp_path / "cache"
+            loader = ModelLoader("test-group", cache_dir=str(cache_dir))
+            result = loader.load_latest_approved_model()
 
-                assert result is not None
-                assert loader.get_current_model() is not None
-                assert isinstance(loader._current_model, MockXGBModel)
+            assert result is not None
+            assert loader.get_current_model() is not None
+            assert isinstance(loader._current_model, MockXGBModel)

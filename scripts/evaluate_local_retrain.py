@@ -39,6 +39,7 @@ from box_office.ml.cv import TimeSeriesCrossValidator
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.feature_schema import CURRENT_FEATURE_SCHEMA_VERSION
 from box_office.ml.model import BoxOfficeXGBoostModel
+from box_office.ml.target import from_log_target, to_log_target
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 DROPPED_PATH = Path("data/generated/training/dropped_rows_1980_2026.csv")
@@ -109,7 +110,7 @@ def run_headline_cv(frame: pd.DataFrame, end_eval_year: int) -> dict:
     """One leakage-free CV run on the full frame (NaN budgets pass through)."""
     X_input = frame[list(PREPROCESSOR_INPUT_COLUMNS)].reset_index(drop=True)
     y_raw = frame["WORLDWIDE_GROSS"].astype(float).reset_index(drop=True)
-    y_log = pd.Series(np.log1p(y_raw), name="GROSS_LOG")
+    y_log = pd.Series(to_log_target(y_raw), name="GROSS_LOG")
     dates = frame["RELEASE_YEAR"].astype(int).reset_index(drop=True)
 
     cv = TimeSeriesCrossValidator(
@@ -151,7 +152,7 @@ def pooled_window_metrics(headline: dict, start_year: int, end_year: int) -> dic
     oof = pd.DataFrame(cv_results["oof_records"])
     years = dates.iloc[oof["idx"]].to_numpy()
     in_window = (years >= start_year) & (years <= end_year)
-    pred_dollars = np.expm1(oof["pred"].to_numpy()[in_window])
+    pred_dollars = from_log_target(oof["pred"].to_numpy()[in_window])
     true_dollars = y_raw.iloc[oof["idx"]].to_numpy()[in_window]
     pooled_median_ape = float(
         np.median(np.abs(pred_dollars - true_dollars) / np.maximum(true_dollars, 1.0))

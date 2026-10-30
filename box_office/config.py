@@ -2,15 +2,18 @@
 
 All callers use the module-level ``config`` instance and reach through
 nested views (e.g. ``config.aws.region``, ``config.snowflake.schemas.staging``).
-Env vars are loaded once at import time from ``os.environ`` plus an optional
-``.env`` file in the project root.
+Env vars are loaded from ``os.environ`` plus an optional ``.env`` file in the
+project root, on the first read of ``config``. Importing this module does not
+read them, so the model code and the Lambda path can import the model settings
+without cloud credentials in the environment.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,17 +52,23 @@ class _SnowflakeView:
     schemas: _SnowflakeSchemas
 
 
-@dataclass(frozen=True)
-class _ModelHyperparams:
-    n_estimators: int = 1500
-    learning_rate: float = 0.04
-    max_depth: int = 4
-    min_child_weight: int = 2
+class ModelHyperparameters(BaseModel):
+    """XGBoost hyperparameters for every training path, with their allowed ranges."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+    n_estimators: int = Field(default=1500, ge=1, le=10000)
+    learning_rate: float = Field(default=0.04, ge=0.001, le=1.0)
+    max_depth: int = Field(default=4, ge=1, le=20)
+    min_child_weight: int = Field(default=2, ge=0, le=100)
     subsample: float = 0.8
     colsample_bytree: float = 0.8
-    reg_alpha: float = 0.01
-    reg_lambda: float = 0.2
-    early_stopping_rounds: int = 50
+    reg_alpha: float = Field(default=0.01, ge=0, le=100)
+    reg_lambda: float = Field(default=0.2, ge=0, le=100)
+    early_stopping_rounds: int = Field(default=50, ge=1, le=1000)
+
+
+MODEL_HYPERPARAMETERS = ModelHyperparameters()
 
 
 @dataclass(frozen=True)
@@ -75,7 +84,7 @@ class _ModelView:
     # the leakage-free local backtest (see docs/internal/model.md, local-only).
     promotion_threshold: float = 0.55
     artifacts_dir: str = "artifacts"
-    hyperparameters: _ModelHyperparams = _ModelHyperparams()
+    hyperparameters: ModelHyperparameters = MODEL_HYPERPARAMETERS
     cross_validation: _ModelCV = _ModelCV()
 
 
@@ -177,4 +186,12 @@ class Settings(BaseSettings):
         return self._sagemaker
 
 
-config = Settings()
+@cache
+def _settings() -> Settings:
+    return Settings()
+
+
+def __getattr__(name: str) -> Settings:
+    if name == "config":
+        return _settings()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

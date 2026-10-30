@@ -13,6 +13,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from box_office.config import MODEL_HYPERPARAMETERS
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
@@ -55,15 +56,8 @@ def parse_args():
     )
 
     # XGBoost hyperparameters injected via Estimator.hyperparameters.
-    parser.add_argument("--n_estimators", type=int, default=1500)
-    parser.add_argument("--learning_rate", type=float, default=0.04)
-    parser.add_argument("--max_depth", type=int, default=4)
-    parser.add_argument("--min_child_weight", type=int, default=2)
-    parser.add_argument("--subsample", type=float, default=0.8)
-    parser.add_argument("--colsample_bytree", type=float, default=0.8)
-    parser.add_argument("--reg_alpha", type=float, default=0.01)
-    parser.add_argument("--reg_lambda", type=float, default=0.2)
-    parser.add_argument("--early_stopping_rounds", type=int, default=50)
+    for name, default in MODEL_HYPERPARAMETERS.model_dump().items():
+        parser.add_argument(f"--{name}", type=type(default), default=default)
 
     args = parser.parse_args()
 

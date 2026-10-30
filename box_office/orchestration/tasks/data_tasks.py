@@ -3,7 +3,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 from prefect import get_run_logger, task
 from prefect.tasks import exponential_backoff
@@ -14,6 +13,7 @@ from snowflake.connector.pandas_tools import write_pandas
 from box_office.config import config
 from box_office.ml.artifacts import FEATURE_PREPROCESSOR_PKL, FEATURE_SCALER_PKL
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
+from box_office.ml.target import to_log_target
 from box_office.utils.approval import require_approval
 from box_office.utils.snowflake_connection import (
     create_snowflake_connection,
@@ -269,8 +269,8 @@ def transform_targets(y_train, y_val):
     logger = get_run_logger()
     logger.info("Applying log transformation to target variables...")
 
-    y_train_log = pd.Series(np.log1p(y_train), name="GROSS_LOG", index=y_train.index)
-    y_val_log = pd.Series(np.log1p(y_val), name="GROSS_LOG", index=y_val.index)
+    y_train_log = pd.Series(to_log_target(y_train), name="GROSS_LOG", index=y_train.index)
+    y_val_log = pd.Series(to_log_target(y_val), name="GROSS_LOG", index=y_val.index)
 
     logger.info("Target transformation complete")
 

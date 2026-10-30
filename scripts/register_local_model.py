@@ -36,7 +36,6 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from box_office.config import config
@@ -47,6 +46,7 @@ from box_office.ml.artifacts import (
 )
 from box_office.ml.cv import ModelEvaluator
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.ml.target import to_log_target
 from box_office.utils.approval import require_approval
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -82,12 +82,12 @@ def compute_oof_metrics(cv_results: dict, frame_path: Path) -> dict[str, float]:
 
     ``y_train_log = log1p(WORLDWIDE_GROSS)`` reconstructed from the same frame
     the local run trained on; ``ModelEvaluator.evaluate_oof_performance`` then
-    inverts log1p with ``expm1`` and computes pooled dollar-space R² — the
+    inverts the log target and computes pooled dollar-space R² — the
     exact number the container writes to ``oof_evaluation.json`` and that the
     promotion gate reads from ``CustomerMetadataProperties['oof_r2']``.
     """
     frame = pd.read_parquet(frame_path)
-    y_train_log = pd.Series(np.log1p(frame["WORLDWIDE_GROSS"].astype(float)))
+    y_train_log = pd.Series(to_log_target(frame["WORLDWIDE_GROSS"].astype(float)))
     return ModelEvaluator.evaluate_oof_performance(cv_results, y_train_log)
 
 
