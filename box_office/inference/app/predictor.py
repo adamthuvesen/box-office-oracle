@@ -36,9 +36,7 @@ def _parse_json_or_python_repr_str_list(raw: str) -> list[str]:
     # can be driven to exhaust CPU/memory by a deeply-nested attacker payload.
     # LiteralEvalTooLarge is a ValueError, so it surfaces as a 400 via pydantic.
     if len(s.encode("utf-8")) > MAX_LITERAL_EVAL_BYTES:
-        raise LiteralEvalTooLarge(
-            f"Input exceeds MAX_LITERAL_EVAL_BYTES={MAX_LITERAL_EVAL_BYTES}"
-        )
+        raise LiteralEvalTooLarge(f"Input exceeds MAX_LITERAL_EVAL_BYTES={MAX_LITERAL_EVAL_BYTES}")
     for parser in (json.loads, ast.literal_eval):
         try:
             parsed = parser(s)
@@ -79,12 +77,8 @@ class PredictionRequest(BaseModel):
     # Categorical features
     mpaa: str | None = Field(default="Not Rated", description="MPAA rating")
     director: str | None = Field(default="Unknown", description="Director name")
-    actors: str | list[str] | None = Field(
-        default=[], description="List of main actors"
-    )
-    production_company: str | None = Field(
-        default="Unknown", description="Production company"
-    )
+    actors: str | list[str] | None = Field(default=[], description="List of main actors")
+    production_company: str | None = Field(default="Unknown", description="Production company")
 
     # Pre-release IP/franchise strength (defaults describe an original movie
     # with no pre-sold IP and no earlier films in its collection).
@@ -108,9 +102,7 @@ class PredictionRequest(BaseModel):
     )
 
     # Additional options
-    return_confidence: bool | None = Field(
-        default=True, description="Return confidence interval"
-    )
+    return_confidence: bool | None = Field(default=True, description="Return confidence interval")
 
     @field_validator("genre")
     @classmethod
@@ -140,9 +132,7 @@ class PredictionResponse(BaseModel):
         ),
     )
     timestamp: str = Field(..., description="Prediction timestamp")
-    processing_time_ms: float = Field(
-        ..., description="Processing time in milliseconds"
-    )
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
 
     @field_serializer("prediction", "processing_time_ms")
     def _serialize_floats(self, value: float) -> float:
@@ -213,9 +203,7 @@ class PredictionEngine:
                 model_id=model_metadata.get("model_id", "unknown"),
                 version=model_metadata.get("version", 1),
                 status=model_metadata.get("status", "unknown"),
-                created_at=model_metadata.get(
-                    "created_at", datetime.now(UTC).isoformat()
-                ),
+                created_at=model_metadata.get("created_at", datetime.now(UTC).isoformat()),
                 metrics=model_metadata.get("metrics", {}),
                 framework=model_metadata.get("framework", "scikit-learn"),
             )
@@ -226,14 +214,12 @@ class PredictionEngine:
             )
 
         except Exception as e:
-            logger.error(f"Failed to load model artifacts: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Model loading failed: {str(e)}") from e
+            logger.error(f"Failed to load model artifacts: {e!s}", exc_info=True)
+            raise RuntimeError(f"Model loading failed: {e!s}") from e
 
     def is_loaded(self) -> bool:
         """Check if model is loaded and ready for predictions."""
-        return (
-            self._is_loaded and self.model is not None and self.preprocessor is not None
-        )
+        return self._is_loaded and self.model is not None and self.preprocessor is not None
 
     def get_model_info(self) -> ModelInfo | None:
         """Get current model information."""
@@ -243,7 +229,7 @@ class PredictionEngine:
         try:
             return PredictionRequest(**request_data)
         except ValidationError as e:
-            logger.warning(f"Input validation failed: {str(e)}")
+            logger.warning(f"Input validation failed: {e!s}")
             raise
 
     def _prepare_dataframe(self, request: PredictionRequest) -> pd.DataFrame:
@@ -292,11 +278,7 @@ class PredictionEngine:
                 divergence = "<length>"
             else:
                 divergence = next(
-                    (
-                        f"{a!r}!={e!r}"
-                        for a, e in zip(actual, expected, strict=True)
-                        if a != e
-                    ),
+                    (f"{a!r}!={e!r}" for a, e in zip(actual, expected, strict=True) if a != e),
                     "<length>",
                 )
             raise FeatureContractMismatch(
@@ -332,8 +314,8 @@ class PredictionEngine:
         except FeatureContractMismatch:
             raise
         except Exception as e:
-            logger.error(f"Feature preprocessing failed: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Feature preprocessing failed: {str(e)}") from e
+            logger.error(f"Feature preprocessing failed: {e!s}", exc_info=True)
+            raise RuntimeError(f"Feature preprocessing failed: {e!s}") from e
 
     def predict(self, request: PredictionRequest) -> PredictionResponse:
         if not self.is_loaded():
@@ -371,8 +353,8 @@ class PredictionEngine:
             return response
 
         except Exception as e:
-            logger.error(f"Prediction failed: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Prediction failed: {str(e)}") from e
+            logger.error(f"Prediction failed: {e!s}", exc_info=True)
+            raise RuntimeError(f"Prediction failed: {e!s}") from e
 
     @staticmethod
     def _prediction_interval_heuristic(prediction_value: float) -> list[float]:

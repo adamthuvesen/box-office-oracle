@@ -31,9 +31,7 @@ def _is_resource_not_found(exc: ClientError) -> bool:
     if code in _NOT_FOUND_CODES:
         return True
     # SageMaker often returns ValidationException for not-found; check message.
-    if code == _VALIDATION_CODE and "does not exist" in err.get("Message", "").lower():
-        return True
-    return False
+    return bool(code == _VALIDATION_CODE and "does not exist" in err.get("Message", "").lower())
 
 
 logger = logging.getLogger(__name__)
@@ -108,8 +106,7 @@ class AWSModelRegistry:
 
         create_response = self.sagemaker_client.create_model_package_group(
             ModelPackageGroupName=group_name,
-            ModelPackageGroupDescription=description
-            or f"Model package group for {group_name}",
+            ModelPackageGroupDescription=description or f"Model package group for {group_name}",
         )
 
         logger.info(f"Created model package group '{group_name}'")
@@ -148,9 +145,7 @@ class AWSModelRegistry:
             Dictionary with registration result
         """
         if inference_specification is None:
-            inference_specification = self._get_default_inference_spec(
-                framework, framework_version
-            )
+            inference_specification = self._get_default_inference_spec(framework, framework_version)
 
         if (
             "Containers" in inference_specification
@@ -177,9 +172,9 @@ class AWSModelRegistry:
                 if training_job_arn:
                     if "CustomerMetadataProperties" not in model_package_request:
                         model_package_request["CustomerMetadataProperties"] = {}
-                    model_package_request["CustomerMetadataProperties"][
-                        "training_job_arn"
-                    ] = training_job_arn
+                    model_package_request["CustomerMetadataProperties"]["training_job_arn"] = (
+                        training_job_arn
+                    )
             except ClientError as e:
                 if _is_resource_not_found(e):
                     logger.warning(
@@ -217,31 +212,25 @@ class AWSModelRegistry:
             ]
 
             for metric_name, metric_value in metrics.items():
-                if metric_name in essential_metrics and isinstance(
-                    metric_value, (int, float)
-                ):
+                if metric_name in essential_metrics and isinstance(metric_value, (int, float)):
                     short_value = (
                         f"{metric_value:.6f}"
                         if isinstance(metric_value, float)
                         else str(metric_value)
                     )
                     if len(short_value) <= 250:
-                        model_package_request["CustomerMetadataProperties"][
-                            metric_name
-                        ] = short_value
+                        model_package_request["CustomerMetadataProperties"][metric_name] = (
+                            short_value
+                        )
 
             framework_info = f"{framework}_{framework_version}"
             if len(framework_info) <= 250:
-                model_package_request["CustomerMetadataProperties"]["framework"] = (
-                    framework_info
-                )
+                model_package_request["CustomerMetadataProperties"]["framework"] = framework_info
 
         # Compute SHA256 + size_bytes of the uploaded model artifact and store
         # them in CustomerMetadataProperties. The inference loader verifies
         # these BEFORE unpickling — closes the bucket-write -> RCE surface.
-        sha256, size_bytes = _compute_sha256_of_s3_object(
-            self.s3_client, model_data_url
-        )
+        sha256, size_bytes = _compute_sha256_of_s3_object(self.s3_client, model_data_url)
         from box_office.ml.feature_schema import (
             CURRENT_FEATURE_SCHEMA_VERSION,
             SCHEMA_VERSION_METADATA_KEY,
@@ -249,24 +238,18 @@ class AWSModelRegistry:
 
         model_package_request.setdefault("CustomerMetadataProperties", {})
         model_package_request["CustomerMetadataProperties"]["sha256"] = sha256
-        model_package_request["CustomerMetadataProperties"]["size_bytes"] = str(
-            size_bytes
+        model_package_request["CustomerMetadataProperties"]["size_bytes"] = str(size_bytes)
+        model_package_request["CustomerMetadataProperties"][SCHEMA_VERSION_METADATA_KEY] = (
+            CURRENT_FEATURE_SCHEMA_VERSION
         )
-        model_package_request["CustomerMetadataProperties"][
-            SCHEMA_VERSION_METADATA_KEY
-        ] = CURRENT_FEATURE_SCHEMA_VERSION
-        logger.info(
-            "Model artifact manifest: sha256=%s size_bytes=%d", sha256[:16], size_bytes
-        )
+        logger.info("Model artifact manifest: sha256=%s size_bytes=%d", sha256[:16], size_bytes)
 
         # Create the model package. Hard failures (auth, throttling, validation
         # other than already-exists) MUST raise — callers used to read
         # `result['model_package_arn']` and KeyError with no context when this
         # silently returned `{'status': 'error'}`.
         try:
-            response = self.sagemaker_client.create_model_package(
-                **model_package_request
-            )
+            response = self.sagemaker_client.create_model_package(**model_package_request)
         except ClientError as e:
             logger.error(f"Failed to register model package: {e}", exc_info=True)
             raise
@@ -368,9 +351,7 @@ class AWSModelRegistry:
             logger.error(f"Failed to list model packages: {e}", exc_info=True)
             return []
 
-    def get_latest_approved_model(
-        self, model_package_group_name: str
-    ) -> dict[str, Any] | None:
+    def get_latest_approved_model(self, model_package_group_name: str) -> dict[str, Any] | None:
 
         approved_models = self.list_model_packages(
             model_package_group_name=model_package_group_name,
@@ -380,9 +361,7 @@ class AWSModelRegistry:
 
         return approved_models[0] if approved_models else None
 
-    def _get_default_inference_spec(
-        self, framework: str, framework_version: str
-    ) -> dict[str, Any]:
+    def _get_default_inference_spec(self, framework: str, framework_version: str) -> dict[str, Any]:
         """Build a default inference spec via SageMaker SDK image-URI lookup, with an ECR-URL fallback."""
         try:
             from sagemaker import image_uris
@@ -396,17 +375,13 @@ class AWSModelRegistry:
                 version=framework_version,
             )
         except Exception as e:
-            logger.warning(
-                f"Could not retrieve image URI dynamically: {e}. Using fallback."
-            )
+            logger.warning(f"Could not retrieve image URI dynamically: {e}. Using fallback.")
             account_id = self._get_account_id()
             framework_images = {
                 "XGBOOST": f"{account_id}.dkr.ecr.{self.region_name}.amazonaws.com/sagemaker-xgboost:{framework_version}",
                 "SKLEARN": f"{account_id}.dkr.ecr.{self.region_name}.amazonaws.com/sagemaker-scikit-learn:{framework_version}",
             }
-            image_uri = framework_images.get(
-                framework.upper(), framework_images["XGBOOST"]
-            )
+            image_uri = framework_images.get(framework.upper(), framework_images["XGBOOST"])
 
         return {
             "Containers": [

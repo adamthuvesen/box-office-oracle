@@ -42,8 +42,7 @@ def split_statements(sql: str) -> list[str]:
     for line in sql.splitlines():
         if "'" in line and "--" in line:
             raise ValueError(
-                f"cannot safely strip a comment from a line with a string "
-                f"literal: {line!r}"
+                f"cannot safely strip a comment from a line with a string literal: {line!r}"
             )
         lines.append(line.split("--", 1)[0])
     body = "\n".join(lines)
@@ -93,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
                     rows = cursor.fetchall()
                     result = rows[0][0] if rows and rows[0] else "OK"
                     print(f"       -> {result}")
-                except Exception as exc:  # noqa: BLE001 - surface and abort
+                except Exception as exc:
                     failures += 1
                     print(f"       -> FAILED: {exc}", file=sys.stderr)
                     break

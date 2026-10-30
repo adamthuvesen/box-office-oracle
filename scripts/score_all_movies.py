@@ -86,8 +86,7 @@ def load_artifacts() -> tuple[object, object, object, dict]:
     missing = [str(p) for p in paths.values() if not p.exists()]
     if missing:
         raise SystemExit(
-            f"missing artifacts: {missing}. Run `uv run python "
-            "scripts/train_local.py` first."
+            f"missing artifacts: {missing}. Run `uv run python scripts/train_local.py` first."
         )
     model = joblib.load(paths["model"])
     preprocessor = joblib.load(paths["preprocessor"])
@@ -96,9 +95,7 @@ def load_artifacts() -> tuple[object, object, object, dict]:
     return model, preprocessor, scaler, cv_results
 
 
-def final_model_predictions(
-    rows: pd.DataFrame, model, preprocessor, scaler
-) -> np.ndarray:
+def final_model_predictions(rows: pd.DataFrame, model, preprocessor, scaler) -> np.ndarray:
     """transform -> scale -> predict -> expm1, the serving convention."""
     X = preprocessor.transform(rows[list(PREPROCESSOR_INPUT_COLUMNS)])
     X_scaled = pd.DataFrame(scaler.transform(X), columns=X.columns, index=X.index)
@@ -158,9 +155,7 @@ def build_records(
 
     dropped_pred = final_model_predictions(dropped, model, preprocessor, scaler)
     for position, row in enumerate(dropped.itertuples(index=False)):
-        gross_unreliable = any(
-            reason in row.DROP_REASON for reason in UNRELIABLE_GROSS_REASONS
-        )
+        gross_unreliable = any(reason in row.DROP_REASON for reason in UNRELIABLE_GROSS_REASONS)
         actual = None if gross_unreliable else float(row.WORLDWIDE_GROSS)
         predicted = float(dropped_pred[position])
         records.append(
@@ -190,9 +185,7 @@ def write_web_json(result: pd.DataFrame) -> None:
         str(int(row.tmdb_id)): {
             "predicted_gross": float(row.predicted_gross),
             "prediction_kind": row.prediction_kind,
-            "actual_gross": (
-                None if pd.isna(row.actual_gross) else float(row.actual_gross)
-            ),
+            "actual_gross": (None if pd.isna(row.actual_gross) else float(row.actual_gross)),
             "ape": None if pd.isna(row.ape) else float(row.ape),
         }
         for row in result.itertuples(index=False)
@@ -207,9 +200,7 @@ def write_web_json(result: pd.DataFrame) -> None:
 def main() -> None:
     for path in (FRAME_PATH, DROPPED_PATH):
         if not path.exists():
-            raise SystemExit(
-                f"missing input: {path}. Run scripts/prepare_training_frame.py first."
-            )
+            raise SystemExit(f"missing input: {path}. Run scripts/prepare_training_frame.py first.")
 
     frame = pd.read_parquet(FRAME_PATH)
     dropped = pd.read_csv(DROPPED_PATH)

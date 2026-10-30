@@ -43,9 +43,7 @@ def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
     logger.info(f"Data size: {data_size_mb:.2f} MB")
     upload_speed = data_size_mb / upload_time if upload_time > 0.001 else float("inf")
     logger.info(f"Upload speed: {upload_speed:.2f} MB/s")
-    logger.info(
-        f"S3 location: {train_input.config['DataSource']['S3DataSource']['S3Uri']}"
-    )
+    logger.info(f"S3 location: {train_input.config['DataSource']['S3DataSource']['S3Uri']}")
 
     return train_input
 
@@ -170,9 +168,7 @@ def download_and_analyze_results(estimator, sagemaker_client):
     if "cv_results" in performance_metrics:
         cv = performance_metrics["cv_results"]
         mean_cv_mae = cv.get("mean_cv_mae", "N/A")
-        mean_cv_mae_text = (
-            f"{mean_cv_mae:.4f}" if isinstance(mean_cv_mae, numbers.Real) else "N/A"
-        )
+        mean_cv_mae_text = f"{mean_cv_mae:.4f}" if isinstance(mean_cv_mae, numbers.Real) else "N/A"
         logger.info("Cross-Validation Results:")
         logger.info(f"Mean CV MAE: {mean_cv_mae_text}")
         if "cv_scores" in cv:
@@ -317,9 +313,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         aws_region = config.aws.region
 
         # Get model package details
-        sagemaker_client = boto3.client(
-            "sagemaker", region_name=aws_region, config=BOTO3_CONFIG
-        )
+        sagemaker_client = boto3.client("sagemaker", region_name=aws_region, config=BOTO3_CONFIG)
 
         try:
             model_package = sagemaker_client.describe_model_package(
@@ -328,13 +322,11 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         except Exception as e:
             return {
                 "promote": False,
-                "reason": f"Model package not found: {str(e)}",
+                "reason": f"Model package not found: {e!s}",
                 "validation_time_seconds": time.time() - start_time,
             }
 
-        logger.info(
-            f"Model Package Status: {model_package.get('ModelPackageStatus', 'Unknown')}"
-        )
+        logger.info(f"Model Package Status: {model_package.get('ModelPackageStatus', 'Unknown')}")
         logger.info(f"Created: {model_package.get('CreationTime', 'Unknown')}")
 
         # Perform actual validation using OOF R2 score from model package metrics
@@ -346,7 +338,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         if "oof_r2" in customer_metadata:
             try:
                 oof_r2 = float(customer_metadata["oof_r2"])
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 logger.warning(
                     f"Could not parse oof_r2 from metadata: {customer_metadata.get('oof_r2')}"
                 )
@@ -362,7 +354,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
                         else metrics["Value"]
                     )
                     oof_r2 = metrics_dict.get("oof_r2")
-                except (json.JSONDecodeError, TypeError, AttributeError):
+                except json.JSONDecodeError, TypeError, AttributeError:
                     pass
 
         if oof_r2 is None:
@@ -395,9 +387,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
                 "r2_score": oof_r2,
                 "min_required": min_r2_score,
                 "model_package_arn": model_package_arn,
-                "model_package_status": model_package.get(
-                    "ModelPackageStatus", "Unknown"
-                ),
+                "model_package_status": model_package.get("ModelPackageStatus", "Unknown"),
             },
             "validation_time_seconds": time.time() - start_time,
         }
@@ -406,7 +396,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         logger.error(f"Model validation failed: {e}")
         return {
             "promote": False,
-            "reason": f"Validation error: {str(e)}",
+            "reason": f"Validation error: {e!s}",
             "validation_time_seconds": time.time() - start_time,
         }
 

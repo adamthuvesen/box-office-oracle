@@ -43,16 +43,11 @@ from box_office.ingestion.tmdb_rich_backfill import (
 logger = logging.getLogger(__name__)
 
 SOURCE_PARQUET = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/"
-    "tmdb_budget_wikipedia_5m_1980_2026.parquet"
+    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet"
 )
-RAW_JSONL = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_rich_raw_5m_1980_2026.jsonl"
-)
+RAW_JSONL = Path("data/generated/tmdb/rich_backfill_1980_2026/tmdb_rich_raw_5m_1980_2026.jsonl")
 OUTPUT_PARQUET = Path("data/generated/tmdb/collections_refetch_1980_2026.parquet")
-OUTPUT_MANIFEST = Path(
-    "data/generated/tmdb/collections_refetch_manifest_1980_2026.json"
-)
+OUTPUT_MANIFEST = Path("data/generated/tmdb/collections_refetch_manifest_1980_2026.json")
 
 MAX_FAILED_MOVIES = 5
 
@@ -113,16 +108,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     args = parse_args()
-    tmdb_ids = [
-        int(v) for v in pd.read_parquet(args.source, columns=["tmdb_id"])["tmdb_id"]
-    ]
+    tmdb_ids = [int(v) for v in pd.read_parquet(args.source, columns=["tmdb_id"])["tmdb_id"]]
     if args.limit is not None:
         tmdb_ids = tmdb_ids[: args.limit]
 
     # JSONL-only view (no refetch/overrides) to diff against.
-    jsonl_map = collection_memberships(
-        args.raw_jsonl, refetch_path=None, overrides_path=None
-    )
+    jsonl_map = collection_memberships(args.raw_jsonl, refetch_path=None, overrides_path=None)
 
     config = BackfillConfig()
     state = BackfillState(started_at=utc_now())
@@ -154,8 +145,8 @@ def main() -> None:
         "source": str(args.source),
         "requested": len(tmdb_ids),
         "fetched": len(frame),
-        "has_collection": int(len(has_collection)),
-        "gained_vs_jsonl": int(len(gained)),
+        "has_collection": len(has_collection),
+        "gained_vs_jsonl": len(gained),
         "lost_vs_jsonl": len(lost_ids),
         "lost_tmdb_ids": lost_ids,
         "failed_movies": failures,

@@ -220,9 +220,7 @@ def smoke_check_inference_path(paths: dict[str, Path]) -> float:
     )
     prediction = float(response.prediction)
     if not (np.isfinite(prediction) and prediction > 0):
-        raise AssertionError(
-            f"smoke prediction is not a finite dollar value: {prediction}"
-        )
+        raise AssertionError(f"smoke prediction is not a finite dollar value: {prediction}")
     return prediction
 
 
@@ -243,9 +241,7 @@ def main() -> None:
 
     frame = pd.read_parquet(FRAME_PATH)
     X_input = frame[list(PREPROCESSOR_INPUT_COLUMNS)]
-    y_log = pd.Series(
-        np.log1p(frame["WORLDWIDE_GROSS"].astype(float)), name="GROSS_LOG"
-    )
+    y_log = pd.Series(np.log1p(frame["WORLDWIDE_GROSS"].astype(float)), name="GROSS_LOG")
     dates = frame["RELEASE_YEAR"].astype(int)
 
     cv_results = run_cross_validation(X_input, y_log, dates, end_eval_year)
@@ -281,8 +277,7 @@ def main() -> None:
     )
     print(f"artifact saved under {ARTIFACT_DIR}/")
     print(
-        "inference smoke check passed: loaded via PredictionEngine, "
-        f"predicted ${prediction:,.0f}",
+        f"inference smoke check passed: loaded via PredictionEngine, predicted ${prediction:,.0f}",
         file=sys.stderr,
     )
 

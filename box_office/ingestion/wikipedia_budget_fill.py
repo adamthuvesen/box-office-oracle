@@ -45,8 +45,7 @@ NON_USD_SYMBOLS = ("£", "€", "¥", "₹", "₩", "kr", "CA$", "A$", "NZ$", "H
 @dataclass(frozen=True)
 class WikipediaFillConfig:
     input_path: Path = Path(
-        "data/generated/tmdb/rich_backfill_1980_2026/"
-        "tmdb_budget_wikidata_usd_5m_1980_2026.csv"
+        "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikidata_usd_5m_1980_2026.csv"
     )
     output_dir: Path = Path("data/generated/tmdb/rich_backfill_1980_2026")
     sparql_batch_size: int = 100
@@ -237,9 +236,7 @@ def clean_budget_text(raw: str) -> str:
     # {{US$|20 million}} and {{USD|20 million}} -> $20 million
     text = re.sub(r"\{\{US\$\|([^}|]+)[^}]*\}\}", r"$\1", text, flags=re.IGNORECASE)
     text = re.sub(r"\{\{USD\|([^}|]+)[^}]*\}\}", r"$\1", text, flags=re.IGNORECASE)
-    text = re.sub(
-        r"\{\{\s*(ndash|snd|spaced en dash)\s*\}\}", "–", text, flags=re.IGNORECASE
-    )
+    text = re.sub(r"\{\{\s*(ndash|snd|spaced en dash)\s*\}\}", "\u2013", text, flags=re.IGNORECASE)
     text = re.sub(r"\{\{\s*nbsp\s*\}\}", " ", text, flags=re.IGNORECASE)
     # Drop inflation-adjusted parentheticals and remaining templates.
     text = re.sub(
@@ -251,7 +248,7 @@ def clean_budget_text(raw: str) -> str:
     text = re.sub(r"\{\{[^{}]*\}\}", " ", text)
     # [[link|display]] -> display, [[link]] -> link
     text = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", text)
-    text = text.replace("&nbsp;", " ").replace("&ndash;", "–")
+    text = text.replace("&nbsp;", " ").replace("&ndash;", "\u2013")
     text = text.replace("US$", "$").replace("USD", "$")
     return " ".join(text.split())
 
@@ -259,7 +256,7 @@ def clean_budget_text(raw: str) -> str:
 _SCALE = {"thousand": 1e3, "million": 1e6, "billion": 1e9}
 
 _RANGE_PATTERN = re.compile(
-    r"\$\s*([\d,]+(?:\.\d+)?)\s*[–—−-]\s*\$?\s*([\d,]+(?:\.\d+)?)"
+    r"\$\s*([\d,]+(?:\.\d+)?)\s*[\u2013\u2014\u2212-]\s*\$?\s*([\d,]+(?:\.\d+)?)"
     r"\s*(thousand|million|billion)?",
     flags=re.IGNORECASE,
 )
@@ -416,27 +413,22 @@ def write_outputs(
             "Budgets come from the enwiki film infobox budget field, "
             "matched via imdb_id -> Wikidata sitelink.",
             "USD amounts only; ranges use the midpoint.",
-            f"Values outside ${MIN_PLAUSIBLE_BUDGET:,}-"
-            f"${MAX_PLAUSIBLE_BUDGET:,} are rejected.",
+            f"Values outside ${MIN_PLAUSIBLE_BUDGET:,}-${MAX_PLAUSIBLE_BUDGET:,} are rejected.",
             "No worldwide_gross or target-derived field used.",
             "Unfilled budgets remain null - no imputation.",
             "Curated source-quality cleanup excludes non-movie rows and nulls "
             "unsupported financials before writing the filled dataset.",
         ],
         "row_counts": {
-            "rows": int(len(filled)),
-            "source_quality_actions": int(len(source_quality)),
-            "missing_before": int(len(audit)),
+            "rows": len(filled),
+            "source_quality_actions": len(source_quality),
+            "missing_before": len(audit),
             "wikipedia_filled": int(status_counts.get("filled", 0)),
-            "missing_after": int(
-                (filled["production_budget_source"] == "missing").sum()
-            ),
+            "missing_after": int((filled["production_budget_source"] == "missing").sum()),
             "production_budget_source_counts": {
                 key: int(value) for key, value in source_counts.items()
             },
-            "audit_status_counts": {
-                key: int(value) for key, value in status_counts.items()
-            },
+            "audit_status_counts": {key: int(value) for key, value in status_counts.items()},
         },
     }
     config.manifest_path.write_text(json.dumps(manifest, indent=2))
@@ -448,9 +440,7 @@ def run(config: WikipediaFillConfig) -> dict:
     missing = df[df["production_budget_source"] == "missing"]
     logger.info("Rows with missing budget: %d", len(missing))
 
-    imdb_ids = sorted(
-        {i for i in missing["imdb_id"].dropna() if isinstance(i, str) and i}
-    )
+    imdb_ids = sorted({i for i in missing["imdb_id"].dropna() if isinstance(i, str) and i})
     session = build_session()
     titles_by_imdb = fetch_enwiki_titles(session, imdb_ids, config)
     wanted_titles = sorted(set(titles_by_imdb.values()))
@@ -484,9 +474,7 @@ def main() -> None:
         help="Directory for filled dataset, audit, and manifest.",
     )
     arguments = parser.parse_args()
-    config = WikipediaFillConfig(
-        input_path=arguments.input, output_dir=arguments.output_dir
-    )
+    config = WikipediaFillConfig(input_path=arguments.input, output_dir=arguments.output_dir)
     manifest = run(config)
     print(json.dumps(manifest["row_counts"], indent=2))
 

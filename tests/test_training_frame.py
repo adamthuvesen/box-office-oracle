@@ -76,9 +76,7 @@ class TestBuildProductionTrainingFrame:
             assert col in kept.columns
             assert not kept[col].isna().any()
 
-        features = FeaturePreprocessorHigh().fit_transform(
-            kept[list(PREPROCESSOR_INPUT_COLUMNS)]
-        )
+        features = FeaturePreprocessorHigh().fit_transform(kept[list(PREPROCESSOR_INPUT_COLUMNS)])
         assert list(features.columns) == list(SELECTED_FEATURES)
         assert len(list(SELECTED_FEATURES)) == 13
         # The full contract check the local script also runs.
@@ -136,7 +134,7 @@ class TestFranchiseFeatures:
                 "WORLDWIDE_GROSS": [200_000_000.0, 426_900_000.0, 50_000_000.0],
             }
         )
-        collection_map = {t: "collection:7" for t in (10, 11, 12)}
+        collection_map = dict.fromkeys((10, 11, 12), "collection:7")
         # Middle film is a known-bad gross artifact the quality gate drops.
         eligible = pd.Series([True, False, True])
         out = add_franchise_features(frame, collection_map, eligible_as_prior=eligible)

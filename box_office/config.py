@@ -102,9 +102,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AWS_REGION", "AWS_DEFAULT_REGION"),
     )
     AWS_S3_BUCKET: str = Field(
-        validation_alias=AliasChoices(
-            "AWS_S3_BUCKET", "S3_BUCKET_NAME", "SAGEMAKER_BUCKET"
-        ),
+        validation_alias=AliasChoices("AWS_S3_BUCKET", "S3_BUCKET_NAME", "SAGEMAKER_BUCKET"),
     )
     SAGEMAKER_ROLE_ARN: str
 

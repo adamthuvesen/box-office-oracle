@@ -25,9 +25,7 @@ def synthetic_movies() -> pd.DataFrame:
             budget = float(rng.uniform(5_000_000, 250_000_000))
             runtime = float(rng.uniform(80, 180))
             # Target is a noisy-nonlinear function of budget+runtime, NOT a feature.
-            log_gross = (
-                np.log1p(budget) * 0.7 + runtime * 0.015 + float(rng.normal(0, 0.5))
-            )
+            log_gross = np.log1p(budget) * 0.7 + runtime * 0.015 + float(rng.normal(0, 0.5))
             rows.append(
                 {
                     "RELEASE_DATE": f"{year}-{int(rng.integers(1, 13)):02d}-15",

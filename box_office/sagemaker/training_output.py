@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
-import os
 import tarfile
 import tempfile
 from pathlib import Path
@@ -31,9 +31,9 @@ def parse_training_output_tarball(tarball_path: Path) -> dict[str, Any]:
         with tarfile.open(tarball_path, "r:gz") as tar:
             extractall_data_filter(tar, extract_dir)
 
-        cv_path = os.path.join(extract_dir, "cv_results.json")
-        if os.path.exists(cv_path):
-            with open(cv_path, encoding="utf-8") as f:
+        cv_path = Path(extract_dir) / "cv_results.json"
+        if cv_path.exists():
+            with cv_path.open(encoding="utf-8") as f:
                 cv_results = json.load(f)
             metrics.update(
                 {
@@ -48,9 +48,9 @@ def parse_training_output_tarball(tarball_path: Path) -> dict[str, Any]:
         else:
             logger.warning("cv_results.json not found in output tarball")
 
-        oof_path = os.path.join(extract_dir, "oof_evaluation.json")
-        if os.path.exists(oof_path):
-            with open(oof_path, encoding="utf-8") as f:
+        oof_path = Path(extract_dir) / "oof_evaluation.json"
+        if oof_path.exists():
+            with oof_path.open(encoding="utf-8") as f:
                 oof_results = json.load(f)
             metrics.update(
                 {
@@ -116,11 +116,9 @@ def download_and_parse_training_output(
             return {}
         raise
     finally:
-        if tarball_path and os.path.exists(tarball_path):
-            try:
-                os.unlink(tarball_path)
-            except OSError:
-                pass
+        if tarball_path and Path(tarball_path).exists():
+            with contextlib.suppress(OSError):
+                Path(tarball_path).unlink()
 
 
 def build_training_metrics(

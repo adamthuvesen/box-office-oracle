@@ -90,21 +90,15 @@ class TestQualityGate:
 
     def test_drops_big_gross_with_missing_budget(self):
         frame = map_to_staging_columns(
-            pd.DataFrame(
-                [_source_row(production_budget=np.nan, worldwide_gross=426_900_000)]
-            )
+            pd.DataFrame([_source_row(production_budget=np.nan, worldwide_gross=426_900_000)])
         )
         kept, dropped = apply_quality_gate(frame)
         assert kept.empty
-        assert dropped["DROP_REASON"].tolist() == [
-            "gross_over_100m_with_no_documented_budget"
-        ]
+        assert dropped["DROP_REASON"].tolist() == ["gross_over_100m_with_no_documented_budget"]
 
     def test_keeps_missing_budget_with_plausible_gross(self):
         frame = map_to_staging_columns(
-            pd.DataFrame(
-                [_source_row(production_budget=np.nan, worldwide_gross=8_000_000)]
-            )
+            pd.DataFrame([_source_row(production_budget=np.nan, worldwide_gross=8_000_000)])
         )
         kept, dropped = apply_quality_gate(frame)
         assert len(kept) == 1
@@ -112,9 +106,7 @@ class TestQualityGate:
         assert dropped.empty
 
     def test_drops_rows_without_reliable_gross(self):
-        frame = map_to_staging_columns(
-            pd.DataFrame([_source_row(worldwide_gross=np.nan)])
-        )
+        frame = map_to_staging_columns(pd.DataFrame([_source_row(worldwide_gross=np.nan)]))
         kept, dropped = apply_quality_gate(frame)
         assert kept.empty
         assert dropped["DROP_REASON"].tolist() == ["no_reliable_worldwide_gross"]
@@ -150,9 +142,7 @@ class TestExtremeMultiplierFlag:
     def test_flags_sleeper_hit_but_gate_keeps_it(self):
         # The Blair Witch Project shape: tiny known budget, huge gross.
         frame = map_to_staging_columns(
-            pd.DataFrame(
-                [_source_row(production_budget=60_000.0, worldwide_gross=248_639_099)]
-            )
+            pd.DataFrame([_source_row(production_budget=60_000.0, worldwide_gross=248_639_099)])
         )
         assert flag_extreme_gross_multiplier(frame).tolist() == [True]
         kept, _ = apply_quality_gate(frame)
@@ -160,8 +150,6 @@ class TestExtremeMultiplierFlag:
 
     def test_does_not_flag_missing_budget(self):
         frame = map_to_staging_columns(
-            pd.DataFrame(
-                [_source_row(production_budget=np.nan, worldwide_gross=200_000_000)]
-            )
+            pd.DataFrame([_source_row(production_budget=np.nan, worldwide_gross=200_000_000)])
         )
         assert flag_extreme_gross_multiplier(frame).tolist() == [False]

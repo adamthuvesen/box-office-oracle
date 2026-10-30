@@ -32,20 +32,14 @@ class IndustryTransformer(BaseEstimator, TransformerMixin):
         mpaa_train.append(self.UNKNOWN_MPAA)
         self.mpaa_encoder.fit(mpaa_train)
 
-        self.director_freq_map = (
-            X["DIRECTOR"].fillna("Unknown").value_counts().to_dict()
-        )
-        self.company_freq_map = (
-            X["PRODUCTION_COMPANY"].fillna("Unknown").value_counts().to_dict()
-        )
+        self.director_freq_map = X["DIRECTOR"].fillna("Unknown").value_counts().to_dict()
+        self.company_freq_map = X["PRODUCTION_COMPANY"].fillna("Unknown").value_counts().to_dict()
 
         actor_lists = X["ACTORS"].apply(process_text_list)
         self.actor_freq_map = Counter(a for sub in actor_lists for a in sub)
 
         director_counts = X["DIRECTOR"].value_counts()
-        self.global_director_freq = (
-            director_counts.median() if len(director_counts) else 0
-        )
+        self.global_director_freq = director_counts.median() if len(director_counts) else 0
         company_counts = X["PRODUCTION_COMPANY"].value_counts()
         self.global_company_freq = company_counts.median() if len(company_counts) else 0
         self.global_actor_freq = (

@@ -84,9 +84,7 @@ def main() -> None:
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     table.to_json(args.output.with_suffix(".json"), orient="records", indent=2)
-    args.output.with_suffix(".md").write_text(
-        render_metrics_table_markdown(table) + "\n"
-    )
+    args.output.with_suffix(".md").write_text(render_metrics_table_markdown(table) + "\n")
 
 
 if __name__ == "__main__":

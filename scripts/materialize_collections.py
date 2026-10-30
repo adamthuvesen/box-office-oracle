@@ -49,9 +49,7 @@ def add_collection_columns(
 
     out = frame.copy()
     ids = out["tmdb_id"].astype(int)
-    out["collection_id"] = ids.map(
-        lambda t: memberships.get(t, (None, None))[0]
-    ).astype("Int64")
+    out["collection_id"] = ids.map(lambda t: memberships.get(t, (None, None))[0]).astype("Int64")
     out["collection_name"] = ids.map(lambda t: memberships.get(t, (None, None))[1])
     return out
 

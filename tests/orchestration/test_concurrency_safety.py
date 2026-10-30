@@ -33,9 +33,8 @@ class TestScopedEnv:
 
         monkeypatch.delenv("FOO_RAISE", raising=False)
 
-        with pytest.raises(RuntimeError):
-            with _scoped_env({"FOO_RAISE": "x"}):
-                assert os.environ["FOO_RAISE"] == "x"
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError), _scoped_env({"FOO_RAISE": "x"}):
+            assert os.environ["FOO_RAISE"] == "x"
+            raise RuntimeError("boom")
 
         assert "FOO_RAISE" not in os.environ

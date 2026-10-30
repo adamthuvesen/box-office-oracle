@@ -17,37 +17,37 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     # AWS & Cloud
     "boto3==1.42.90",
     "botocore==1.42.90",
 
     # Data & Plotting
-    "numpy==1.26.4",
-    "pandas==2.3.1",
+    "numpy==2.5.4",
+    "pandas==2.3.3",
     "pydantic==2.13.4",
     "requests==2.34.2",
-    "scikit-learn==1.7.0",
-    "scipy==1.16.0",
+    "scikit-learn==1.7.2",
+    "scipy==1.18.1",
 
     # Data Transformation
-    "dbt-core==1.11.11",
-    "dbt-snowflake==1.11.5",
+    "dbt-core==1.12.6",
+    "dbt-snowflake==1.12.5",
 
     # Environment & Configuration
     "python-dotenv==1.2.2",
-    "PyYAML==6.0.2",
+    "PyYAML==6.0.3",
 
     # Machine Learning & Optimization
     "xgboost==3.2.0",
 
     # SageMaker
-    "sagemaker==2.257.2",
+    "sagemaker==2.257.7",
 
     # Security & Cryptography
     "cryptography==46.0.7",
@@ -71,7 +71,7 @@ dev = [
     "pytest==9.0.3",
     "pytest-asyncio>=1.0",
     "pytest-cov==7.1.0",
-    "ruff==0.15.20",
+    "ruff==0.17.4",
     "pre-commit>=3.0.0",
     "httpx==0.28.1",
 ]
@@ -106,8 +106,8 @@ exclude = ["tests*", "artifacts*", "docs*", "infrastructure*", "transformations*
 "box_office.inference" = ["**/*.txt", "**/*.json"]
 
 [tool.ruff]
-line-length = 88
-target-version = "py311"
+line-length = 100
+target-version = "py314"
 exclude = [
     ".eggs",
     ".git",
@@ -124,7 +124,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W", "UP", "B"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004"]
 ignore = ["E501"]
 
 [tool.ruff.format]

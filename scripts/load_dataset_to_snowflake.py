@@ -3,17 +3,13 @@
 
 Loads the post-refetch parquet
 (``data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet``)
-into ``BOX_OFFICE.RAW.BOX_OFFICE_V4``, the successor to ``BOX_OFFICE_V3``.
+into ``BOX_OFFICE.RAW.BOX_OFFICE_V4``.
 
 The load is atomic: rows go into a transient staging table, that table is
 verified (row count, null-budget count, spot checks on known movies), and only
 then is ``BOX_OFFICE_V4`` replaced from it in a single ``CREATE OR REPLACE`` so
 dbt never reads a half-loaded source. Null ``production_budget`` values land as
 SQL NULL, never 0.
-
-Dropping the old ``BOX_OFFICE_V3`` is a separate, explicit step behind
-``--drop-old``. Without that flag the script prints what it *would* drop and
-leaves the old table alone.
 
 Run the real upload from a developer machine (the agent CLI is SELECT-only):
 
@@ -23,9 +19,6 @@ Preview without writing:
 
     uv run python scripts/load_dataset_to_snowflake.py --dry-run
 
-Load and drop the old table in one reviewed batch:
-
-    uv run python scripts/load_dataset_to_snowflake.py --drop-old
 """
 
 from __future__ import annotations
@@ -63,7 +56,6 @@ SOURCES_YML = (
 
 TARGET_TABLE = "BOX_OFFICE_V4"
 STAGING_TABLE = "BOX_OFFICE_V4_LOAD_TEMP"
-OLD_TABLE = "BOX_OFFICE_V3"
 
 # Column whose NaN values must survive the round trip as SQL NULL (never 0).
 BUDGET_COLUMN = "production_budget"
@@ -106,9 +98,7 @@ def staging_columns_from_sources(sources_path: Path = SOURCES_YML) -> list[str]:
                 raise ValueError(f"sources.yml lists no columns for RAW.{TARGET_TABLE}")
             return columns
 
-    raise ValueError(
-        f"sources.yml has no RAW.{TARGET_TABLE} table definition: {sources_path}"
-    )
+    raise ValueError(f"sources.yml has no RAW.{TARGET_TABLE} table definition: {sources_path}")
 
 
 def validate_columns(df: pd.DataFrame, expected: list[str]) -> None:
@@ -143,9 +133,7 @@ def read_source_frame(parquet_path: Path) -> pd.DataFrame:
 
     for required in ("tmdb_id", BUDGET_COLUMN):
         if required not in df.columns:
-            raise ValueError(
-                f"Source parquet missing required column {required!r}: {parquet_path}"
-            )
+            raise ValueError(f"Source parquet missing required column {required!r}: {parquet_path}")
 
     validate_columns(df, staging_columns_from_sources())
 
@@ -175,9 +163,7 @@ def prepare_for_load(df: pd.DataFrame) -> pd.DataFrame:
 
     if prepared[BUDGET_COLUMN].isna().any():
         prepared[BUDGET_COLUMN] = (
-            prepared[BUDGET_COLUMN]
-            .astype(object)
-            .where(prepared[BUDGET_COLUMN].notna(), None)
+            prepared[BUDGET_COLUMN].astype(object).where(prepared[BUDGET_COLUMN].notna(), None)
         )
 
     prepared.columns = prepared.columns.str.upper()
@@ -206,16 +192,13 @@ def build_staging_ddl(fq_staging: str, df: pd.DataFrame) -> str:
     it later holds ``None`` for null budgets. The schema is never hardcoded.
     """
     columns = ", ".join(
-        f"{validate_sql_identifier(name.upper(), 'column')} "
-        f"{snowflake_column_type(dtype)}"
+        f"{validate_sql_identifier(name.upper(), 'column')} {snowflake_column_type(dtype)}"
         for name, dtype in df.dtypes.items()
     )
     return f"CREATE OR REPLACE TRANSIENT TABLE {fq_staging} ({columns})"
 
 
-def spot_check_mismatches(
-    expected_row: dict[str, Any], actual_row: dict[str, Any]
-) -> list[str]:
+def spot_check_mismatches(expected_row: dict[str, Any], actual_row: dict[str, Any]) -> list[str]:
     """Return human-readable mismatches between an expected and actual spot row.
 
     Numbers are compared with a tolerance so a float round-trip through Snowflake
@@ -233,9 +216,7 @@ def spot_check_mismatches(
 
 def _values_equal(expected: Any, actual: Any) -> bool:
     """Compare two scalar cell values, tolerating NULL and float rounding."""
-    expected_null = expected is None or (
-        isinstance(expected, float) and pd.isna(expected)
-    )
+    expected_null = expected is None or (isinstance(expected, float) and pd.isna(expected))
     actual_null = actual is None or (isinstance(actual, float) and pd.isna(actual))
     if expected_null or actual_null:
         return expected_null and actual_null
@@ -274,7 +255,7 @@ class DatasetLoader:
         self.schema = validate_sql_identifier(schema, "schema")
         self.use_browser_auth = use_browser_auth
 
-    def run(self, parquet_path: Path, drop_old: bool) -> None:
+    def run(self, parquet_path: Path) -> None:
         df = read_source_frame(parquet_path)
         expected_rows = len(df)
         expected_nulls = expected_null_budget_count(df)
@@ -310,7 +291,7 @@ class DatasetLoader:
                 cursor.execute(build_staging_ddl(fq_staging, df))
 
                 logger.info("Uploading %d rows to staging", expected_rows)
-                success, _, nrows, _ = write_pandas(
+                success, _, _nrows, _ = write_pandas(
                     conn=conn,
                     df=prepared,
                     table_name=STAGING_TABLE,
@@ -322,20 +303,12 @@ class DatasetLoader:
                 if not success:
                     raise RuntimeError("write_pandas reported failure loading staging")
 
-                self._verify(
-                    cursor, fq_staging, expected_rows, expected_nulls, expectations
-                )
+                self._verify(cursor, fq_staging, expected_rows, expected_nulls, expectations)
 
                 logger.info("Verification passed; swapping %s into place", fq_target)
-                cursor.execute(
-                    f"CREATE OR REPLACE TABLE {fq_target} AS SELECT * FROM {fq_staging}"
-                )
+                cursor.execute(f"CREATE OR REPLACE TABLE {fq_target} AS SELECT * FROM {fq_staging}")
                 cursor.execute(f"DROP TABLE IF EXISTS {fq_staging}")
-                logger.info(
-                    "Load complete: %s now holds %d rows", fq_target, expected_rows
-                )
-
-                self._maybe_drop_old(cursor, drop_old)
+                logger.info("Load complete: %s now holds %d rows", fq_target, expected_rows)
             finally:
                 cursor.close()
         finally:
@@ -354,13 +327,10 @@ class DatasetLoader:
         actual_rows = int(cursor.fetchone()[0])
         if actual_rows != expected_rows:
             raise ValueError(
-                f"Row count mismatch: parquet has {expected_rows}, "
-                f"staging has {actual_rows}"
+                f"Row count mismatch: parquet has {expected_rows}, staging has {actual_rows}"
             )
 
-        cursor.execute(
-            f"SELECT COUNT(*) FROM {fq_staging} WHERE PRODUCTION_BUDGET IS NULL"
-        )
+        cursor.execute(f"SELECT COUNT(*) FROM {fq_staging} WHERE PRODUCTION_BUDGET IS NULL")
         actual_nulls = int(cursor.fetchone()[0])
         if actual_nulls != expected_nulls:
             raise ValueError(
@@ -370,9 +340,7 @@ class DatasetLoader:
 
         columns = ", ".join(col.upper() for col in SPOT_CHECK_COLUMNS)
         for tmdb_id, expected_row in expectations.items():
-            cursor.execute(
-                f"SELECT {columns} FROM {fq_staging} WHERE TMDB_ID = {int(tmdb_id)}"
-            )
+            cursor.execute(f"SELECT {columns} FROM {fq_staging} WHERE TMDB_ID = {int(tmdb_id)}")
             fetched = cursor.fetchall()
             if len(fetched) != 1:
                 raise ValueError(
@@ -392,41 +360,18 @@ class DatasetLoader:
             len(expectations),
         )
 
-    def _maybe_drop_old(self, cursor: Any, drop_old: bool) -> None:
-        """Drop the old table only when explicitly asked; otherwise just report."""
-        fq_old = fully_qualified_name(self.database, self.schema, OLD_TABLE)
-        if not drop_old:
-            logger.info(
-                "Old table left in place. Re-run with --drop-old to drop %s", fq_old
-            )
-            return
-        logger.info("Dropping old table %s", fq_old)
-        cursor.execute(f"DROP TABLE IF EXISTS {fq_old}")
-        logger.info("Dropped %s", fq_old)
 
-
-def _print_dry_run(
-    database: str, schema: str, parquet_path: Path, drop_old: bool
-) -> int:
+def _print_dry_run(database: str, schema: str, parquet_path: Path) -> int:
     df = read_source_frame(parquet_path)
     fq_staging = fully_qualified_name(database, schema, STAGING_TABLE)
     fq_target = fully_qualified_name(database, schema, TARGET_TABLE)
-    fq_old = fully_qualified_name(database, schema, OLD_TABLE)
 
     print(f"[dry-run] source parquet    : {parquet_path}")
     print(f"[dry-run] rows              : {len(df)}")
     print(f"[dry-run] null budgets      : {expected_null_budget_count(df)}")
     print(f"[dry-run] columns           : {len(df.columns)}")
-    print(
-        f"[dry-run] staging table     : {fq_staging} (transient, verified, then dropped)"
-    )
+    print(f"[dry-run] staging table     : {fq_staging} (transient, verified, then dropped)")
     print(f"[dry-run] target table      : CREATE OR REPLACE {fq_target}")
-    if drop_old:
-        print(f"[dry-run] would DROP        : {fq_old}")
-    else:
-        print(
-            f"[dry-run] old table {fq_old} left in place (pass --drop-old to drop it)"
-        )
     return 0
 
 
@@ -449,11 +394,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Target Snowflake schema (default: RAW from config)",
     )
     parser.add_argument(
-        "--drop-old",
-        action="store_true",
-        help=f"Also drop the old {OLD_TABLE} table after a successful load",
-    )
-    parser.add_argument(
         "--browser-auth",
         action="store_true",
         help="Use externalbrowser SSO instead of key-pair auth",
@@ -474,16 +414,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.dry_run:
-            return _print_dry_run(
-                args.database, args.schema, args.parquet, args.drop_old
-            )
+            return _print_dry_run(args.database, args.schema, args.parquet)
 
         loader = DatasetLoader(
             database=args.database,
             schema=args.schema,
             use_browser_auth=args.browser_auth,
         )
-        loader.run(args.parquet, drop_old=args.drop_old)
+        loader.run(args.parquet)
     except Exception as exc:
         logger.error("Load failed: %s", exc)
         print(f"ERROR: {exc}", file=sys.stderr)

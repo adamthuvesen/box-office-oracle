@@ -1,7 +1,7 @@
 import logging
-import os
 import tempfile
 import time
+from pathlib import Path
 
 import boto3
 import pandas as pd
@@ -23,9 +23,7 @@ class SageMakerClient:
         self.role = role or config.aws.sagemaker_role_arn
         self.boto_session = boto3.Session(region_name=self.region)
         # Initialize AWS clients with explicit timeout configuration
-        self.sagemaker_client = self.boto_session.client(
-            "sagemaker", config=BOTO3_CONFIG
-        )
+        self.sagemaker_client = self.boto_session.client("sagemaker", config=BOTO3_CONFIG)
         self.s3_client = self.boto_session.client("s3", config=BOTO3_CONFIG)
         self.sagemaker_session = sagemaker.Session(
             boto_session=self.boto_session,
@@ -48,9 +46,7 @@ def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
 
     logger.info("Combining features, dates, and target data...")
     train_data = pd.concat([X_train, y_train], axis=1)
-    logger.info(
-        f"Combined dataset: {train_data.shape[0]:,} rows x {train_data.shape[1]} columns"
-    )
+    logger.info(f"Combined dataset: {train_data.shape[0]:,} rows x {train_data.shape[1]} columns")
     logger.info("Includes RELEASE_YEAR for time series CV")
 
     # Save to temporary file first, then upload to S3.
@@ -63,7 +59,7 @@ def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
         with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp_file:
             tmp_path = tmp_file.name
             train_data.to_parquet(tmp_path, index=False)
-        file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
+        file_size_mb = Path(tmp_path).stat().st_size / (1024 * 1024)
         logger.info(f"Temporary file created: {file_size_mb:.2f} MB")
 
         # Upload to S3 and get the actual S3 URI where the file was uploaded
@@ -79,9 +75,9 @@ def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
         logger.info(f"Upload completed in {upload_time:.2f} seconds")
         logger.info(f"S3 URI: {s3_train_uri}")
     finally:
-        if tmp_path and os.path.exists(tmp_path):
+        if tmp_path and Path(tmp_path).exists():
             try:
-                os.unlink(tmp_path)
+                Path(tmp_path).unlink()
                 logger.info("Temporary file cleaned up")
             except OSError as e:
                 logger.warning(f"Could not unlink temp file {tmp_path}: {e}")
@@ -124,18 +120,17 @@ def _validate_hyperparameters(hyperparameters, logger):
 
             # Check range
             if "min" in rules and value < rules["min"]:
-                validation_errors.append(
-                    f"{param}: Value {value} is below minimum {rules['min']}"
-                )
+                validation_errors.append(f"{param}: Value {value} is below minimum {rules['min']}")
             if "max" in rules and value > rules["max"]:
-                validation_errors.append(
-                    f"{param}: Value {value} is above maximum {rules['max']}"
-                )
+                validation_errors.append(f"{param}: Value {value} is above maximum {rules['max']}")
 
     # Check logical constraints
-    if "start_eval_year" in hyperparameters and "end_year" in hyperparameters:
-        if hyperparameters["start_eval_year"] >= hyperparameters["end_year"]:
-            validation_errors.append("start_eval_year must be less than end_year")
+    if (
+        "start_eval_year" in hyperparameters
+        and "end_year" in hyperparameters
+        and hyperparameters["start_eval_year"] >= hyperparameters["end_year"]
+    ):
+        validation_errors.append("start_eval_year must be less than end_year")
 
     # Log validation results
     if validation_errors:
@@ -217,9 +212,7 @@ def train_xgboost_model_with_timeseries_cv_framework(
 
     # Separate XGBoost hyperparameters from custom script parameters
     xgboost_params = {
-        k: str(v)
-        for k, v in hyperparameters.items()
-        if k in XGBOOST_PARAM_KEYS and v is not None
+        k: str(v) for k, v in hyperparameters.items() if k in XGBOOST_PARAM_KEYS and v is not None
     }
 
     # Only pass custom parameters as environment variables (not XGBoost hyperparameters)
@@ -241,7 +234,7 @@ def train_xgboost_model_with_timeseries_cv_framework(
 
     # The source_dir needs to include the full box_office package structure
     # so that imports like "from box_office.ml.model" work correctly.
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    project_root = str(Path(__file__).parent.parent.parent.resolve())
 
     xgb_estimator = XGBoost(
         entry_point="box_office/ml/model_training.py",

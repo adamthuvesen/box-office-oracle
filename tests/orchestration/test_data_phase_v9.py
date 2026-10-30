@@ -197,9 +197,7 @@ def test_container_train_passes_preprocessor_factory():
             "load_preprocessing_artifacts",
             return_value=(preprocessor, scaler, "/tmp/m/p", "/tmp/m/s"),
         ),
-        patch.object(
-            model_training.ModelEvaluator, "evaluate_oof_performance", return_value={}
-        ),
+        patch.object(model_training.ModelEvaluator, "evaluate_oof_performance", return_value={}),
         patch.object(model_training, "save_results"),
     ):
         model_training.train(args)

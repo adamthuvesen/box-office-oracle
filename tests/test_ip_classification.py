@@ -163,9 +163,7 @@ def test_awareness_only_suppresses_weak_collection_and_source_fallbacks() -> Non
             _row(26, "Hamilton", keywords="biography, based on play or musical"),
         ],
         [
-            _raw(
-                25, collection_id=901, collection_name="The Social Network Collection"
-            ),
+            _raw(25, collection_id=901, collection_name="The Social Network Collection"),
             _raw(26),
         ],
     )
@@ -199,9 +197,7 @@ def test_collection_fallback_and_keyword_adaptation() -> None:
 
 
 def test_first_harry_potter_is_tier_1_via_period_not_gross() -> None:
-    output = _classify(
-        [_row(40, "Harry Potter and the Philosopher's Stone", year=2001)]
-    )
+    output = _classify([_row(40, "Harry Potter and the Philosopher's Stone", year=2001)])
 
     row = output.loc["Harry Potter and the Philosopher's Stone"]
     assert row["ip_tier"] == 1
@@ -336,9 +332,7 @@ def test_null_release_date_films_never_count_as_prior() -> None:
     # later than its year suggests, so it must not contribute prior gross.
     output = _classify(
         [
-            _row(
-                120, "Mystery Origin", year=2010, gross=900_000_000, release_date=None
-            ),
+            _row(120, "Mystery Origin", year=2010, gross=900_000_000, release_date=None),
             _row(121, "Mystery Origin 2", year=2015, keywords="sequel"),
         ],
         [
@@ -380,8 +374,6 @@ def test_rules_with_collection_gross_thresholds_are_rejected(
     tmp_path: Path,
 ) -> None:
     rules_path = tmp_path / "rules.yml"
-    rules_path.write_text(
-        "tier_thresholds:\n  collection_gross:\n    tier_1: 5000000000\n"
-    )
+    rules_path.write_text("tier_thresholds:\n  collection_gross:\n    tier_1: 5000000000\n")
     with pytest.raises(ValueError, match="collection_gross is abolished"):
         load_rules(rules_path)

@@ -99,9 +99,7 @@ def _check_content_length_limit(request: Request, correlation_id: str) -> None:
     if body_size <= MAX_REQUEST_BODY_BYTES:
         return
 
-    logger.warning(
-        f"Request body too large (Content-Length={content_length}) - {correlation_id}"
-    )
+    logger.warning(f"Request body too large (Content-Length={content_length}) - {correlation_id}")
     _raise_prediction_error(
         status_code=413,
         error="REQUEST_TOO_LARGE",
@@ -110,16 +108,12 @@ def _check_content_length_limit(request: Request, correlation_id: str) -> None:
     )
 
 
-async def _read_json_object_body(
-    request: Request, correlation_id: str
-) -> dict[str, Any]:
+async def _read_json_object_body(request: Request, correlation_id: str) -> dict[str, Any]:
     _check_content_length_limit(request, correlation_id)
 
     raw_body = await request.body()
     if len(raw_body) > MAX_REQUEST_BODY_BYTES:
-        logger.warning(
-            f"Request body too large (actual={len(raw_body)}) - {correlation_id}"
-        )
+        logger.warning(f"Request body too large (actual={len(raw_body)}) - {correlation_id}")
         _raise_prediction_error(
             status_code=413,
             error="REQUEST_TOO_LARGE",
@@ -198,9 +192,7 @@ async def authenticate_request(request: Request, call_next):
     expected_key = settings.api_key
 
     if not expected_key:
-        logger.warning(
-            "API key authentication enabled but API_KEY environment variable not set"
-        )
+        logger.warning("API key authentication enabled but API_KEY environment variable not set")
         return _auth_error_response(
             status_code=500,
             error="AUTHENTICATION_CONFIGURATION_ERROR",
@@ -317,9 +309,7 @@ async def root() -> dict[str, str]:
 async def predict(request: Request) -> PredictionResponse:
     """Main prediction endpoint for ML model inference."""
     start_time = time.time()
-    correlation_id = request.headers.get(
-        "X-Correlation-ID", f"pred_{int(start_time * 1000000)}"
-    )
+    correlation_id = request.headers.get("X-Correlation-ID", f"pred_{int(start_time * 1000000)}")
 
     request_data = await _read_json_object_body(request, correlation_id)
 
@@ -342,7 +332,7 @@ async def predict(request: Request) -> PredictionResponse:
         ArtifactIntegrityError,
         FeatureSchemaVersionMismatch,
     ) as e:
-        logger.error(f"Model refresh failed - {correlation_id}: {str(e)}")
+        logger.error(f"Model refresh failed - {correlation_id}: {e!s}")
         _raise_prediction_error(
             status_code=503,
             error="SERVICE_UNAVAILABLE",
@@ -353,7 +343,7 @@ async def predict(request: Request) -> PredictionResponse:
     try:
         validated_request = runtime.validate_input(request_data)
     except ValidationError as e:
-        logger.warning(f"Input validation failed - {correlation_id}: {str(e)}")
+        logger.warning(f"Input validation failed - {correlation_id}: {e!s}")
         _raise_prediction_error(
             status_code=400,
             error="INVALID_INPUT",
@@ -391,15 +381,13 @@ async def predict(request: Request) -> PredictionResponse:
     except RuntimeError as e:
         # Don't leak internals to clients; correlation_id points ops at the logs.
         logger.error(
-            f"Prediction failed - {correlation_id}: {str(e)}",
+            f"Prediction failed - {correlation_id}: {e!s}",
             exc_info=True,
         )
         _raise_prediction_error(
             status_code=500,
             error="PREDICTION_FAILED",
-            message=(
-                f"Prediction failed; check logs for correlation_id {correlation_id}"
-            ),
+            message=(f"Prediction failed; check logs for correlation_id {correlation_id}"),
             correlation_id=correlation_id,
         )
 
@@ -494,9 +482,7 @@ def lambda_handler(event, context):
         extra={
             "request_id": context.aws_request_id if context else "unknown",
             "function_name": context.function_name if context else "unknown",
-            "remaining_time_ms": (
-                context.get_remaining_time_in_millis() if context else "unknown"
-            ),
+            "remaining_time_ms": (context.get_remaining_time_in_millis() if context else "unknown"),
             "memory_limit": context.memory_limit_in_mb if context else "unknown",
         },
     )

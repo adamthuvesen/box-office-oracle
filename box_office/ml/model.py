@@ -56,7 +56,7 @@ class BoxOfficeXGBoostModel:
         y_train: pd.Series,
         eval_set: list | None = None,
         verbose: bool = False,
-    ) -> "BoxOfficeXGBoostModel":
+    ) -> BoxOfficeXGBoostModel:
         self.model = self.create_model()
 
         fit_params = {"verbose": verbose}

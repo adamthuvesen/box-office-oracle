@@ -36,9 +36,7 @@ def _describe_response(schema_version: str | None) -> dict:
 
 def test_rejects_artifact_without_schema_version():
     loader = _make_loader_skipping_aws()
-    loader.sagemaker_client.describe_model_package.return_value = _describe_response(
-        None
-    )
+    loader.sagemaker_client.describe_model_package.return_value = _describe_response(None)
 
     with pytest.raises(FeatureSchemaVersionMismatch, match="feature_schema_version"):
         loader._download_and_load_model({"ModelPackageArn": "arn:aws:test"})
@@ -46,9 +44,7 @@ def test_rejects_artifact_without_schema_version():
 
 def test_rejects_artifact_with_old_schema_version():
     loader = _make_loader_skipping_aws()
-    loader.sagemaker_client.describe_model_package.return_value = _describe_response(
-        "1"
-    )
+    loader.sagemaker_client.describe_model_package.return_value = _describe_response("1")
 
     with pytest.raises(FeatureSchemaVersionMismatch, match="leaked"):
         loader._download_and_load_model({"ModelPackageArn": "arn:aws:test"})

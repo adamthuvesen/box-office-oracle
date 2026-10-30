@@ -142,9 +142,7 @@ class TestSingleSlotCacheCleanup:
         # New extract, real SHA.
         tar_dir = tmp_path / "tars"
         tar_dir.mkdir()
-        tar_path = _make_tarball(
-            tar_dir / "new.tar.gz", with_files=self._make_payload()
-        )
+        tar_path = _make_tarball(tar_dir / "new.tar.gz", with_files=self._make_payload())
         new_sha = "1" * 64
 
         loader._extract_and_load_model_with_cache(

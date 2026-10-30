@@ -74,7 +74,7 @@ class TestFeatureScaling:
         X_train = sample_features_data.iloc[:train_size]
         X_val = sample_features_data.iloc[train_size:]
 
-        X_train_scaled, X_val_scaled, scaler = scale_features.fn(X_train, X_val)
+        X_train_scaled, X_val_scaled, _scaler = scale_features.fn(X_train, X_val)
 
         assert X_train_scaled.shape == X_train.shape
         assert X_val_scaled.shape == X_val.shape
@@ -101,9 +101,7 @@ class TestFeatureMetadata:
         processor_path = "/path/to/processor.pkl"
         scaler_path = "/path/to/scaler.pkl"
 
-        metadata = create_feature_metadata.fn(
-            feature_names, processor_path, scaler_path
-        )
+        metadata = create_feature_metadata.fn(feature_names, processor_path, scaler_path)
 
         assert len(metadata) == 3
         assert "FEATURE_NAME" in metadata.columns

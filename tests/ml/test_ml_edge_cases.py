@@ -19,7 +19,7 @@ class TestCrossValidationIndexHandling:
 
         np.random.seed(42)
 
-        # 20 rows per year × 5 years = 100 rows. Each year is guaranteed to be
+        # 20 rows per year x 5 years = 100 rows. Each year is guaranteed to be
         # present in the right quantity, so the splitter cannot produce an
         # empty validation fold.
         years = [2018, 2019, 2020, 2021, 2022]

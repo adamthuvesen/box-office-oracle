@@ -20,15 +20,13 @@ from box_office.config import config
 logger = logging.getLogger(__name__)
 
 
-def load_private_key_from_file(
-    private_key_path: str, passphrase: str | None = None
-) -> bytes:
+def load_private_key_from_file(private_key_path: str, passphrase: str | None = None) -> bytes:
     """Load a .p8 private key and return DER/PKCS8 bytes as expected by snowflake-connector-python."""
-    if not os.path.exists(private_key_path):
+    if not Path(private_key_path).exists():
         raise FileNotFoundError(f"Private key file not found: {private_key_path}")
 
     try:
-        with open(private_key_path, "rb") as key_file:
+        with Path(private_key_path).open("rb") as key_file:
             private_key_data = key_file.read()
 
         password_bytes = None
@@ -46,9 +44,7 @@ def load_private_key_from_file(
         return private_key_bytes
 
     except Exception as e:
-        raise ValueError(
-            f"Failed to load private key from {private_key_path}: {str(e)}"
-        ) from e
+        raise ValueError(f"Failed to load private key from {private_key_path}: {e!s}") from e
 
 
 def create_snowflake_connection(
@@ -106,9 +102,7 @@ def create_snowflake_connection(
                 )
                 use_private_key = False
         else:
-            logger.info(
-                "Using private key path from environment variable: ***MASKED***"
-            )
+            logger.info("Using private key path from environment variable: ***MASKED***")
 
         if private_key_path and use_private_key:
             try:
@@ -120,43 +114,30 @@ def create_snowflake_connection(
 
                 if not key_path.exists():
                     logger.error(f"Private key file not found: {private_key_path}")
-                    raise FileNotFoundError(
-                        f"Private key file not found: {private_key_path}"
-                    )
+                    raise FileNotFoundError(f"Private key file not found: {private_key_path}")
 
                 logger.info("Private key file path: ***MASKED***")
 
                 if private_key_passphrase is None:
-                    private_key_passphrase = os.environ.get(
-                        "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"
-                    )
+                    private_key_passphrase = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE")
 
                 # Treat empty / whitespace passphrase as None.
-                if (
-                    private_key_passphrase is not None
-                    and not private_key_passphrase.strip()
-                ):
+                if private_key_passphrase is not None and not private_key_passphrase.strip():
                     private_key_passphrase = None
 
-                private_key = load_private_key_from_file(
-                    private_key_path, private_key_passphrase
-                )
+                private_key = load_private_key_from_file(private_key_path, private_key_passphrase)
                 connection_params["private_key"] = private_key
                 auth_method = (
                     "private key (encrypted)"
                     if private_key_passphrase
                     else "private key (unencrypted)"
                 )
-                logger.info(
-                    f"Successfully loaded private key - using {auth_method} authentication"
-                )
+                logger.info(f"Successfully loaded private key - using {auth_method} authentication")
             except FileNotFoundError as e:
                 # Legitimate fallback: the configured key path simply doesn't
                 # exist on this host (e.g. local dev without the secret). Drop
                 # to password / browser auth.
-                logger.warning(
-                    f"Private key file missing, falling back to password auth: {e}"
-                )
+                logger.warning(f"Private key file missing, falling back to password auth: {e}")
                 use_private_key = False
             except Exception:
                 # Decryption errors, permission errors, malformed PEM, etc. —
@@ -169,14 +150,9 @@ def create_snowflake_connection(
                 raise
 
     if not use_private_key:
-        if (
-            use_browser_auth
-            or os.environ.get("SNOWFLAKE_AUTHENTICATOR") == "externalbrowser"
-        ):
+        if use_browser_auth or os.environ.get("SNOWFLAKE_AUTHENTICATOR") == "externalbrowser":
             connection_params["authenticator"] = "externalbrowser"
-            logger.info(
-                "Using browser-based SSO authentication for Snowflake connection"
-            )
+            logger.info("Using browser-based SSO authentication for Snowflake connection")
         else:
             password = config.snowflake.password
             if not password:
@@ -263,9 +239,7 @@ def enforce_data_types(df: pd.DataFrame, table_type: str = "training") -> pd.Dat
         elif col in ["RELEASE_DATE", "release_date"]:
             try:
                 if df_converted[col].dtype == "object":
-                    df_converted[col] = pd.to_datetime(
-                        df_converted[col], errors="coerce"
-                    )
+                    df_converted[col] = pd.to_datetime(df_converted[col], errors="coerce")
                     if original_dtype != df_converted[col].dtype:
                         converted_count += 1
                         logger.debug(f"{col}: {original_dtype}  datetime64")
@@ -275,8 +249,6 @@ def enforce_data_types(df: pd.DataFrame, table_type: str = "training") -> pd.Dat
     logger.info(f"Data type enforcement complete: {converted_count} columns converted")
 
     numeric_cols = df_converted.select_dtypes(include=[np.number]).columns
-    logger.info(
-        f"Final numeric columns: {len(numeric_cols)}/{len(df_converted.columns)}"
-    )
+    logger.info(f"Final numeric columns: {len(numeric_cols)}/{len(df_converted.columns)}")
 
     return df_converted

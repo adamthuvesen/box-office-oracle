@@ -45,7 +45,7 @@ for _key, _value in _test_env.items():
         _test_env_mp.setenv(_key, _value)
 
 
-def pytest_unconfigure(config):  # noqa: ARG001 - pytest hook signature
+def pytest_unconfigure(config):
     """Restore the original environment after the session ends."""
     _test_env_mp.undo()
 
@@ -239,7 +239,5 @@ def pytest_collection_modifyitems(config, items):
         if "integration" in nodeid_lower and "integration" not in item.keywords:
             item.add_marker(pytest.mark.integration)
 
-        if not any(
-            marker in item.keywords for marker in ("unit", "integration", "slow")
-        ):
+        if not any(marker in item.keywords for marker in ("unit", "integration", "slow")):
             item.add_marker(pytest.mark.unit)

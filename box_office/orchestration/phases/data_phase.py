@@ -68,12 +68,8 @@ def run_data_phase(logger) -> DataPhaseResult:
     model_frame = training_frame[[*PREPROCESSOR_INPUT_COLUMNS, TARGET_COLUMN]]
     X_train, X_val, y_train, y_val = split_data(model_frame, TARGET_COLUMN)
 
-    X_train_processed, X_val_processed, processor = apply_feature_engineering(
-        X_train, X_val
-    )
-    X_train_scaled, X_val_scaled, scaler = scale_features(
-        X_train_processed, X_val_processed
-    )
+    X_train_processed, X_val_processed, processor = apply_feature_engineering(X_train, X_val)
+    X_train_scaled, X_val_scaled, scaler = scale_features(X_train_processed, X_val_processed)
     y_train_log, y_val_log = transform_targets(y_train, y_val)
 
     processor_path, scaler_path = save_artifacts(
@@ -104,9 +100,7 @@ def run_data_phase(logger) -> DataPhaseResult:
     expected_tables = [s.table_name for s in specs if s.schema == ml_schema]
     validation_results = validate_snowflake_tables(expected_tables, schema=ml_schema)
 
-    feature_store_validation = validate_snowflake_tables(
-        ["FEATURE_METADATA"], schema=fs_schema
-    )
+    feature_store_validation = validate_snowflake_tables(["FEATURE_METADATA"], schema=fs_schema)
     if "error" in feature_store_validation:
         logger.warning(
             "FEATURE_STORE validation failed (non-fatal): %s",
@@ -114,17 +108,13 @@ def run_data_phase(logger) -> DataPhaseResult:
         )
 
     if "error" in validation_results:
-        raise RuntimeError(
-            f"Snowflake validation failed: {validation_results['error']}"
-        )
+        raise RuntimeError(f"Snowflake validation failed: {validation_results['error']}")
 
     validation_errors = [
         k for k, v in validation_results.items() if isinstance(v, str) and "Error" in v
     ]
     if validation_errors:
-        raise RuntimeError(
-            f"Snowflake validation failed for tables: {validation_errors}"
-        )
+        raise RuntimeError(f"Snowflake validation failed for tables: {validation_errors}")
 
     successful_saves = sum(1 for success in report.results.values() if success)
     logger.info(

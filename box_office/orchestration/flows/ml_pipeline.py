@@ -12,13 +12,11 @@ def get_logger():
     """Get appropriate logger - always use Prefect logger when available."""
     try:
         return get_run_logger()
-    except (RuntimeError, ImportError):
+    except RuntimeError, ImportError:
         logger = logging.getLogger("ml_pipeline")
         if not logger.handlers:
             handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
             handler.setFormatter(formatter)
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
@@ -39,9 +37,7 @@ def run_ml_pipeline_logic(
 
     data = run_data_phase(logger)
     train = run_train_phase(data, logger)
-    registry = run_registry_phase(
-        train.training_metrics, environment=environment, logger=logger
-    )
+    registry = run_registry_phase(train.training_metrics, environment=environment, logger=logger)
 
     estimator = train.estimator
     return {
@@ -92,11 +88,7 @@ def ml_pipeline(environment: str = "dev"):
             registration_result = model_registry_result.get("registration_result", {})
             logger.info(
                 "- Model registration: %s",
-                (
-                    "Success"
-                    if registration_result.get("status") == "success"
-                    else "Failed"
-                ),
+                ("Success" if registration_result.get("status") == "success" else "Failed"),
             )
 
     return result

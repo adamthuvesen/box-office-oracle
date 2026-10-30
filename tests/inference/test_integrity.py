@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import io
 import os
-import sys
 import tarfile
 from pathlib import Path
 
@@ -84,7 +83,7 @@ def test_verify_artifact_rehashes_after_mtime_change(sample_file):
     assert verify_artifact(path, expected) == expected
 
     # Touch mtime forward; cache key changes; verify must re-hash and still pass.
-    new_mtime = os.stat(path).st_mtime + 10
+    new_mtime = Path(path).stat().st_mtime + 10
     os.utime(path, (new_mtime, new_mtime))
     assert verify_artifact(path, expected) == expected
 
@@ -94,9 +93,7 @@ def test_verify_artifact_rehashes_after_mtime_change(sample_file):
 # ---------------------------------------------------------------------------
 
 
-def _make_tar(
-    tmp_path: Path, members: list[tarfile.TarInfo], payloads: dict[str, bytes]
-) -> Path:
+def _make_tar(tmp_path: Path, members: list[tarfile.TarInfo], payloads: dict[str, bytes]) -> Path:
     """Build a .tar.gz containing the given members."""
     tar_path = tmp_path / "evil.tar.gz"
     with tarfile.open(tar_path, "w:gz") as tar:
@@ -108,8 +105,6 @@ def _make_tar(
 
 
 def test_tar_data_filter_rejects_parent_traversal(tmp_path: Path):
-    if sys.version_info < (3, 12):
-        pytest.skip("PEP 706 data filter requires Python 3.12+")
 
     info = tarfile.TarInfo(name="../escaped.txt")
     info.type = tarfile.REGTYPE
@@ -118,23 +113,23 @@ def test_tar_data_filter_rejects_parent_traversal(tmp_path: Path):
     extract_dir = tmp_path / "extract"
     extract_dir.mkdir()
 
-    with tarfile.open(tar_path, "r:gz") as tar:
-        with pytest.raises(
+    with (
+        tarfile.open(tar_path, "r:gz") as tar,
+        pytest.raises(
             (
                 tarfile.OutsideDestinationError,
                 tarfile.AbsolutePathError,
                 tarfile.LinkOutsideDestinationError,
             )
-        ):
-            extractall_data_filter(tar, extract_dir)
+        ),
+    ):
+        extractall_data_filter(tar, extract_dir)
 
     # And nothing escaped:
     assert not (tmp_path / "escaped.txt").exists()
 
 
 def test_tar_data_filter_rejects_symlink_escape(tmp_path: Path):
-    if sys.version_info < (3, 12):
-        pytest.skip("PEP 706 data filter requires Python 3.12+")
 
     sym = tarfile.TarInfo(name="link")
     sym.type = tarfile.SYMTYPE
@@ -144,12 +139,14 @@ def test_tar_data_filter_rejects_symlink_escape(tmp_path: Path):
     extract_dir = tmp_path / "extract"
     extract_dir.mkdir()
 
-    with tarfile.open(tar_path, "r:gz") as tar:
-        with pytest.raises(
+    with (
+        tarfile.open(tar_path, "r:gz") as tar,
+        pytest.raises(
             (
                 tarfile.OutsideDestinationError,
                 tarfile.LinkOutsideDestinationError,
                 tarfile.AbsoluteLinkError,
             )
-        ):
-            extractall_data_filter(tar, extract_dir)
+        ),
+    ):
+        extractall_data_filter(tar, extract_dir)

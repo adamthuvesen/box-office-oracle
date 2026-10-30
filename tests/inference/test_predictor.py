@@ -5,10 +5,10 @@ Tests feature preprocessing, input validation, model inference,
 and error handling with comprehensive mocking.
 """
 
-import os
 import pickle
 import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import Mock
 
 import numpy as np
@@ -421,15 +421,15 @@ class TestPredictionEngine:
     ):
         """Test successful model artifacts loading."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            model_path = os.path.join(temp_dir, "model.pkl")
-            preprocessor_path = os.path.join(temp_dir, "preprocessor.pkl")
-            scaler_path = os.path.join(temp_dir, "scaler.pkl")
+            model_path = str(Path(temp_dir) / "model.pkl")
+            preprocessor_path = str(Path(temp_dir) / "preprocessor.pkl")
+            scaler_path = str(Path(temp_dir) / "scaler.pkl")
 
-            with open(model_path, "wb") as f:
+            with Path(model_path).open("wb") as f:
                 pickle.dump(mock_model, f)
-            with open(preprocessor_path, "wb") as f:
+            with Path(preprocessor_path).open("wb") as f:
                 pickle.dump(mock_preprocessor, f)
-            with open(scaler_path, "wb") as f:
+            with Path(scaler_path).open("wb") as f:
                 pickle.dump(mock_scaler, f)
 
             prediction_engine.load_model_artifacts(
@@ -447,9 +447,7 @@ class TestPredictionEngine:
             assert prediction_engine.model_info.model_id == "test-model-v1"
             assert prediction_engine.model_info.version == 1
 
-    def test_load_model_artifacts_file_not_found(
-        self, prediction_engine, sample_model_metadata
-    ):
+    def test_load_model_artifacts_file_not_found(self, prediction_engine, sample_model_metadata):
         """Test model artifacts loading failure with missing files."""
         with pytest.raises(RuntimeError, match="Model loading failed"):
             prediction_engine.load_model_artifacts(
@@ -459,9 +457,7 @@ class TestPredictionEngine:
                 model_metadata=sample_model_metadata,
             )
 
-    def test_is_loaded(
-        self, prediction_engine, mock_model, mock_preprocessor, mock_scaler
-    ):
+    def test_is_loaded(self, prediction_engine, mock_model, mock_preprocessor, mock_scaler):
         """Test is_loaded method."""
         assert prediction_engine.is_loaded() is False
 
@@ -559,9 +555,7 @@ class TestPredictionEngine:
         )
         df = prediction_engine._prepare_dataframe(request)
         assert df.iloc[0]["IP_TIER"] == 2.0
-        assert df.iloc[0]["PRIOR_FRANCHISE_GROSS_LOG"] == pytest.approx(
-            np.log1p(1_000_000_000)
-        )
+        assert df.iloc[0]["PRIOR_FRANCHISE_GROSS_LOG"] == pytest.approx(np.log1p(1_000_000_000))
         assert df.iloc[0]["IS_FRANCHISE_FOLLOWUP"] == 1.0
 
     def test_preprocess_features_success(
@@ -648,10 +642,7 @@ class TestPredictionEngine:
         assert response.model_version == 1
         assert response.prediction_interval_heuristic is not None
         assert len(response.prediction_interval_heuristic) == 2
-        assert (
-            response.prediction_interval_heuristic[0]
-            < response.prediction_interval_heuristic[1]
-        )
+        assert response.prediction_interval_heuristic[0] < response.prediction_interval_heuristic[1]
         assert response.processing_time_ms > 0
         assert response.timestamp is not None
 
@@ -786,7 +777,7 @@ class RealisticPreprocessor:
     def transform(self, df):
         # Emit the full SELECTED_FEATURES contract; populate the columns this
         # mock knows, zero-fill the rest. Order matches the contract.
-        row = {c: 0.0 for c in SELECTED_FEATURES}
+        row = dict.fromkeys(SELECTED_FEATURES, 0.0)
         for col in ("PRODUCTION_BUDGET",):
             if col in df.columns:
                 row[col] = df[col].iloc[0]
@@ -808,15 +799,15 @@ class TestPredictionEngineIntegration:
         engine = PredictionEngine()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            model_path = os.path.join(temp_dir, "model.pkl")
-            preprocessor_path = os.path.join(temp_dir, "preprocessor.pkl")
-            scaler_path = os.path.join(temp_dir, "scaler.pkl")
+            model_path = str(Path(temp_dir) / "model.pkl")
+            preprocessor_path = str(Path(temp_dir) / "preprocessor.pkl")
+            scaler_path = str(Path(temp_dir) / "scaler.pkl")
 
-            with open(model_path, "wb") as f:
+            with Path(model_path).open("wb") as f:
                 pickle.dump(RealisticModel(), f)
-            with open(preprocessor_path, "wb") as f:
+            with Path(preprocessor_path).open("wb") as f:
                 pickle.dump(RealisticPreprocessor(), f)
-            with open(scaler_path, "wb") as f:
+            with Path(scaler_path).open("wb") as f:
                 pickle.dump(RealisticScaler(), f)
 
             model_metadata = {

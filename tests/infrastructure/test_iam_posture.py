@@ -78,15 +78,14 @@ def test_pass_role_is_scoped_not_wildcarded(iam_tf_text: str) -> None:
     # use Resource = "*" within the same statement object.
     statements = re.split(r"\{", active)
     for block in statements:
-        if "iam:PassRole" in block:
-            # The same statement must reference a specific ARN, not "*"
-            # and not just a Resource = "*" line. The current correct
-            # pattern is `Resource = aws_iam_role.sagemaker_execution_role.arn`.
-            if 'Resource = "*"' in block or 'Resource = ["*"]' in block:
-                pytest.fail(
-                    "iam:PassRole appears in a statement with Resource = '*'. "
-                    "Scope it to the specific role ARN."
-                )
+        # The same statement must reference a specific ARN, not "*"
+        # and not just a Resource = "*" line. The current correct
+        # pattern is `Resource = aws_iam_role.sagemaker_execution_role.arn`.
+        if "iam:PassRole" in block and ('Resource = "*"' in block or 'Resource = ["*"]' in block):
+            pytest.fail(
+                "iam:PassRole appears in a statement with Resource = '*'. "
+                "Scope it to the specific role ARN."
+            )
 
 
 def test_profiles_yml_does_not_hardcode_accountadmin() -> None:
@@ -94,9 +93,9 @@ def test_profiles_yml_does_not_hardcode_accountadmin() -> None:
     text = PROFILES_YML.read_text()
     # Strip YAML comments
     active = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
-    assert "ACCOUNTADMIN" not in active.upper().replace(
-        "ACCOUNT_ADMIN", "ACCOUNTADMIN"
-    ).replace("THE ACCOUNT", ""), (
+    assert "ACCOUNTADMIN" not in active.upper().replace("ACCOUNT_ADMIN", "ACCOUNTADMIN").replace(
+        "THE ACCOUNT", ""
+    ), (
         "profiles.yml must not hardcode ACCOUNTADMIN. "
         "Use {{ env_var('SNOWFLAKE_ROLE') }} and provision DBT_RUNNER."
     )
@@ -104,6 +103,4 @@ def test_profiles_yml_does_not_hardcode_accountadmin() -> None:
 
 def test_profiles_yml_role_is_env_driven() -> None:
     text = PROFILES_YML.read_text()
-    assert "env_var('SNOWFLAKE_ROLE')" in text, (
-        "dbt profile must resolve role from SNOWFLAKE_ROLE."
-    )
+    assert "env_var('SNOWFLAKE_ROLE')" in text, "dbt profile must resolve role from SNOWFLAKE_ROLE."

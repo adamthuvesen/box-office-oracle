@@ -27,7 +27,7 @@ class _CrossValidationState:
     last_fold_exception: BaseException | None = None
 
     @classmethod
-    def for_row_count(cls, row_count: int) -> "_CrossValidationState":
+    def for_row_count(cls, row_count: int) -> _CrossValidationState:
         return cls(oof_preds=np.zeros(row_count))
 
     def record_oof_predictions(
@@ -72,9 +72,7 @@ class _CrossValidationState:
             },
             "oof_records": self.oof_records,
             "feature_importances": (
-                np.mean(self.fold_importances, axis=0).tolist()
-                if self.fold_importances
-                else None
+                np.mean(self.fold_importances, axis=0).tolist() if self.fold_importances else None
             ),
             "feature_names": feature_names,
             "fold_results": self.fold_results,
@@ -108,9 +106,7 @@ class TimeSeriesCrossValidator:
         failed_folds = [r for r in fold_results if r["error"] is not None]
 
         logger.info("Cross-validation completed!")
-        logger.info(
-            f"Completed {len(successful_folds)}/{len(fold_results)} folds successfully"
-        )
+        logger.info(f"Completed {len(successful_folds)}/{len(fold_results)} folds successfully")
 
         if cv_scores:
             mean_mae = np.mean(cv_scores)
@@ -129,9 +125,7 @@ class TimeSeriesCrossValidator:
         if best_iterations:
             mean_iterations = np.mean(best_iterations)
             std_iterations = np.std(best_iterations)
-            logger.info(
-                f"Best iterations: {mean_iterations:.0f} (+/- {std_iterations:.0f})"
-            )
+            logger.info(f"Best iterations: {mean_iterations:.0f} (+/- {std_iterations:.0f})")
 
         # Log individual fold failures with details
         if failed_folds:
@@ -182,16 +176,12 @@ class TimeSeriesCrossValidator:
             f"Available years in dataset: {unique_years[:5]}...{unique_years[-5:]} (showing first/last 5)"
         )
         eval_years = [
-            year
-            for year in range(self.start_eval_year, self.end_year + 1)
-            if year in unique_years
+            year for year in range(self.start_eval_year, self.end_year + 1) if year in unique_years
         ]
         actual_folds = min(self.cv_folds, len(eval_years))
 
         logger.info(f"CV evaluation years: {eval_years}")
-        logger.info(
-            f"Performing CV on {actual_folds} folds from years {eval_years[:actual_folds]}"
-        )
+        logger.info(f"Performing CV on {actual_folds} folds from years {eval_years[:actual_folds]}")
 
         for i, eval_year in enumerate(eval_years[:actual_folds]):
             train_mask = dates_sorted < eval_year
@@ -342,33 +332,24 @@ class TimeSeriesCrossValidator:
         }
 
     @staticmethod
-    def _dollar_scale_metrics(
-        y_fold_val: Any, y_pred: np.ndarray
-    ) -> tuple[float, float]:
+    def _dollar_scale_metrics(y_fold_val: Any, y_pred: np.ndarray) -> tuple[float, float]:
         # Inputs above log(~1e308) overflow expm1; emit NaN rather than break CV.
         with np.errstate(over="ignore", invalid="ignore"):
             y_true_dollars = np.expm1(y_fold_val.to_numpy())
             y_pred_dollars = np.expm1(y_pred)
-        if not (
-            np.all(np.isfinite(y_true_dollars)) and np.all(np.isfinite(y_pred_dollars))
-        ):
+        if not (np.all(np.isfinite(y_true_dollars)) and np.all(np.isfinite(y_pred_dollars))):
             return float("nan"), float("nan")
 
         r2_dollars = float(r2_score(y_true_dollars, y_pred_dollars))
         median_ape = float(
-            np.median(
-                np.abs(y_pred_dollars - y_true_dollars)
-                / np.maximum(y_true_dollars, 1.0)
-            )
+            np.median(np.abs(y_pred_dollars - y_true_dollars) / np.maximum(y_true_dollars, 1.0))
         )
         return r2_dollars, median_ape
 
 
 class ModelEvaluator:
     @staticmethod
-    def evaluate_oof_performance(
-        cv_results: dict[str, Any], y_train_log
-    ) -> dict[str, float]:
+    def evaluate_oof_performance(cv_results: dict[str, Any], y_train_log) -> dict[str, float]:
         """Evaluate out-of-fold predictions."""
         logger.info("Evaluating out-of-fold performance...")
 
@@ -377,7 +358,7 @@ class ModelEvaluator:
             logger.warning("No OOF predictions available")
             return {}
 
-        indices = [int(idx) for idx in oof_preds_dict.keys()]
+        indices = [int(idx) for idx in oof_preds_dict]
         oof_preds_log = np.array([oof_preds_dict[str(idx)] for idx in indices])
 
         # Reset index to ensure positional alignment with CV results

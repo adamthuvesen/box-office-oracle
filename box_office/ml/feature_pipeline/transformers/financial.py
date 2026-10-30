@@ -45,16 +45,10 @@ class FinancialTransformer(BaseEstimator, TransformerMixin):
         new["LOG1P_LEAD_ACTOR_FREQ"] = np.log1p(lead_actor_freq.clip(lower=0))
 
         new["LOG_BUDGET_X_HORROR"] = log_budget * _optional_column(X, "GENRE_horror")
-        new["LOG_BUDGET_X_ADVENTURE"] = log_budget * _optional_column(
-            X, "GENRE_adventure"
-        )
+        new["LOG_BUDGET_X_ADVENTURE"] = log_budget * _optional_column(X, "GENRE_adventure")
         new["LOG_BUDGET_X_COMEDY"] = log_budget * _optional_column(X, "GENRE_comedy")
-        new["LOG_BUDGET_X_SUMMER"] = log_budget * _optional_column(
-            X, "IS_SUMMER_RELEASE"
-        )
-        new["LOG_BUDGET_X_COMPANY_FREQ"] = log_budget * np.log1p(
-            company_freq.clip(lower=0)
-        )
+        new["LOG_BUDGET_X_SUMMER"] = log_budget * _optional_column(X, "IS_SUMMER_RELEASE")
+        new["LOG_BUDGET_X_COMPANY_FREQ"] = log_budget * np.log1p(company_freq.clip(lower=0))
         holiday_score = (
             _optional_column(X, "IS_BLOCKBUSTER_SEASON")
             + 2 * _optional_column(X, "IS_MEMORIAL_DAY_WEEKEND")

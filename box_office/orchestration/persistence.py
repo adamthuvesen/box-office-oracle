@@ -76,22 +76,16 @@ def log_table_operations_summary(operations: list[TableOperation], logger) -> No
     successful = sum(1 for op in operations if op.success)
     total = len(operations)
 
-    ml_training_ops = [
-        op for op in operations if op.schema == config.snowflake.schemas.ml_training
-    ]
+    ml_training_ops = [op for op in operations if op.schema == config.snowflake.schemas.ml_training]
     feature_store_ops = [
         op for op in operations if op.schema == config.snowflake.schemas.feature_store
     ]
 
-    logger.info(
-        f"Snowflake operations completed: {successful}/{total} tables saved successfully"
-    )
+    logger.info(f"Snowflake operations completed: {successful}/{total} tables saved successfully")
 
     if ml_training_ops:
         ml_successful = sum(1 for op in ml_training_ops if op.success)
-        logger.info(
-            f"  ML_TRAINING schema: {ml_successful}/{len(ml_training_ops)} tables saved"
-        )
+        logger.info(f"  ML_TRAINING schema: {ml_successful}/{len(ml_training_ops)} tables saved")
 
     if feature_store_ops:
         fs_successful = sum(1 for op in feature_store_ops if op.success)

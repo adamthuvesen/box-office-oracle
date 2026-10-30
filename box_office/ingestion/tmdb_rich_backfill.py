@@ -321,18 +321,14 @@ def normalize_credits(payload: dict[str, Any]) -> dict[str, str]:
     directors = [
         str(member.get("name", "")).strip()
         for member in crew
-        if isinstance(member, dict)
-        and member.get("job") == "Director"
-        and member.get("name")
+        if isinstance(member, dict) and member.get("job") == "Director" and member.get("name")
     ]
     sorted_cast = sorted(
         [member for member in cast if isinstance(member, dict)],
         key=lambda member: member.get("order", 999),
     )
     actors = [
-        str(member.get("name", "")).strip()
-        for member in sorted_cast[:10]
-        if member.get("name")
+        str(member.get("name", "")).strip() for member in sorted_cast[:10] if member.get("name")
     ]
     return {"director": ", ".join(directors), "actors": ", ".join(actors)}
 
@@ -383,9 +379,7 @@ def extract_release_year(release_date: Any) -> int | None:
     return int(parsed.year)
 
 
-def raw_record_from_payload(
-    payload: dict[str, Any], year: int, page: int
-) -> dict[str, Any]:
+def raw_record_from_payload(payload: dict[str, Any], year: int, page: int) -> dict[str, Any]:
     tmdb_id = payload.get("id")
     return {
         "tmdb_id": int(tmdb_id) if tmdb_id is not None else None,
@@ -413,9 +407,7 @@ def flat_record_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
         len(alternatives.get("titles", [])) if isinstance(alternatives, dict) else 0
     )
     translation_count = (
-        len(translations.get("translations", []))
-        if isinstance(translations, dict)
-        else 0
+        len(translations.get("translations", [])) if isinstance(translations, dict) else 0
     )
 
     release_date = payload.get("release_date")
@@ -504,11 +496,7 @@ def flat_columns() -> list[str]:
 
 def is_documentary(payload: dict[str, Any]) -> bool:
     genres = payload.get("genres") or []
-    names = {
-        str(genre.get("name", "")).strip()
-        for genre in genres
-        if isinstance(genre, dict)
-    }
+    names = {str(genre.get("name", "")).strip() for genre in genres if isinstance(genre, dict)}
     return bool(names & EXCLUDED_GENRES)
 
 
@@ -535,9 +523,7 @@ def year_stats(state: BackfillState, year: int) -> dict[str, int]:
 
 def run_backfill(config: BackfillConfig) -> BackfillState:
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    existing_ids, existing_title_years = load_existing_movies_from_web(
-        config.existing_web_data
-    )
+    existing_ids, existing_title_years = load_existing_movies_from_web(config.existing_web_data)
     raw_ids = load_raw_tmdb_ids(config.raw_jsonl_path)
     skipped_ids = existing_ids | raw_ids
 
@@ -676,10 +662,7 @@ def run_backfill(config: BackfillConfig) -> BackfillState:
 def build_flat_outputs(
     config: BackfillConfig, state: BackfillState | None = None
 ) -> dict[str, Any]:
-    records = [
-        flat_record_from_raw(record)
-        for record in iter_raw_records(config.raw_jsonl_path)
-    ]
+    records = [flat_record_from_raw(record) for record in iter_raw_records(config.raw_jsonl_path)]
     df = pd.DataFrame(records)
     if df.empty:
         raise ValueError(f"No raw records found at {config.raw_jsonl_path}")
@@ -703,17 +686,13 @@ def build_flat_outputs(
     combined_parts = [
         part.dropna(axis=1, how="all") for part in [existing_df, df] if not part.empty
     ]
-    combined = pd.concat(combined_parts, ignore_index=True).reindex(
-        columns=flat_columns()
-    )
+    combined = pd.concat(combined_parts, ignore_index=True).reindex(columns=flat_columns())
     combined = combined.drop_duplicates(subset=["tmdb_id"], keep="last")
     combined = combined.sort_values(
         ["release_year", "worldwide_gross", "tmdb_id"],
         ascending=[True, False, True],
     )
-    combined_50m = combined[
-        combined["worldwide_gross"] >= config.fifty_million_revenue
-    ].copy()
+    combined_50m = combined[combined["worldwide_gross"] >= config.fifty_million_revenue].copy()
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(config.flat_csv_path, index=False)
@@ -754,8 +733,8 @@ def build_summary(
         rows.append(
             {
                 "release_year": year,
-                "row_count_5m": int(len(year_df)),
-                "row_count_50m": int(len(year_50m)),
+                "row_count_5m": len(year_df),
+                "row_count_50m": len(year_50m),
                 "min_worldwide_gross": (
                     int(year_df["worldwide_gross"].min()) if not year_df.empty else None
                 ),
@@ -820,9 +799,7 @@ def build_manifest(
     missingness: pd.DataFrame,
     state: BackfillState | None,
 ) -> dict[str, Any]:
-    coverage_years = sorted(
-        int(year) for year in combined["release_year"].dropna().unique()
-    )
+    coverage_years = sorted(int(year) for year in combined["release_year"].dropna().unique())
     missing_years = [
         year
         for year in range(config.start_year, config.end_year + 1)
@@ -850,17 +827,15 @@ def build_manifest(
             "missingness_csv": str(config.missingness_csv_path),
         },
         "row_counts": {
-            "raw_records": int(len(df)),
-            "flat_5m": int(len(df)),
-            "flat_50m": int(len(subset_50m)),
-            "combined_5m": int(len(combined)),
-            "combined_50m": int(len(combined_50m)),
+            "raw_records": len(df),
+            "flat_5m": len(df),
+            "flat_50m": len(subset_50m),
+            "combined_5m": len(combined),
+            "combined_50m": len(combined_50m),
         },
         "quality": {
             "duplicate_tmdb_ids": int(combined["tmdb_id"].duplicated().sum()),
-            "below_min_revenue": int(
-                (combined["worldwide_gross"] < config.min_revenue).sum()
-            ),
+            "below_min_revenue": int((combined["worldwide_gross"] < config.min_revenue).sum()),
             "missing_required": {
                 "tmdb_id": int(combined["tmdb_id"].isna().sum()),
                 "title": int(combined["title"].isna().sum()),
@@ -935,9 +910,7 @@ def config_from_args(args: argparse.Namespace) -> BackfillConfig:
 
 
 def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     args = parse_args(argv)
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)

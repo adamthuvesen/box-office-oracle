@@ -31,12 +31,8 @@ class _FlakyModel:
         # injection trigger.
         if self._fail_when_eval_year is not None and eval_set:
             _, y_val = eval_set[0]
-            if len(y_val) > 0 and float(y_val.iloc[0]) == float(
-                self._fail_when_eval_year
-            ):
-                raise RuntimeError(
-                    f"injected failure for eval year {self._fail_when_eval_year}"
-                )
+            if len(y_val) > 0 and float(y_val.iloc[0]) == float(self._fail_when_eval_year):
+                raise RuntimeError(f"injected failure for eval year {self._fail_when_eval_year}")
         self.is_fitted = True
         return self
 
@@ -205,9 +201,7 @@ def test_private_key_fallback_only_on_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(
         sc,
         "load_private_key_from_file",
-        lambda *a, **kw: (_ for _ in ()).throw(
-            FileNotFoundError("simulated missing key")
-        ),
+        lambda *a, **kw: (_ for _ in ()).throw(FileNotFoundError("simulated missing key")),
     )
     captured.clear()
     result = sc.create_snowflake_connection(

@@ -13,8 +13,8 @@ UNSET = object()
 @dataclass(frozen=True)
 class FinancialCorrection:
     reason: str
-    production_budget: float | None | object = UNSET
-    worldwide_gross: float | None | object = UNSET
+    production_budget: float | object | None = UNSET
+    worldwide_gross: float | object | None = UNSET
 
 
 @dataclass(frozen=True)
@@ -170,9 +170,7 @@ def clean_movie_source_data(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFram
             reasons.append("high_gross_without_imdb_or_votes")
 
         if actions:
-            audit_rows.append(
-                _audit_row(row, ",".join(sorted(set(actions))), ";".join(reasons))
-            )
+            audit_rows.append(_audit_row(row, ",".join(sorted(set(actions))), ";".join(reasons)))
         cleaned_rows.append(row)
 
     cleaned = pd.DataFrame(cleaned_rows, columns=df.columns).reset_index(drop=True)

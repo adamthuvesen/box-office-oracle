@@ -114,9 +114,7 @@ def test_prediction_no_gross_ids_still_win_over_export_values():
 
     assert record["production_budget"] == 10_000_000
     assert record["worldwide_gross"] is None
-    assert not any(
-        isinstance(value, float) and math.isnan(value) for value in record.values()
-    )
+    assert not any(isinstance(value, float) and math.isnan(value) for value in record.values())
 
 
 def test_non_movie_source_exclusions_do_not_reach_web_records():

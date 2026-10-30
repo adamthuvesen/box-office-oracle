@@ -64,9 +64,8 @@ class TestSettingsBasics(unittest.TestCase):
             self.assertEqual(s.aws.region, "us-east-1")
 
     def test_missing_required_raises(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(ValidationError):
-                Settings(_env_file=None)
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(ValidationError):
+            Settings(_env_file=None)
 
     def test_nested_model_views_are_sane(self):
         with patch.dict(os.environ, _required_env(), clear=True):

@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 import joblib
 import numpy as np
@@ -53,14 +54,10 @@ def run_raw_to_staging_dbt_transformations():
     Uses PrefectDbtRunner for better integration with Prefect flows.
     """
     logger = get_run_logger()
-    logger.info(
-        "Running dbt transformations from raw to staging using PrefectDbtRunner"
-    )
+    logger.info("Running dbt transformations from raw to staging using PrefectDbtRunner")
 
     # Get the dbt project directory (transformations folder)
-    dbt_project_dir = os.path.join(
-        config.paths.project_root, config.paths.transformations_dir
-    )
+    dbt_project_dir = Path(config.paths.project_root) / config.paths.transformations_dir
 
     # Build the dbt env contribution from config without mutating os.environ
     # at module level. ``_scoped_env`` will install these for the duration of
@@ -78,30 +75,26 @@ def run_raw_to_staging_dbt_transformations():
     # (dbt resolves env vars at parse time and a relative path breaks when its
     # cwd differs from ours). Keep the resolved value scoped to the with-block.
     if "SNOWFLAKE_PRIVATE_KEY_PATH" in os.environ:
-        key_path = os.environ["SNOWFLAKE_PRIVATE_KEY_PATH"]
-        if not os.path.isabs(key_path):
-            absolute_key_path = os.path.abspath(
-                os.path.join(config.paths.project_root, key_path)
-            )
-            dbt_env["SNOWFLAKE_PRIVATE_KEY_PATH"] = absolute_key_path
-            logger.info(
-                "Resolved SNOWFLAKE_PRIVATE_KEY_PATH to absolute path: ***MASKED***"
-            )
+        key_path = Path(os.environ["SNOWFLAKE_PRIVATE_KEY_PATH"])
+        if not key_path.is_absolute():
+            absolute_key_path = (Path(config.paths.project_root) / key_path).resolve()
+            dbt_env["SNOWFLAKE_PRIVATE_KEY_PATH"] = str(absolute_key_path)
+            logger.info("Resolved SNOWFLAKE_PRIVATE_KEY_PATH to absolute path: ***MASKED***")
         else:
             logger.info("Key path is already absolute: ***MASKED***")
 
     try:
-        profiles_path = os.path.join(dbt_project_dir, "profiles.yml")
-        if not os.path.exists(profiles_path):
+        profiles_path = dbt_project_dir / "profiles.yml"
+        if not profiles_path.exists():
             raise FileNotFoundError(f"profiles.yml not found at: {profiles_path}")
 
         logger.info(f"Using profiles.yml at: {profiles_path}")
         logger.info(f"dbt project directory: {dbt_project_dir}")
 
         # Create .dbt directory if it doesn't exist
-        dbt_home_dir = os.path.expanduser("~/.dbt")
-        if not os.path.exists(dbt_home_dir):
-            os.makedirs(dbt_home_dir, exist_ok=True)
+        dbt_home_dir = Path("~/.dbt").expanduser()
+        if not dbt_home_dir.exists():
+            dbt_home_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Created dbt home directory: {dbt_home_dir}")
 
         # Initialize PrefectDbtRunner with project directory
@@ -136,9 +129,7 @@ def run_raw_to_staging_dbt_transformations():
 
         # Log result details
         if hasattr(run_result, "results") and run_result.results:
-            logger.info(
-                f"dbt build completed: {len(run_result.results)} nodes processed"
-            )
+            logger.info(f"dbt build completed: {len(run_result.results)} nodes processed")
 
         return run_result
 
@@ -158,9 +149,7 @@ def load_staging_box_office_from_snowflake():
     logger.debug(
         f"SNOWFLAKE_PRIVATE_KEY_PATH env var: {'***MASKED***' if key_path_env else 'Not set'}"
     )
-    logger.debug(
-        f"Config private_key_path: {'***MASKED***' if key_path_config else 'Not set'}"
-    )
+    logger.debug(f"Config private_key_path: {'***MASKED***' if key_path_config else 'Not set'}")
 
     # Validate identifiers before any SQL string interpolation. A compromised
     # SNOWFLAKE_DATABASE / SNOWFLAKE_SCHEMA_STAGING env var would otherwise
@@ -220,23 +209,15 @@ def split_data(df, target_column, split_year=None):
     X_val = val_df.drop(columns=[target_column])
     y_val = val_df[target_column]
 
-    logger.info(
-        f"Training set: {X_train.shape[0]} samples (RELEASE_YEAR < {split_year})"
-    )
-    logger.info(
-        f"Validation set: {X_val.shape[0]} samples (RELEASE_YEAR >= {split_year})"
-    )
+    logger.info(f"Training set: {X_train.shape[0]} samples (RELEASE_YEAR < {split_year})")
+    logger.info(f"Validation set: {X_val.shape[0]} samples (RELEASE_YEAR >= {split_year})")
 
     if len(X_train) > 0:
-        train_year_range = (
-            f"{train_df['RELEASE_YEAR'].min()}-{train_df['RELEASE_YEAR'].max()}"
-        )
+        train_year_range = f"{train_df['RELEASE_YEAR'].min()}-{train_df['RELEASE_YEAR'].max()}"
         logger.info(f"Training year range: {train_year_range}")
 
     if len(X_val) > 0:
-        val_year_range = (
-            f"{val_df['RELEASE_YEAR'].min()}-{val_df['RELEASE_YEAR'].max()}"
-        )
+        val_year_range = f"{val_df['RELEASE_YEAR'].min()}-{val_df['RELEASE_YEAR'].max()}"
         logger.info(f"Validation year range: {val_year_range}")
 
     return X_train, X_val, y_train, y_val
@@ -252,9 +233,7 @@ def apply_feature_engineering(X_train, X_val):
     X_train_processed = processor.fit_transform(X_train)
     X_val_processed = processor.transform(X_val)
 
-    logger.info(
-        f"Feature engineering complete. Total features: {X_train_processed.shape[1]}"
-    )
+    logger.info(f"Feature engineering complete. Total features: {X_train_processed.shape[1]}")
 
     return X_train_processed, X_val_processed, processor
 
@@ -306,10 +285,10 @@ def save_artifacts(processor, scaler, artifact_dir=None):
 
     logger.info(f"Saving preprocessing artifacts to {artifact_dir}/")
 
-    os.makedirs(artifact_dir, exist_ok=True)
+    Path(artifact_dir).mkdir(parents=True, exist_ok=True)
 
-    processor_path = os.path.join(artifact_dir, FEATURE_PREPROCESSOR_PKL)
-    scaler_path = os.path.join(artifact_dir, FEATURE_SCALER_PKL)
+    processor_path = str(Path(artifact_dir) / FEATURE_PREPROCESSOR_PKL)
+    scaler_path = str(Path(artifact_dir) / FEATURE_SCALER_PKL)
 
     joblib.dump(processor, processor_path)
     joblib.dump(scaler, scaler_path)

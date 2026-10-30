@@ -72,11 +72,7 @@ def load_curated_movies(path: Path = DEFAULT_CURATED_PATH) -> list[CuratedMovie]
     movies: list[CuratedMovie] = []
     seen: set[int] = set()
     for entry in entries:
-        if (
-            not isinstance(entry, dict)
-            or "tmdb_id" not in entry
-            or "title" not in entry
-        ):
+        if not isinstance(entry, dict) or "tmdb_id" not in entry or "title" not in entry:
             raise ValueError(f"malformed curated movie entry: {entry!r}")
         tmdb_id = int(entry["tmdb_id"])
         if tmdb_id in seen:
@@ -264,9 +260,7 @@ def add_missing_movies(
             raw_ids.add(tmdb_id)
             logger.warning("appended raw JSONL record: tmdb %s (%s)", tmdb_id, title)
 
-        row = build_flat_row(
-            raw, target_columns, documented_budget=candidate.documented_budget
-        )
+        row = build_flat_row(raw, target_columns, documented_budget=candidate.documented_budget)
         validate_row(row)
         new_rows.append(row)
         added.append(
@@ -343,16 +337,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     configure_environment()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     args = parse_args(argv)
 
     config = BackfillConfig(output_dir=args.parquet.parent)
     if args.raw_jsonl != config.raw_jsonl_path:
-        raise SystemExit(
-            f"raw JSONL path mismatch: {args.raw_jsonl} != {config.raw_jsonl_path}"
-        )
+        raise SystemExit(f"raw JSONL path mismatch: {args.raw_jsonl} != {config.raw_jsonl_path}")
 
     candidates = load_curated_movies(args.curated)
     logger.info("loaded %d curated movies from %s", len(candidates), args.curated)

@@ -70,9 +70,12 @@ def test_omitted_factory_matches_identity_factory():
     """The kwarg is a pure opt-in: no factory and an identity factory must
     produce identical results on an already-engineered matrix."""
     X, y, dates = _engineered_frame()
-    cv_kwargs = dict(
-        cv_folds=2, start_eval_year=2020, end_year=2021, early_stopping_rounds=5
-    )
+    cv_kwargs = {
+        "cv_folds": 2,
+        "start_eval_year": 2020,
+        "end_year": 2021,
+        "early_stopping_rounds": 5,
+    }
 
     without = TimeSeriesCrossValidator(**cv_kwargs).cross_validate(
         BoxOfficeXGBoostModel, X, y, dates, **FAST_MODEL_KWARGS

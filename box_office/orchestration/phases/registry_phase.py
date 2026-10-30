@@ -71,9 +71,7 @@ def run_registry_phase(
         else:
             logger.info("Model does not meet promotion criteria")
     else:
-        logger.warning(
-            "Skipping model promotion validation due to AWS registration failure"
-        )
+        logger.warning("Skipping model promotion validation due to AWS registration failure")
 
     return RegistryPhaseResult(
         registration_result=registration_result,

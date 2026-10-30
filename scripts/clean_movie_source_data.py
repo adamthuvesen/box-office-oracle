@@ -19,15 +19,13 @@ import pandas as pd
 from box_office.movie_data_quality import clean_movie_source_data
 
 DEFAULT_PARQUET = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/"
-    "tmdb_budget_wikipedia_5m_1980_2026.parquet"
+    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet"
 )
 DEFAULT_CSV = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.csv"
 )
 DEFAULT_AUDIT = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/"
-    "tmdb_budget_wikipedia_source_quality_1980_2026.csv"
+    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_source_quality_1980_2026.csv"
 )
 DEFAULT_MANIFEST = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/"
@@ -36,9 +34,7 @@ DEFAULT_MANIFEST = Path(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Clean generated movie source data in place."
-    )
+    parser = argparse.ArgumentParser(description="Clean generated movie source data in place.")
     parser.add_argument("--parquet", type=Path, default=DEFAULT_PARQUET)
     parser.add_argument("--csv", type=Path, default=DEFAULT_CSV)
     parser.add_argument("--audit", type=Path, default=DEFAULT_AUDIT)
@@ -87,10 +83,10 @@ def main() -> None:
             "audit": str(args.audit),
         },
         "row_counts": {
-            "source_rows": int(len(source)),
-            "cleaned_rows": int(len(cleaned)),
+            "source_rows": len(source),
+            "cleaned_rows": len(cleaned),
             "excluded_rows": int(len(source) - len(cleaned)),
-            "quality_actions": int(len(audit)),
+            "quality_actions": len(audit),
             **_counts(audit),
         },
     }

@@ -175,7 +175,7 @@ def render_metrics_table_markdown(table: pd.DataFrame) -> str:
 
     Log-space R² leads: it matches the model's training objective
     (``reg:squarederror`` on ``log1p`` revenue) and is robust to the heavy
-    revenue tail. Rank ρ (Spearman) shows ordering quality. Dollar-space R² and
+    revenue tail. Rank rho (Spearman) shows ordering quality. Dollar-space R² and
     median APE expose absolute calibration — where a market-wide shock such as
     the COVID-2020 theatrical shutdown surfaces — and are kept in view rather
     than dropped.
@@ -185,7 +185,7 @@ def render_metrics_table_markdown(table: pd.DataFrame) -> str:
 
     header = (
         "| Year | n | Model R² (log) | Baseline R² (log) | Gain (log) "
-        "| Model ρ | Baseline ρ | Model R² ($) | Median APE |\n"
+        "| Model \u03c1 | Baseline \u03c1 | Model R² ($) | Median APE |\n"
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|"
     )
     rows = []

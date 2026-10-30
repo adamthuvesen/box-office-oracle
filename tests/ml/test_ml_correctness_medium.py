@@ -73,8 +73,7 @@ class TestNaNPropagation:
 
         # A WARNING with the column name is emitted.
         assert any(
-            "NaN" in rec.message and rec.levelno == logging.WARNING
-            for rec in caplog.records
+            "NaN" in rec.message and rec.levelno == logging.WARNING for rec in caplog.records
         ), "Expected at least one WARNING naming a NaN column"
 
 
@@ -251,8 +250,7 @@ class TestMissingCoreColumnSurface:
         # Default fill = 0
         assert (out["RUNTIME"] == 0).all()
         assert any(
-            "RUNTIME" in rec.message and rec.levelno == logging.WARNING
-            for rec in caplog.records
+            "RUNTIME" in rec.message and rec.levelno == logging.WARNING for rec in caplog.records
         ), "Expected WARNING naming RUNTIME"
 
 

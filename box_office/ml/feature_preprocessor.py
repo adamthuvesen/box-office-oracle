@@ -38,7 +38,7 @@ class FeaturePreprocessorHigh:
         self.pipeline = build_feature_pipeline()
         self._feature_names: list[str] | None = None
 
-    def fit(self, X: pd.DataFrame) -> "FeaturePreprocessorHigh":
+    def fit(self, X: pd.DataFrame) -> FeaturePreprocessorHigh:
         # Capture column names from a single fit_transform pass; the transformed
         # output is discarded because fit() only needs the schema.
         self._feature_names = list(self.pipeline.fit_transform(X).columns)
@@ -111,6 +111,6 @@ _SCHEMA_FIXTURE = pd.DataFrame(
 )
 
 __all__ = [
-    "FeaturePreprocessorHigh",
     "FeatureNameCollisionError",
+    "FeaturePreprocessorHigh",
 ]

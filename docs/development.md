@@ -76,7 +76,7 @@ cd transformations && uv run dbt build --select staging --profiles-dir=.
 
 ## Coding style
 
-- Python 3.11+, type hints everywhere.
+- Python 3.14, type hints everywhere.
 - Format: `ruff format` at line length 88 (`make format`).
 - Lint: `ruff check` (`make lint`).
 - Naming: `snake_case` for modules / functions, `CapWords` for classes, `UPPER_CASE` for env vars and constants.

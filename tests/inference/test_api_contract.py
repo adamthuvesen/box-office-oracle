@@ -147,9 +147,7 @@ class TestRequestBodyContract:
         body = resp.json()
         assert body["detail"]["error"] == "INVALID_JSON"
 
-    def test_oversize_body_via_content_length_returns_413(
-        self, client, patched_engine_and_loader
-    ):
+    def test_oversize_body_via_content_length_returns_413(self, client, patched_engine_and_loader):
         # Content-Length larger than the cap is rejected before we even read
         # the body, even if the actual body is small.
         resp = client.post(
@@ -164,9 +162,7 @@ class TestRequestBodyContract:
         # 413 fast-path or the post-read 413 path. Both are spec-compliant.
         assert resp.status_code in (400, 413)
 
-    def test_oversize_body_actual_length_returns_413(
-        self, client, patched_engine_and_loader
-    ):
+    def test_oversize_body_actual_length_returns_413(self, client, patched_engine_and_loader):
         # Force-read path: actual body bytes exceed the cap.
         big_body = b'{"x": "' + b"a" * (MAX_REQUEST_BODY_BYTES + 16) + b'"}'
         resp = client.post(
@@ -187,9 +183,7 @@ class TestPayloadShapeContract:
     """M49: a JSON array / scalar / null is a 400, not a 500."""
 
     @pytest.mark.parametrize("payload", [b"[]", b"42", b'"hi"', b"null", b"true"])
-    def test_non_object_payload_returns_400(
-        self, client, patched_engine_and_loader, payload
-    ):
+    def test_non_object_payload_returns_400(self, client, patched_engine_and_loader, payload):
         resp = client.post(
             "/predict",
             content=payload,
@@ -207,9 +201,7 @@ class TestPayloadShapeContract:
 class TestPredictionErrorMessageContract:
     """M50: the response body must NOT echo the raw exception text."""
 
-    def test_runtime_error_returns_generic_message(
-        self, client, patched_engine_and_loader
-    ):
+    def test_runtime_error_returns_generic_message(self, client, patched_engine_and_loader):
         engine, _loader = patched_engine_and_loader
         secret = "INTERNAL_LEAK_/var/secrets/foo: AccessDenied"
         engine.predict.side_effect = RuntimeError(secret)
@@ -299,11 +291,13 @@ class TestMaxStaleTTL:
         loader = self._make_loader(tmp_path, max_stale_seconds=10)
         # Force the cached model to look ancient.
         loader._last_load_time = datetime.now(UTC) - timedelta(seconds=999)
-        with patch.object(
-            loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
+        with (
+            patch.object(
+                loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
+            ),
+            pytest.raises(ModelLoadError),
         ):
-            with pytest.raises(ModelLoadError):
-                loader.refresh_model_if_needed()
+            loader.refresh_model_if_needed()
         # Cache must be cleared so the next predict re-loads.
         assert loader._current_model is None
         assert loader._current_model_info is None
@@ -352,9 +346,7 @@ class TestPredictionResponseConfig:
         # Count standalone assignments at any indentation. Class body
         # assignments look like "    model_config = ".
         assignment_count = sum(
-            1
-            for line in source.splitlines()
-            if line.lstrip().startswith("model_config =")
+            1 for line in source.splitlines() if line.lstrip().startswith("model_config =")
         )
         assert assignment_count == 1, (
             f"PredictionResponse has {assignment_count} model_config "

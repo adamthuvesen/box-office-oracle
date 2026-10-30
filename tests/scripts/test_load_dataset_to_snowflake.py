@@ -38,7 +38,7 @@ def source_frame() -> pd.DataFrame:
     return pd.DataFrame(data, columns=columns)
 
 
-def _write_parquet(df: pd.DataFrame, tmp_path) -> "object":
+def _write_parquet(df: pd.DataFrame, tmp_path) -> object:
     path = tmp_path / "source.parquet"
     df.to_parquet(path)
     return path
@@ -323,20 +323,3 @@ def test_verify_spot_check_missing_row_raises():
     cursor = _cursor_for(rows=3, nulls=1, spot_rows={})  # no row returned
     with pytest.raises(ValueError, match="expected 1 row, got 0"):
         _loader()._verify(cursor, "DB.RAW.STG", 3, 1, expectations)
-
-
-# --- drop-old gating ---------------------------------------------------------
-
-
-def test_maybe_drop_old_default_does_not_drop():
-    cursor = MagicMock()
-    _loader()._maybe_drop_old(cursor, drop_old=False)
-    cursor.execute.assert_not_called()
-
-
-def test_maybe_drop_old_drops_when_flagged():
-    cursor = MagicMock()
-    _loader()._maybe_drop_old(cursor, drop_old=True)
-    executed = " ".join(str(c.args[0]) for c in cursor.execute.call_args_list)
-    assert "DROP TABLE IF EXISTS" in executed
-    assert "BOX_OFFICE_V3" in executed

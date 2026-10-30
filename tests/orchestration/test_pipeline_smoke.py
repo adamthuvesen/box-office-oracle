@@ -152,9 +152,7 @@ class TestSageMakerIntegration:
     def test_sagemaker_client_initialization(self):
         from box_office.sagemaker.sagemaker_train_job import SageMakerClient
 
-        client = SageMakerClient(
-            region="eu-north-1", role="arn:aws:iam::123456789:role/test-role"
-        )
+        client = SageMakerClient(region="eu-north-1", role="arn:aws:iam::123456789:role/test-role")
 
         assert client is not None
         assert client.region == "eu-north-1"

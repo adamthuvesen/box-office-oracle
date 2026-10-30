@@ -68,9 +68,7 @@ class GenreTransformer(BaseEstimator, TransformerMixin):
 
     def fit(self, X: pd.DataFrame, y=None) -> GenreTransformer:
         genre_lists = X["GENRES"].apply(_split_genre_field)
-        genre_texts = genre_lists.apply(
-            lambda g: "|".join(g).lower() if g else "unknown"
-        )
+        genre_texts = genre_lists.apply(lambda g: "|".join(g).lower() if g else "unknown")
         self.vectorizer.fit(genre_texts)
         super_genres = genre_lists.apply(_map_super_genre)
         top = super_genres.value_counts().index
@@ -81,9 +79,7 @@ class GenreTransformer(BaseEstimator, TransformerMixin):
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         genre_lists = X["GENRES"].apply(_split_genre_field)
-        genre_texts = genre_lists.apply(
-            lambda g: "|".join(g).lower() if g else "unknown"
-        )
+        genre_texts = genre_lists.apply(lambda g: "|".join(g).lower() if g else "unknown")
         mat = self.vectorizer.transform(genre_texts).toarray()
         cols = [f"GENRE_{n}" for n in self.vectorizer.get_feature_names_out()]
         new = pd.DataFrame(mat, columns=cols, index=X.index)

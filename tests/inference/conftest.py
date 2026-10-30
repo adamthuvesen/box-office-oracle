@@ -2,6 +2,7 @@
 
 import pickle
 import tempfile
+from pathlib import Path
 from unittest.mock import Mock
 
 import numpy as np
@@ -42,9 +43,7 @@ def mock_preprocessor():
     # predictor's feature-contract guard sees the expected names and width.
     cols = list(SELECTED_FEATURES)
     pre.get_feature_names = Mock(return_value=cols)
-    pre.transform = Mock(
-        return_value=pd.DataFrame(np.ones((1, len(cols))), columns=cols)
-    )
+    pre.transform = Mock(return_value=pd.DataFrame(np.ones((1, len(cols))), columns=cols))
     return pre
 
 
@@ -63,10 +62,10 @@ def artifact_paths(mock_model, mock_preprocessor, mock_scaler):
             "preprocessor": f"{temp_dir}/feature_preprocessor.pkl",
             "scaler": f"{temp_dir}/feature_scaler.pkl",
         }
-        with open(paths["model"], "wb") as f:
+        with Path(paths["model"]).open("wb") as f:
             pickle.dump(mock_model, f)
-        with open(paths["preprocessor"], "wb") as f:
+        with Path(paths["preprocessor"]).open("wb") as f:
             pickle.dump(mock_preprocessor, f)
-        with open(paths["scaler"], "wb") as f:
+        with Path(paths["scaler"]).open("wb") as f:
             pickle.dump(mock_scaler, f)
         yield paths

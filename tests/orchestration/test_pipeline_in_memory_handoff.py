@@ -74,9 +74,7 @@ def test_sagemaker_training_frames_upload_raw_frame_with_unscaled_release_year()
     data = DataPhaseResult(
         target_column="WORLDWIDE_GROSS",
         X_train_raw=raw,
-        X_train_processed=pd.DataFrame(
-            {"RELEASE_YEAR": [2020, 2021], "A": [10.0, 20.0]}
-        ),
+        X_train_processed=pd.DataFrame({"RELEASE_YEAR": [2020, 2021], "A": [10.0, 20.0]}),
         X_train_scaled=pd.DataFrame({"RELEASE_YEAR": [-1.0, 1.0], "A": [-0.5, 0.5]}),
         y_train_log=pd.Series([1.0, 2.0], name="GROSS_LOG"),
         X_train_shape=(2, 3),

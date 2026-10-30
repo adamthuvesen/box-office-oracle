@@ -6,6 +6,7 @@ import logging
 import os
 import pickle
 import time
+from pathlib import Path
 
 import boto3
 import joblib
@@ -23,7 +24,7 @@ from box_office.ml.model import BoxOfficeXGBoostModel
 from box_office.utils.aws_helpers import parse_s3_uri, resolve_aws_region
 
 try:
-    from smexperiments.experiment_context import load_run_context  # type: ignore
+    from smexperiments.experiment_context import load_run_context  # pyright: ignore[reportMissingImports]
 except ImportError:
     load_run_context = None
 
@@ -31,9 +32,7 @@ except ImportError:
 def setup_logging_once():
     """Configure logging only if not already configured."""
     if not logging.getLogger().handlers:
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-        )
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 setup_logging_once()
@@ -45,9 +44,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # SageMaker channel paths; fall back to local defaults outside SageMaker.
-    parser.add_argument(
-        "--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "./model")
-    )
+    parser.add_argument("--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "./model"))
     parser.add_argument(
         "--train", type=str, default=os.environ.get("SM_CHANNEL_TRAIN", "./data/train")
     )
@@ -70,17 +67,18 @@ def parse_args():
 
     args = parser.parse_args()
 
-    # Custom parameters injected via Estimator.environment.
-    args.cv_folds = int(os.environ.get("cv_folds", "8"))
-    args.end_year = int(os.environ.get("end_year", "2024"))
-    args.backtest_years = int(os.environ.get("backtest_years", "5"))
+    # Custom parameters injected via Estimator.environment. The lowercase names are the
+    # contract with the training job's environment dict (see sagemaker_train_job.py).
+    args.cv_folds = int(os.environ.get("cv_folds", "8"))  # noqa: SIM112
+    args.end_year = int(os.environ.get("end_year", "2024"))  # noqa: SIM112
+    args.backtest_years = int(os.environ.get("backtest_years", "5"))  # noqa: SIM112
     derived_start = args.end_year - args.backtest_years + 1
-    args.start_eval_year = int(os.environ.get("start_eval_year", str(derived_start)))
+    args.start_eval_year = int(os.environ.get("start_eval_year", str(derived_start)))  # noqa: SIM112
 
-    processor_uri = os.environ.get("processor_s3_uri", "None")
+    processor_uri = os.environ.get("processor_s3_uri", "None")  # noqa: SIM112
     args.processor_s3_uri = None if processor_uri == "None" else processor_uri
 
-    scaler_uri = os.environ.get("scaler_s3_uri", "None")
+    scaler_uri = os.environ.get("scaler_s3_uri", "None")  # noqa: SIM112
     args.scaler_s3_uri = None if scaler_uri == "None" else scaler_uri
 
     return args
@@ -92,14 +90,13 @@ def load_data(train_path):
 
     # SageMaker stages a channel as a directory of files.
     try:
-        input_files = os.listdir(train_path)
-        parquet_files = [f for f in input_files if f.endswith(".parquet")]
+        parquet_files = [f.name for f in Path(train_path).iterdir() if f.name.endswith(".parquet")]
         if not parquet_files:
             raise FileNotFoundError(
                 f"No .parquet file found in the training directory: {train_path}"
             )
 
-        data_path = os.path.join(train_path, parquet_files[0])
+        data_path = Path(train_path) / parquet_files[0]
         data = pd.read_parquet(data_path)
         logger.info(f"Loaded data with shape: {data.shape} from {data_path}")
 
@@ -111,9 +108,7 @@ def load_data(train_path):
     target_col = "GROSS_LOG"
 
     if date_col not in data.columns or target_col not in data.columns:
-        raise ValueError(
-            f"Required columns '{date_col}' or '{target_col}' not in dataset."
-        )
+        raise ValueError(f"Required columns '{date_col}' or '{target_col}' not in dataset.")
 
     dates = data[date_col].copy()
     y_train_log = data[target_col]
@@ -128,9 +123,7 @@ def load_data(train_path):
 
     # The cross-validator does integer year comparisons, so coerce upfront.
     if not pd.api.types.is_integer_dtype(dates):
-        logger.warning(
-            f"Date column '{date_col}' is not integer. Attempting conversion."
-        )
+        logger.warning(f"Date column '{date_col}' is not integer. Attempting conversion.")
         dates = dates.astype(int)
 
     return X_train, y_train_log, dates
@@ -174,19 +167,19 @@ def load_preprocessing_artifacts(args):
             "Set processor_s3_uri and scaler_s3_uri environment variables."
         )
 
-    os.makedirs(args.model_dir, exist_ok=True)
+    Path(args.model_dir).mkdir(parents=True, exist_ok=True)
     logger.info("Downloading fitted preprocessing artifacts from S3...")
     aws_region = resolve_aws_region()
     s3_client = boto3.client("s3", region_name=aws_region)
 
     try:
         processor_bucket, processor_key = parse_s3_uri(args.processor_s3_uri)
-        processor_path = os.path.join(args.model_dir, FEATURE_PREPROCESSOR_PKL)
-        s3_client.download_file(processor_bucket, processor_key, processor_path)
+        processor_path = Path(args.model_dir) / FEATURE_PREPROCESSOR_PKL
+        s3_client.download_file(processor_bucket, processor_key, str(processor_path))
 
         scaler_bucket, scaler_key = parse_s3_uri(args.scaler_s3_uri)
-        scaler_path = os.path.join(args.model_dir, FEATURE_SCALER_PKL)
-        s3_client.download_file(scaler_bucket, scaler_key, scaler_path)
+        scaler_path = Path(args.model_dir) / FEATURE_SCALER_PKL
+        s3_client.download_file(scaler_bucket, scaler_key, str(scaler_path))
     except Exception as e:
         raise RuntimeError(
             f"Failed to download preprocessing artifacts: {e}. "
@@ -224,12 +217,14 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
     ``load_preprocessing_artifacts`` and are already staged for the tarball.
     """
 
-    os.makedirs(args.model_dir, exist_ok=True)
-    os.makedirs(args.output_data_dir, exist_ok=True)
+    model_dir = Path(args.model_dir)
+    output_data_dir = Path(args.output_data_dir)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    output_data_dir.mkdir(parents=True, exist_ok=True)
 
     # Pickle preserves the BoxOfficeXGBoostModel wrapper used at inference.
-    model_path = os.path.join(args.model_dir, MODEL_PKL)
-    with open(model_path, "wb") as f:
+    model_path = model_dir / MODEL_PKL
+    with model_path.open("wb") as f:
         pickle.dump(model, f)
     logger.info(f"Final model saved to: {model_path}")
     logger.info(f"Bundled preprocessing artifacts: {processor_path}, {scaler_path}")
@@ -243,13 +238,13 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
             return obj.tolist()
         return obj
 
-    cv_results_path = os.path.join(args.output_data_dir, "cv_results.json")
-    with open(cv_results_path, "w") as f:
+    cv_results_path = output_data_dir / "cv_results.json"
+    with cv_results_path.open("w") as f:
         json.dump(cv_results, f, indent=4, default=convert_for_json)
     logger.info(f"CV results saved to: {cv_results_path}")
 
-    oof_results_path = os.path.join(args.output_data_dir, "oof_evaluation.json")
-    with open(oof_results_path, "w") as f:
+    oof_results_path = output_data_dir / "oof_evaluation.json"
+    with oof_results_path.open("w") as f:
         json.dump(oof_results, f, indent=4, default=convert_for_json)
     logger.info(f"OOF evaluation results saved to: {oof_results_path}")
 
@@ -337,10 +332,8 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
         },
     }
 
-    comprehensive_metrics_file = os.path.join(
-        args.output_data_dir, "comprehensive_metrics.json"
-    )
-    with open(comprehensive_metrics_file, "w") as f:
+    comprehensive_metrics_file = output_data_dir / "comprehensive_metrics.json"
+    with comprehensive_metrics_file.open("w") as f:
         json.dump(detailed_metrics, f, indent=2, default=convert_for_json)
     logger.info(f"Detailed metrics saved to: {comprehensive_metrics_file}")
 
@@ -353,7 +346,7 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
         model_fold_results=cv_results.get("fold_results", []),
         baseline_results=[],
     )
-    per_year_path = os.path.join(args.output_data_dir, "per_year_model_metrics.json")
+    per_year_path = output_data_dir / "per_year_model_metrics.json"
     per_year_model_table.to_json(per_year_path, orient="records", indent=2)
     logger.info(f"Per-year model metrics saved to: {per_year_path}")
 
@@ -487,15 +480,11 @@ def train(args):
     # Final model trains on the full frame engineered + scaled with the
     # pipeline-fitted artifacts (correct for serving: at prediction time every
     # training row is legitimately past).
-    preprocessor, scaler, processor_path, scaler_path = load_preprocessing_artifacts(
-        args
-    )
+    preprocessor, scaler, processor_path, scaler_path = load_preprocessing_artifacts(args)
     X_train_scaled = transform_for_final_fit(X_train, preprocessor, scaler)
     final_model = train_final_model(X_train_scaled, y_train_log, cv_results, args)
 
-    save_results(
-        final_model, cv_results, oof_results, args, processor_path, scaler_path
-    )
+    save_results(final_model, cv_results, oof_results, args, processor_path, scaler_path)
 
     logger.info("Training script completed successfully!")
 

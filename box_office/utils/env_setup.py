@@ -12,9 +12,7 @@ from dotenv import load_dotenv
 
 def configure_environment():
     """Suppress noisy third-party warnings and load .env. Call once at entrypoint."""
-    warnings.filterwarnings(
-        "ignore", message=".*insecure_mode.*", category=DeprecationWarning
-    )
+    warnings.filterwarnings("ignore", message=".*insecure_mode.*", category=DeprecationWarning)
     warnings.filterwarnings(
         "ignore", message=".*is_datetime64tz_dtype.*", category=DeprecationWarning
     )
@@ -23,9 +21,7 @@ def configure_environment():
         message=".*Attempting to mutate a Context.*",
         category=DeprecationWarning,
     )
-    warnings.filterwarnings(
-        "ignore", message=".*found in sys.modules.*", category=RuntimeWarning
-    )
+    warnings.filterwarnings("ignore", message=".*found in sys.modules.*", category=RuntimeWarning)
 
     os.environ.setdefault("SAGEMAKER_DISABLE_CONFIG", "1")
     os.environ.setdefault("SAGEMAKER_CONFIG_FILE", "/dev/null")

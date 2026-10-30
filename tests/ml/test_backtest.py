@@ -35,9 +35,7 @@ def synthetic_yearly_movies() -> pd.DataFrame:
 class TestLogBudgetBaseline:
     def test_fits_and_predicts(self, synthetic_yearly_movies):
         df = synthetic_yearly_movies
-        baseline = LogBudgetBaseline().fit(
-            df["production_budget"], np.log1p(df["worldwide_gross"])
-        )
+        baseline = LogBudgetBaseline().fit(df["production_budget"], np.log1p(df["worldwide_gross"]))
         preds = baseline.predict_log(df["production_budget"])
         assert preds.shape == (len(df),)
         assert np.all(np.isfinite(preds))
@@ -147,9 +145,7 @@ class TestAssemblePerYearTable:
             "model_median_ape",
         }
         assert (table["gain_r2"] == table["model_r2"] - table["baseline_r2"]).all()
-        assert (
-            table["gain_r2_log"] == table["model_r2_log"] - table["baseline_r2_log"]
-        ).all()
+        assert (table["gain_r2_log"] == table["model_r2_log"] - table["baseline_r2_log"]).all()
 
     def test_skips_failed_folds(self):
         fold_results = [

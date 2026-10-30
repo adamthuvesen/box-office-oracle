@@ -41,13 +41,10 @@ from box_office.movie_data_quality import (
 
 # The local-retrain track is canonical (v9 contract); its per-year backtest
 # table is the one the current schema version is stamped against.
-DEFAULT_PER_YEAR_TABLE = Path(
-    "docs/internal/experiments/local_retrain/per_year_table.json"
-)
+DEFAULT_PER_YEAR_TABLE = Path("docs/internal/experiments/local_retrain/per_year_table.json")
 
 DEFAULT_INPUT = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/"
-    "tmdb_budget_wikipedia_5m_1980_2026.parquet"
+    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet"
 )
 DEFAULT_PREDICTIONS = Path("data/generated/training/predictions_all_1980_2026.parquet")
 
@@ -141,9 +138,7 @@ def unreliable_gross_ids(predictions_path: Path) -> set[int]:
             "Run `uv run python scripts/score_all_movies.py` first."
         )
     preds = pd.read_parquet(predictions_path)
-    ids = {
-        int(tmdb_id) for tmdb_id in preds.loc[preds["actual_gross"].isna(), "tmdb_id"]
-    }
+    ids = {int(tmdb_id) for tmdb_id in preds.loc[preds["actual_gross"].isna(), "tmdb_id"]}
     print(f"{len(ids)} movies have no reliable gross (exported as null)")
     return ids
 
@@ -197,18 +192,14 @@ def _clean_financials(row: dict[str, Any], no_gross_ids: set[int]) -> tuple[Any,
 
     vote_count = row.get("vote_count")
     imdb_id = _optional_str(row.get("imdb_id"))
-    has_no_votes = "vote_count" in row and (
-        _is_missing(vote_count) or int(vote_count) == 0
-    )
+    has_no_votes = "vote_count" in row and (_is_missing(vote_count) or int(vote_count) == 0)
     if gross is not None and gross >= 1_000_000 and imdb_id is None and has_no_votes:
         gross = None
 
     return budget, gross
 
 
-def build_movie_records(
-    df: pd.DataFrame, no_gross_ids: set[int]
-) -> list[dict[str, Any]]:
+def build_movie_records(df: pd.DataFrame, no_gross_ids: set[int]) -> list[dict[str, Any]]:
     df, _ = clean_movie_source_data(df)
     ordered = df.sort_values("worldwide_gross", ascending=False, na_position="last")
 
@@ -230,9 +221,7 @@ def build_movie_records(
                 "mpaa": _optional_str(row["mpaa"]),
                 "runtime": runtime if runtime else None,
                 "production_budget": budget,
-                "production_budget_source": _optional_str(
-                    row["production_budget_source"]
-                ),
+                "production_budget_source": _optional_str(row["production_budget_source"]),
                 "production_company": _optional_str(row["production_company"]),
                 "overview": _optional_str(row["overview"]),
                 "tagline": _optional_str(row["tagline"]),
@@ -281,9 +270,7 @@ def build_model_meta(api_url: str | None, per_year_table: Path) -> dict[str, Any
 def write_json(path: Path, payload: Any) -> None:
     # allow_nan=False: a NaN reaching this point is a sanitization bug, and
     # bare NaN would silently break JSON.parse in the web app.
-    path.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
-    )
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
 
 
 def main() -> None:
@@ -305,9 +292,7 @@ def main() -> None:
     write_json(out_dir / "movies.json", movies)
     print(f"wrote {out_dir / 'movies.json'} ({len(movies)} movies)")
 
-    write_json(
-        out_dir / "model_meta.json", build_model_meta(api_url, args.per_year_table)
-    )
+    write_json(out_dir / "model_meta.json", build_model_meta(api_url, args.per_year_table))
     print(f"wrote {out_dir / 'model_meta.json'}")
 
 

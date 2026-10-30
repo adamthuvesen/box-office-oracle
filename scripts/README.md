@@ -43,5 +43,4 @@ Both run via `make web-data`.
 
 | Script                      | Purpose                                                      |
 | --------------------------- | ------------------------------------------------------------ |
-| `experiment_ip_features.py` | Read-only experiment harness: do IP features help the model? |
 | `no_emoji_in_logs.py`       | Pre-commit hook: reject emoji in `logger.*` / `print()`      |
