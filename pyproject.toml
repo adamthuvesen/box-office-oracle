@@ -73,38 +73,13 @@ dev = [
     "pytest-cov==7.1.0",
     "ruff==0.15.20",
     "pre-commit>=3.0.0",
-
-    # Jupyter & Notebooks
-    "jupyter==1.1.1",
-    "ipykernel==7.2.0",
-    "ipython==9.14.0",
-
-    # Data & Plotting
-    "plotly==6.7.0",
-
-    # Machine Learning
-    "optuna==4.9.0",
-    "lightgbm==4.6.0",
-    "catboost==1.2.10",
-
-    # PyTorch
-    "torch==2.12.0",
-
-    # ML Explainability
-    "shap==0.46.0",
+    "httpx==0.28.1",
 ]
 
 inference = [
     "fastapi==0.136.3",
     "mangum==0.21.0",
     "uvicorn==0.48.0",
-]
-
-test = [
-    "pytest>=9.0.3",
-    "pytest-cov>=7.1.0",
-    "pytest-asyncio>=1.0",
-    "ruff==0.15.20",
 ]
 
 
@@ -124,7 +99,7 @@ Repository = "https://github.com/adamthuvesen/box-office-oracle"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["box_office*"]
-exclude = ["tests*", "analysis*", "artifacts*", "docs*", "infrastructure*", "transformations*", "data*"]
+exclude = ["tests*", "artifacts*", "docs*", "infrastructure*", "transformations*", "data*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yml", "*.yaml", "*.sql", "*.json", "*.txt"]

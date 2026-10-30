@@ -125,7 +125,6 @@ class TestPredictionRequest:
             "actors": ["Tom Hardy", "Anne Hathaway"],
             "production_company": "Warner Bros",
             "return_confidence": False,
-            "model_version": "v2.1",
         }
 
         request = PredictionRequest(**request_data)

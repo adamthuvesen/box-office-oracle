@@ -10,6 +10,16 @@ import pytest
 from box_office.ingestion import curated_movies as cm
 from box_office.ingestion.tmdb_rich_backfill import BackfillConfig, flat_columns
 
+# Columns the budget parquet adds on top of the 37-column flat schema.
+BUDGET_EXTRA_COLUMNS = (
+    "production_budget_original",
+    "production_budget_source",
+    "production_budget_was_missing",
+    "wikidata_budget_usd",
+    "wikidata_item",
+    "wikidata_label",
+)
+
 
 def _payload(
     tmdb_id: int,
@@ -84,7 +94,7 @@ def _raw(tmdb_id: int, **kwargs: Any) -> dict[str, Any]:
 
 
 def _target_columns() -> list[str]:
-    return flat_columns() + list(cm.BUDGET_EXTRA_COLUMNS)
+    return flat_columns() + list(BUDGET_EXTRA_COLUMNS)
 
 
 def test_build_flat_row_uses_tmdb_budget() -> None:

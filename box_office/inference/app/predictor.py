@@ -111,9 +111,6 @@ class PredictionRequest(BaseModel):
     return_confidence: bool | None = Field(
         default=True, description="Return confidence interval"
     )
-    model_version: str | None = Field(
-        default=None, description="Specific model version to use"
-    )
 
     @field_validator("genre")
     @classmethod

@@ -46,7 +46,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra test --extra inference --frozen
+        uv sync --extra dev --extra inference --frozen
 
     - name: Check Python lint and formatting
       run: |

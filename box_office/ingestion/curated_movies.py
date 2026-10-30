@@ -54,16 +54,6 @@ SOURCE_CSV = DATASET_DIR / "tmdb_budget_wikipedia_5m_1980_2026.csv"
 RAW_JSONL = DATASET_DIR / "tmdb_rich_raw_5m_1980_2026.jsonl"
 AUDIT_MANIFEST = DATASET_DIR / "curated_movies_manifest_1980_2026.json"
 
-# Columns the budget parquet adds on top of the 37-column flat schema.
-BUDGET_EXTRA_COLUMNS = (
-    "production_budget_original",
-    "production_budget_source",
-    "production_budget_was_missing",
-    "wikidata_budget_usd",
-    "wikidata_item",
-    "wikidata_label",
-)
-
 MIN_RUNTIME_MINUTES = 60
 
 

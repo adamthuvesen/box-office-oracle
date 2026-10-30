@@ -321,138 +321,130 @@ async def predict(request: Request) -> PredictionResponse:
         "X-Correlation-ID", f"pred_{int(start_time * 1000000)}"
     )
 
+    request_data = await _read_json_object_body(request, correlation_id)
+
+    logger.info(
+        f"Prediction request received - {correlation_id}",
+        extra={
+            "correlation_id": correlation_id,
+            "features_count": len(request_data),
+            "has_budget": "budget" in request_data,
+            "has_runtime": "runtime" in request_data,
+        },
+    )
+
+    runtime = get_runtime()
+
     try:
-        request_data = await _read_json_object_body(request, correlation_id)
+        await asyncio.to_thread(runtime.ensure_ready)
+    except (
+        ModelLoadError,
+        ArtifactIntegrityError,
+        FeatureSchemaVersionMismatch,
+    ) as e:
+        logger.error(f"Model refresh failed - {correlation_id}: {str(e)}")
+        _raise_prediction_error(
+            status_code=503,
+            error="SERVICE_UNAVAILABLE",
+            message="Model refresh failed",
+            correlation_id=correlation_id,
+        )
+
+    try:
+        validated_request = runtime.validate_input(request_data)
+    except ValidationError as e:
+        logger.warning(f"Input validation failed - {correlation_id}: {str(e)}")
+        _raise_prediction_error(
+            status_code=400,
+            error="INVALID_INPUT",
+            message="Input validation failed",
+            correlation_id=correlation_id,
+            details=e.errors(),
+        )
+
+    try:
+        response = await asyncio.to_thread(runtime.predict, validated_request)
 
         logger.info(
-            f"Prediction request received - {correlation_id}",
+            f"Prediction completed - {correlation_id}",
             extra={
                 "correlation_id": correlation_id,
-                "features_count": len(request_data),
-                "has_budget": "budget" in request_data,
-                "has_runtime": "runtime" in request_data,
+                "prediction": response.prediction,
+                "model_id": response.model_id,
+                "model_version": response.model_version,
+                "processing_time_ms": response.processing_time_ms,
             },
         )
 
-        runtime = get_runtime()
+        return response
 
-        try:
-            await asyncio.to_thread(runtime.ensure_ready)
-        except (
-            ModelLoadError,
-            ArtifactIntegrityError,
-            FeatureSchemaVersionMismatch,
-        ) as e:
-            logger.error(f"Model refresh failed - {correlation_id}: {str(e)}")
-            _raise_prediction_error(
-                status_code=503,
-                error="SERVICE_UNAVAILABLE",
-                message="Model refresh failed",
-                correlation_id=correlation_id,
-            )
-
-        try:
-            validated_request = runtime.validate_input(request_data)
-        except ValidationError as e:
-            logger.warning(f"Input validation failed - {correlation_id}: {str(e)}")
-            _raise_prediction_error(
-                status_code=400,
-                error="INVALID_INPUT",
-                message="Input validation failed",
-                correlation_id=correlation_id,
-                details=e.errors(),
-            )
-
-        try:
-            response = await asyncio.to_thread(runtime.predict, validated_request)
-
-            logger.info(
-                f"Prediction completed - {correlation_id}",
-                extra={
-                    "correlation_id": correlation_id,
-                    "prediction": response.prediction,
-                    "model_id": response.model_id,
-                    "model_version": response.model_version,
-                    "processing_time_ms": response.processing_time_ms,
-                },
-            )
-
-            return response
-
-        except LiteralEvalTooLarge as e:
-            # Bounded literal-eval rejected an oversize field. This is a client
-            # input problem (a 400), not a server bug.
-            logger.warning(f"Oversize input rejected - {correlation_id}: {e}")
-            _raise_prediction_error(
-                status_code=400,
-                error="INPUT_TOO_LARGE",
-                message=str(e),
-                correlation_id=correlation_id,
-            )
-        except RuntimeError as e:
-            # Don't leak internals to clients; correlation_id points ops at the logs.
-            logger.error(
-                f"Prediction failed - {correlation_id}: {str(e)}",
-                exc_info=True,
-            )
-            _raise_prediction_error(
-                status_code=500,
-                error="PREDICTION_FAILED",
-                message=(
-                    f"Prediction failed; check logs for correlation_id {correlation_id}"
-                ),
-                correlation_id=correlation_id,
-            )
-
-    except HTTPException:
-        raise
+    except LiteralEvalTooLarge as e:
+        # Bounded literal-eval rejected an oversize field. This is a client
+        # input problem (a 400), not a server bug.
+        logger.warning(f"Oversize input rejected - {correlation_id}: {e}")
+        _raise_prediction_error(
+            status_code=400,
+            error="INPUT_TOO_LARGE",
+            message=str(e),
+            correlation_id=correlation_id,
+        )
+    except RuntimeError as e:
+        # Don't leak internals to clients; correlation_id points ops at the logs.
+        logger.error(
+            f"Prediction failed - {correlation_id}: {str(e)}",
+            exc_info=True,
+        )
+        _raise_prediction_error(
+            status_code=500,
+            error="PREDICTION_FAILED",
+            message=(
+                f"Prediction failed; check logs for correlation_id {correlation_id}"
+            ),
+            correlation_id=correlation_id,
+        )
 
 
 @app.get("/model/info", tags=["model"])
 async def get_model_info() -> dict[str, Any]:
     """Get information about the currently loaded model."""
-    try:
-        runtime = get_runtime()
-        engine = runtime._engine
+    runtime = get_runtime()
+    engine = runtime._engine
 
-        if not engine.is_loaded():
-            model_info = runtime._loader.get_latest_approved_model_info()
+    if not engine.is_loaded():
+        model_info = runtime._loader.get_latest_approved_model_info()
 
-            if not model_info:
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "error": "NO_MODEL_AVAILABLE",
-                        "message": "No approved model available",
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    },
-                )
+        if not model_info:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "NO_MODEL_AVAILABLE",
+                    "message": "No approved model available",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
 
-            normalized = ModelInfo.from_registry_package(model_info)
-            return {
-                "model_id": normalized.model_id,
-                "version": normalized.version,
-                "status": normalized.status,
-                "created_at": normalized.created_at,
-                "metrics": normalized.metrics,
-                "loaded": False,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-
-        model_info = engine.get_model_info()
+        normalized = ModelInfo.from_registry_package(model_info)
         return {
-            "model_id": model_info.model_id,
-            "version": model_info.version,
-            "status": model_info.status,
-            "created_at": model_info.created_at,
-            "metrics": model_info.metrics,
-            "framework": model_info.framework,
-            "loaded": True,
+            "model_id": normalized.model_id,
+            "version": normalized.version,
+            "status": normalized.status,
+            "created_at": normalized.created_at,
+            "metrics": normalized.metrics,
+            "loaded": False,
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-    except HTTPException:
-        raise
+    model_info = engine.get_model_info()
+    return {
+        "model_id": model_info.model_id,
+        "version": model_info.version,
+        "status": model_info.status,
+        "created_at": model_info.created_at,
+        "metrics": model_info.metrics,
+        "framework": model_info.framework,
+        "loaded": True,
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
 
 
 # Module-scope Mangum adapter. Built once on cold start and reused across warm

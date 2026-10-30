@@ -1,4 +1,5 @@
 import json
+import numbers
 import time
 from datetime import UTC, datetime
 
@@ -16,7 +17,6 @@ from box_office.ml.model_registry.aws_model_registry import (
 )
 from box_office.sagemaker import sagemaker_train_job
 from box_office.utils.aws_helpers import BOTO3_CONFIG
-from box_office.utils.format_helpers import safe_format
 
 
 @task(
@@ -169,16 +169,22 @@ def download_and_analyze_results(estimator, sagemaker_client):
 
     if "cv_results" in performance_metrics:
         cv = performance_metrics["cv_results"]
+        mean_cv_mae = cv.get("mean_cv_mae", "N/A")
+        mean_cv_mae_text = (
+            f"{mean_cv_mae:.4f}" if isinstance(mean_cv_mae, numbers.Real) else "N/A"
+        )
         logger.info("Cross-Validation Results:")
-        logger.info(f"Mean CV MAE: {safe_format(cv.get('mean_cv_mae', 'N/A'), '.4f')}")
+        logger.info(f"Mean CV MAE: {mean_cv_mae_text}")
         if "cv_scores" in cv:
             for i, score in enumerate(cv["cv_scores"]):
                 logger.info(f"Fold {i + 1}: {score:.4f}")
 
     if "oof_results" in performance_metrics:
         oof = performance_metrics["oof_results"]
+        oof_r2 = oof.get("oof_r2", "N/A")
+        oof_r2_text = f"{oof_r2:.4f}" if isinstance(oof_r2, numbers.Real) else "N/A"
         logger.info("Out-of-Fold Evaluation:")
-        logger.info(f"OOF R²: {safe_format(oof.get('oof_r2', 'N/A'), '.4f')}")
+        logger.info(f"OOF R²: {oof_r2_text}")
 
     if performance_metrics.get("training_duration_seconds"):
         duration = performance_metrics["training_duration_seconds"]

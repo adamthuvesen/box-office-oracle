@@ -85,7 +85,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --extra test --frozen
+          uv sync --extra dev --frozen
 
       - name: Setup Snowflake Private Key for Tests
         env:
