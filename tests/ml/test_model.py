@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from box_office.ml.cv import ModelEvaluator
+from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
 from box_office.ml.model import BoxOfficeXGBoostModel
 
 
@@ -56,15 +57,16 @@ class TestModelEvaluator(unittest.TestCase):
     """Test ModelEvaluator utility class."""
 
     def test_evaluate_oof_performance_basic(self):
-        cv_results = {"oof_predictions": {"0": 2.0, "1": 3.0, "2": 4.0}}
+        cv_results = CrossValidationResults.model_construct(
+            oof_predictions={"0": 2.0, "1": 3.0, "2": 4.0}
+        )
 
         y_train_log = pd.Series([1.8, 3.2, 3.9], index=[0, 1, 2])
 
         result = ModelEvaluator.evaluate_oof_performance(cv_results, y_train_log)
 
-        self.assertIsInstance(result, dict)
-        self.assertIn("oof_r2", result)
-        self.assertIn("oof_mae", result)
+        self.assertIsInstance(result, OofEvaluation)
+        self.assertEqual(result.num_oof_samples, 3)
 
 
 if __name__ == "__main__":

@@ -436,7 +436,7 @@ class TestPredictionEngine:
                 model_path=model_path,
                 preprocessor_path=preprocessor_path,
                 scaler_path=scaler_path,
-                model_metadata=sample_model_metadata,
+                model_info=ModelInfo(**sample_model_metadata),
             )
 
             assert prediction_engine.model is not None
@@ -454,7 +454,7 @@ class TestPredictionEngine:
                 model_path="/nonexistent/model.pkl",
                 preprocessor_path="/nonexistent/preprocessor.pkl",
                 scaler_path="/nonexistent/scaler.pkl",
-                model_metadata=sample_model_metadata,
+                model_info=ModelInfo(**sample_model_metadata),
             )
 
     def test_is_loaded(self, prediction_engine, mock_model, mock_preprocessor, mock_scaler):
@@ -823,7 +823,7 @@ class TestPredictionEngineIntegration:
                 model_path=model_path,
                 preprocessor_path=preprocessor_path,
                 scaler_path=scaler_path,
-                model_metadata=model_metadata,
+                model_info=ModelInfo(**model_metadata),
             )
 
             request_data = {

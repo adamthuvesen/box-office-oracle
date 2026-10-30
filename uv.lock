@@ -213,23 +213,13 @@ source = { editable = "." }
 dependencies = [
     { name = "boto3" },
     { name = "botocore" },
-    { name = "cryptography" },
-    { name = "dbt-core" },
-    { name = "dbt-snowflake" },
     { name = "joblib" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "prefect" },
-    { name = "prefect-dbt" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "sagemaker" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "snowflake-connector-python", extra = ["pandas"] },
     { name = "xgboost" },
 ]
 
@@ -248,14 +238,26 @@ inference = [
     { name = "mangum" },
     { name = "uvicorn" },
 ]
+train = [
+    { name = "cryptography" },
+    { name = "dbt-core" },
+    { name = "dbt-snowflake" },
+    { name = "prefect" },
+    { name = "prefect-dbt" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "sagemaker" },
+    { name = "snowflake-connector-python", extra = ["pandas"] },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = "==1.42.90" },
     { name = "botocore", specifier = "==1.42.90" },
-    { name = "cryptography", specifier = "==46.0.7" },
-    { name = "dbt-core", specifier = "==1.12.6" },
-    { name = "dbt-snowflake", specifier = "==1.12.5" },
+    { name = "cryptography", marker = "extra == 'train'", specifier = "==46.0.7" },
+    { name = "dbt-core", marker = "extra == 'train'", specifier = "==1.12.6" },
+    { name = "dbt-snowflake", marker = "extra == 'train'", specifier = "==1.12.5" },
     { name = "fastapi", marker = "extra == 'inference'", specifier = "==0.136.3" },
     { name = "httpx", marker = "extra == 'dev'", specifier = "==0.28.1" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = "==2.16" },
@@ -264,25 +266,25 @@ requires-dist = [
     { name = "numpy", specifier = "==2.5.4" },
     { name = "pandas", specifier = "==2.3.3" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
-    { name = "prefect", specifier = "==3.7.3" },
-    { name = "prefect-dbt", specifier = "==0.7.24" },
+    { name = "prefect", marker = "extra == 'train'", specifier = "==3.7.3" },
+    { name = "prefect-dbt", marker = "extra == 'train'", specifier = "==0.7.24" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pydantic-settings", specifier = "==2.14.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "==9.0.3" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = "==7.1.0" },
-    { name = "python-dotenv", specifier = "==1.2.2" },
-    { name = "pyyaml", specifier = "==6.0.3" },
-    { name = "requests", specifier = "==2.34.2" },
+    { name = "python-dotenv", marker = "extra == 'train'", specifier = "==1.2.2" },
+    { name = "pyyaml", marker = "extra == 'train'", specifier = "==6.0.3" },
+    { name = "requests", marker = "extra == 'train'", specifier = "==2.34.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.17.4" },
-    { name = "sagemaker", specifier = "==2.257.7" },
+    { name = "sagemaker", marker = "extra == 'train'", specifier = "==2.257.7" },
     { name = "scikit-learn", specifier = "==1.7.2" },
     { name = "scipy", specifier = "==1.18.1" },
-    { name = "snowflake-connector-python", extras = ["pandas"], specifier = "==4.6.0" },
+    { name = "snowflake-connector-python", extras = ["pandas"], marker = "extra == 'train'", specifier = "==4.6.0" },
     { name = "uvicorn", marker = "extra == 'inference'", specifier = "==0.48.0" },
     { name = "xgboost", specifier = "==3.2.0" },
 ]
-provides-extras = ["dev", "inference"]
+provides-extras = ["dev", "inference", "train"]
 
 [[package]]
 name = "burner-redis"

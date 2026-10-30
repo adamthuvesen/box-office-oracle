@@ -147,12 +147,15 @@ class PredictionResponse(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    model_config = {"protected_namespaces": ()}
+    """The serving model's identity and registry metrics."""
+
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
+
     model_id: str
     version: int
-    status: str
-    created_at: str
-    metrics: dict[str, float]
+    status: str = "unknown"
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    metrics: dict[str, float] = Field(default_factory=dict)
     framework: str = "scikit-learn"
 
     @classmethod
@@ -186,7 +189,7 @@ class PredictionEngine:
         model_path: str,
         preprocessor_path: str,
         scaler_path: str,
-        model_metadata: dict[str, Any],
+        model_info: ModelInfo,
     ):
         try:
             logger.info(f"Loading model artifacts from {model_path}")
@@ -200,14 +203,7 @@ class PredictionEngine:
             self.scaler = joblib.load(scaler_path)
             logger.info("Feature scaler loaded successfully")
 
-            self.model_info = ModelInfo(
-                model_id=model_metadata.get("model_id", "unknown"),
-                version=model_metadata.get("version", 1),
-                status=model_metadata.get("status", "unknown"),
-                created_at=model_metadata.get("created_at", datetime.now(UTC).isoformat()),
-                metrics=model_metadata.get("metrics", {}),
-                framework=model_metadata.get("framework", "scikit-learn"),
-            )
+            self.model_info = model_info
 
             self._is_loaded = True
             logger.info(

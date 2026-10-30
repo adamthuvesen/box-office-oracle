@@ -120,13 +120,9 @@ class TestOOFCollisionDetection:
             max_depth=2,
         )
 
-        assert "oof_records" in cv_results
-        records = cv_results["oof_records"]
-        # Each record carries fold + idx + pred.
-        for rec in records:
-            assert "fold" in rec and "idx" in rec and "pred" in rec
+        records = cv_results.oof_records
         # No silent dedup: (fold, idx) pairs are unique by construction.
-        seen = {(r["fold"], r["idx"]) for r in records}
+        seen = {(r.fold, r.idx) for r in records}
         assert len(seen) == len(records)
 
     def test_duplicate_fold_idx_pairs_raise(self):
@@ -149,78 +145,6 @@ class TestOOFCollisionDetection:
         with pytest.raises(OOFIndexCollision, match=r"\(1, 7\)"):
             if key in seen:
                 raise OOFIndexCollision(f"Duplicate (fold, idx) pair detected: {key}")
-
-
-# ---------------------------------------------------------------------------
-# Requirement: Cross-validation result keys SHALL match the validator contract
-# ---------------------------------------------------------------------------
-
-
-class TestCVResultKeyAlignment:
-    """Spec: CV result keys SHALL match the validator contract."""
-
-    def _build_cv_results(self, n_folds: int = 3) -> dict:
-        return {
-            "mean_cv_mae": 0.5,
-            "std_cv_mae": 0.05,
-            "mean_cv_rmsle": 0.4,
-            "std_cv_rmsle": 0.04,
-            "cv_scores": [0.5, 0.55, 0.45][:n_folds],
-            "cv_rmsle_scores": [0.4, 0.42, 0.38][:n_folds],
-            "mean_best_iteration": 100,
-            "fold_results": [
-                {
-                    "fold_number": i + 1,
-                    "eval_year": 2020 + i,
-                    "best_iteration": 100 + i,
-                    "mae_score": 0.5,
-                    "rmsle_score": 0.4,
-                    "train_samples": 100,
-                    "val_samples": 50,
-                    "error": None,
-                }
-                for i in range(n_folds)
-            ],
-            "oof_predictions": {},
-            "oof_records": [],
-            "feature_importances": [0.1, 0.2],
-            "feature_names": ["f1", "f2"],
-        }
-
-    def test_cv_summary_log_uses_cv_scores(self):
-        """Spec scenario: CV summary log shows non-empty fold scores.
-
-        Source the cv_folds count from the actual validator key
-        (``cv_results.get('cv_scores', [])``). With three folds the fold count
-        must be 3.
-        """
-        cv_results = self._build_cv_results(n_folds=3)
-        cv_folds_read = len(cv_results.get("cv_scores", []))
-        assert cv_folds_read == 3, (
-            "Trainer must read 'cv_scores' (validator's actual key), not "
-            "the absent 'fold_scores' which would produce 0"
-        )
-
-    def test_comprehensive_metrics_uses_validator_keys(self):
-        """Spec scenario: comprehensive_metrics.json contains populated CV arrays.
-
-        Build the metrics dict the same way ``save_results`` does (post-fix)
-        and verify the arrays are the right length.
-        """
-        cv_results = self._build_cv_results(n_folds=3)
-        # Re-create the dict construction logic that lives in save_results.
-        detailed = {
-            "individual_fold_scores": cv_results.get("cv_scores", []),
-            "individual_rmsle_scores": cv_results.get("cv_rmsle_scores", []),
-            "individual_best_iterations": [
-                fr.get("best_iteration")
-                for fr in cv_results.get("fold_results", [])
-                if fr.get("best_iteration") is not None
-            ],
-        }
-        assert len(detailed["individual_fold_scores"]) == 3
-        assert len(detailed["individual_rmsle_scores"]) == 3
-        assert len(detailed["individual_best_iterations"]) == 3
 
 
 # ---------------------------------------------------------------------------

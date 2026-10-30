@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import pandas as pd
@@ -28,18 +27,19 @@ from box_office.ml.backtest import (
     compute_baseline_per_year,
     render_metrics_table_markdown,
 )
+from box_office.ml.metrics_models import CrossValidationResults
 
 
 def build_report(
     *,
     raw_df: pd.DataFrame,
-    cv_results: dict,
+    cv_results: CrossValidationResults,
     target_col: str,
     budget_col: str,
     year_col: str,
 ) -> pd.DataFrame:
-    fold_results = cv_results.get("fold_results", [])
-    eval_years = [int(f["eval_year"]) for f in fold_results if f.get("error") is None]
+    fold_results = cv_results.fold_results
+    eval_years = [f.eval_year for f in fold_results]
     baseline_results = compute_baseline_per_year(
         raw_df,
         target_col=target_col,
@@ -73,7 +73,7 @@ def main() -> None:
         if args.raw_data.suffix == ".parquet"
         else pd.read_csv(args.raw_data)
     )
-    cv_results = json.loads(args.cv_results.read_text())
+    cv_results = CrossValidationResults.model_validate_json(args.cv_results.read_text())
 
     table = build_report(
         raw_df=raw_df,

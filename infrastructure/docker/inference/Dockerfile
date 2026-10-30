@@ -11,9 +11,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 COPY pyproject.toml uv.lock README.md ./
 COPY box_office/ ./box_office/
 
-# Install dependencies into a dedicated target directory so the runtime stage
+# Install the locked serving closure (core dependencies plus the `inference`
+# extra, never `train`) into a dedicated target directory, so the runtime stage
 # copies only runtime deps.
-RUN uv pip install --target /opt/python ".[inference]"
+RUN uv export --frozen --no-dev --extra inference --no-emit-project --output-file /tmp/requirements.txt \
+ && uv pip install --target /opt/python --requirement /tmp/requirements.txt \
+ && uv pip install --target /opt/python --no-deps .
 
 # Stage 2: Runtime — copy only the dedicated target tree, not the builder's
 # system site-packages or /var/lang/bin.

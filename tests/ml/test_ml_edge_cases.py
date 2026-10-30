@@ -56,9 +56,7 @@ class TestCrossValidationIndexHandling:
         )
 
         # Verify results are valid
-        assert "mean_cv_mae" in cv_results
-        assert "oof_predictions" in cv_results
-        assert cv_results["mean_cv_mae"] > 0
+        assert cv_results.mean_cv_mae > 0
 
     def test_oof_predictions_align_with_source_rows(self):
         """OOF predictions preserve their source-row alignment."""
@@ -104,7 +102,7 @@ class TestCrossValidationIndexHandling:
         # underlying date should yield a year >= start_eval_year — i.e. it
         # was ACTUALLY a validation row, not training data leaking through.
         dates_reset = dates.reset_index(drop=True)
-        for idx_str in cv_results["oof_predictions"]:
+        for idx_str in cv_results.oof_predictions:
             pos = int(idx_str)
             assert dates_reset.iloc[pos] >= 2020, (
                 f"OOF prediction at positional idx {pos} maps to date "

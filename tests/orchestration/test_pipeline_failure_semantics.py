@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -63,8 +61,8 @@ def _make_synthetic_cv_dataset(years=(2018, 2019, 2020, 2021)):
     return X, y, dates
 
 
-def test_cv_one_fold_fails_others_succeed(caplog):
-    """A single fold raising must not abort the run; the failure is logged."""
+def test_cv_one_failed_fold_fails_the_run():
+    """A partial CV scores a different window, so one failed fold fails the run."""
     X, y, dates = _make_synthetic_cv_dataset()
     cv = TimeSeriesCrossValidator(
         cv_folds=10,
@@ -73,25 +71,16 @@ def test_cv_one_fold_fails_others_succeed(caplog):
         early_stopping_rounds=5,
     )
 
-    with caplog.at_level(logging.ERROR, logger="box_office.ml.model"):
-        results = cv.cross_validate(
+    with pytest.raises(CrossValidationFailed, match="eval_year=2020") as excinfo:
+        cv.cross_validate(
             model_class=lambda **kw: _FlakyModel(fail_when_eval_year=2020, **kw),
             X_train=X,
             y_train_log=y,
             dates=dates,
         )
 
-    fold_results = results["fold_results"]
-    successful = [r for r in fold_results if r["error"] is None]
-    failed = [r for r in fold_results if r["error"] is not None]
-    # Year 2018 is the first eval year and has no training data before it,
-    # so the validator skips it without recording a fold_result. That leaves
-    # 2019 (success), 2020 (injected failure), 2021 (success).
-    assert len(failed) == 1, f"expected 1 failure, got {failed}"
-    assert failed[0]["eval_year"] == 2020
-    assert len(successful) >= 2, f"expected >=2 successes, got {successful}"
-    # The error log carried exc_info=True (full traceback in CloudWatch).
-    assert any("CV fold" in rec.getMessage() for rec in caplog.records)
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    assert "injected failure for eval year 2020" in str(excinfo.value.__cause__)
 
 
 def test_cv_all_folds_fail_raises_with_cause():

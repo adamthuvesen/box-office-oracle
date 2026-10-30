@@ -85,8 +85,6 @@ def patched_engine_and_loader():
         runtime.ensure_ready.return_value = False
         runtime.validate_input = engine.validate_input
         runtime.predict = engine.predict
-        runtime._loader = loader
-        runtime._engine = engine
         get_runtime_mock.return_value = runtime
 
         yield engine, loader
@@ -406,3 +404,50 @@ class TestResponseFieldRename:
         field = PredictionResponse.model_fields["prediction_interval_heuristic"]
         assert field.description is not None
         assert "heuristic" in field.description.lower()
+
+
+# ---------------------------------------------------------------------------
+# /model/info reads the runtime through its public describe_model
+# ---------------------------------------------------------------------------
+
+
+class TestModelInfoContract:
+    @staticmethod
+    def _runtime(engine_loaded: bool, package: dict | None):
+        from box_office.inference.app.predictor import ModelInfo
+        from box_office.inference.app.runtime import ModelRuntime
+
+        loader = MagicMock()
+        loader.get_latest_approved_model_info.return_value = package
+        engine = MagicMock()
+        engine.is_loaded.return_value = engine_loaded
+        engine.get_model_info.return_value = ModelInfo(
+            model_id="loaded",
+            version=3,
+            status="Approved",
+            created_at="2026-01-01",
+            metrics={"oof_r2": 0.6},
+            framework="XGBOOST",
+        )
+        return ModelRuntime(loader, engine)
+
+    def test_loaded_model_reports_framework(self, client):
+        with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:
+            get_runtime_mock.return_value = self._runtime(True, None)
+            body = client.get("/model/info").json()
+        assert (body["model_id"], body["loaded"], body["framework"]) == ("loaded", True, "XGBOOST")
+
+    def test_unloaded_model_falls_back_to_the_registry(self, client):
+        package = {"ModelPackageArn": "arn:pkg", "ModelPackageVersion": 7}
+        with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:
+            get_runtime_mock.return_value = self._runtime(False, package)
+            body = client.get("/model/info").json()
+        assert (body["model_id"], body["version"], body["loaded"]) == ("arn:pkg", 7, False)
+        assert "framework" not in body
+
+    def test_no_model_returns_503(self, client):
+        with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:
+            get_runtime_mock.return_value = self._runtime(False, None)
+            resp = client.get("/model/info")
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["error"] == "NO_MODEL_AVAILABLE"

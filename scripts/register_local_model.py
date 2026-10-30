@@ -45,6 +45,8 @@ from box_office.ml.artifacts import (
     MODEL_PKL,
 )
 from box_office.ml.cv import ModelEvaluator
+from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
+from box_office.ml.model_metadata import LocalModelMetadata
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.ml.target import to_log_target
 from box_office.utils.approval import require_approval
@@ -77,7 +79,7 @@ def build_model_tarball(artifact_dir: Path, out_path: Path) -> Path:
     return out_path
 
 
-def compute_oof_metrics(cv_results: dict, frame_path: Path) -> dict[str, float]:
+def compute_oof_metrics(cv_results: CrossValidationResults, frame_path: Path) -> OofEvaluation:
     """Pooled OOF metrics via the container's ``evaluate_oof_performance``.
 
     ``y_train_log = log1p(WORLDWIDE_GROSS)`` reconstructed from the same frame
@@ -91,22 +93,22 @@ def compute_oof_metrics(cv_results: dict, frame_path: Path) -> dict[str, float]:
     return ModelEvaluator.evaluate_oof_performance(cv_results, y_train_log)
 
 
-def build_metrics(cv_results: dict, oof: dict[str, float]) -> dict[str, float]:
+def build_metrics(cv_results: CrossValidationResults, oof: OofEvaluation) -> dict[str, float]:
     """Metrics dict for the registry (allowlisted in register_model_package)."""
     return {
-        "oof_r2": oof["oof_r2"],
-        "oof_mae": oof["oof_mae"],
-        "oof_rmsle": oof["oof_rmsle"],
-        "oof_num_samples": oof["num_oof_samples"],
-        "cv_mean_mae": cv_results["mean_cv_mae"],
-        "cv_std_mae": cv_results["std_cv_mae"],
-        "cv_mean_rmsle": cv_results["mean_cv_rmsle"],
-        "cv_std_rmsle": cv_results["std_cv_rmsle"],
-        "cv_mean_best_iteration": cv_results["mean_best_iteration"],
+        "oof_r2": oof.oof_r2,
+        "oof_mae": oof.oof_mae,
+        "oof_rmsle": oof.oof_rmsle,
+        "oof_num_samples": oof.num_oof_samples,
+        "cv_mean_mae": cv_results.mean_cv_mae,
+        "cv_std_mae": cv_results.std_cv_mae,
+        "cv_mean_rmsle": cv_results.mean_cv_rmsle,
+        "cv_std_rmsle": cv_results.std_cv_rmsle,
+        "cv_mean_best_iteration": cv_results.mean_best_iteration,
     }
 
 
-def provenance_metadata(metadata: dict) -> dict[str, str]:
+def provenance_metadata(metadata: LocalModelMetadata) -> dict[str, str]:
     """CustomerMetadataProperties marking this as a local, quota-blocked run."""
     return {
         "trained_on": "local",
@@ -117,8 +119,8 @@ def provenance_metadata(metadata: dict) -> dict[str, str]:
             "SageMaker training quota-blocked account training quota=0 "
             "registered from artifacts/local via scripts/register_local_model.py"
         ),
-        "training_rows": str(metadata.get("training_rows", "")),
-        "eval_years": str(metadata.get("eval_years", "")),
+        "training_rows": str(metadata.training_rows),
+        "eval_years": metadata.eval_years,
     }
 
 
@@ -143,12 +145,14 @@ def main() -> None:
     if not args.dry_run:
         require_approval("uploading and registering the local model", args.approved)
 
-    cv_results = json.loads((ARTIFACT_DIR / "cv_results.json").read_text())
-    metadata = json.loads((ARTIFACT_DIR / "metadata.json").read_text())
+    cv_results = CrossValidationResults.model_validate_json(
+        (ARTIFACT_DIR / "cv_results.json").read_text()
+    )
+    metadata = LocalModelMetadata.model_validate_json((ARTIFACT_DIR / "metadata.json").read_text())
 
     oof = compute_oof_metrics(cv_results, FRAME_PATH)
     metrics = build_metrics(cv_results, oof)
-    oof_r2 = oof["oof_r2"]
+    oof_r2 = oof.oof_r2
     threshold = config.model.promotion_threshold
     logger.info("Pooled OOF R2 (dollar space): %.4f", oof_r2)
     logger.info("Promotion threshold: %.2f", threshold)

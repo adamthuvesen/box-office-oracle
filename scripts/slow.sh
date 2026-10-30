@@ -5,7 +5,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-uv sync --locked --extra dev --extra inference --quiet
+uv sync --locked --extra dev --extra inference --extra train --quiet
 uv run --no-sync pytest tests/
 
 export SNOWFLAKE_ACCOUNT="${SNOWFLAKE_ACCOUNT:-offline}"

@@ -17,6 +17,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
+from box_office.ml.metrics_models import FoldResult
 from box_office.ml.regression_metrics import spearman_rank_corr
 from box_office.ml.target import from_log_target, to_log_target
 
@@ -123,15 +124,12 @@ def compute_baseline_per_year(
 
 def assemble_per_year_metrics_table(
     *,
-    model_fold_results: Iterable[dict],
+    model_fold_results: Iterable[FoldResult],
     baseline_results: Iterable[BaselineFoldResult],
 ) -> pd.DataFrame:
     """Combine model + baseline per-year results into one report DataFrame.
 
-    Required columns on each model fold dict (added by the CV loop):
-    ``eval_year``, ``val_samples``, ``model_r2_log``, ``model_spearman``,
-    ``model_r2_dollars``, ``rmsle_score``, ``model_median_ape``. Folds with
-    errors are skipped. Returns columns: ``year``, ``n_movies``,
+    Returns columns: ``year``, ``n_movies``,
     ``baseline_r2_log``, ``model_r2_log``, ``gain_r2_log``, ``baseline_spearman``,
     ``model_spearman``, ``baseline_r2``, ``model_r2``, ``gain_r2``,
     ``model_rmsle``, ``model_median_ape`` (``_r2`` columns are dollar-space).
@@ -145,27 +143,25 @@ def assemble_per_year_metrics_table(
 
     rows = []
     for fold in model_fold_results:
-        if fold.get("error") is not None:
-            continue
-        year = int(fold["eval_year"])
+        year = fold.eval_year
         baseline_r2 = base_dollars.get(year, float("nan"))
         baseline_r2_log = base_log.get(year, float("nan"))
-        model_r2 = float(fold.get("model_r2_dollars", float("nan")))
-        model_r2_log = float(fold.get("model_r2_log", float("nan")))
+        model_r2 = fold.model_r2_dollars
+        model_r2_log = fold.model_r2_log
         rows.append(
             {
                 "year": year,
-                "n_movies": int(fold["val_samples"]),
+                "n_movies": fold.val_samples,
                 "baseline_r2_log": baseline_r2_log,
                 "model_r2_log": model_r2_log,
                 "gain_r2_log": _gain(model_r2_log, baseline_r2_log),
                 "baseline_spearman": base_spear.get(year, float("nan")),
-                "model_spearman": float(fold.get("model_spearman", float("nan"))),
+                "model_spearman": fold.model_spearman,
                 "baseline_r2": baseline_r2,
                 "model_r2": model_r2,
                 "gain_r2": _gain(model_r2, baseline_r2),
-                "model_rmsle": float(fold.get("rmsle_score", float("nan"))),
-                "model_median_ape": float(fold.get("model_median_ape", float("nan"))),
+                "model_rmsle": fold.rmsle_score,
+                "model_median_ape": fold.model_median_ape,
             }
         )
     return pd.DataFrame(rows).sort_values("year").reset_index(drop=True)

@@ -222,9 +222,17 @@ class TestTrainingTaskErrorClassification:
                 json.dumps(
                     {
                         "cv_scores": [0.1, 0.2],
+                        "cv_rmsle_scores": [0.3, 0.4],
                         "mean_cv_mae": 0.5,
                         "std_cv_mae": 0.05,
+                        "mean_cv_rmsle": 0.35,
+                        "std_cv_rmsle": 0.05,
                         "mean_best_iteration": 100,
+                        "oof_predictions": {},
+                        "oof_records": [],
+                        "feature_importances": None,
+                        "feature_names": [],
+                        "fold_results": [],
                     }
                 )
             )

@@ -39,6 +39,7 @@ from box_office.ml.backtest_report import build_report
 from box_office.ml.cv import TimeSeriesCrossValidator
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.feature_schema import CURRENT_FEATURE_SCHEMA_VERSION
+from box_office.ml.metrics_models import CrossValidationResults
 from box_office.ml.model import BoxOfficeXGBoostModel
 from box_office.ml.target import from_log_target, to_log_target
 
@@ -125,10 +126,6 @@ def run_headline_cv(frame: pd.DataFrame, end_eval_year: int, *, burn_holdout: bo
         preprocessor_factory=FeaturePreprocessorHigh,
     )
 
-    failed = [f for f in cv_results["fold_results"] if f["error"] is not None]
-    if failed:
-        raise RuntimeError(f"{len(failed)} CV folds failed: {failed}")
-
     return {
         "cv_results": cv_results,
         "y_raw": y_raw,
@@ -143,12 +140,10 @@ def pooled_window_metrics(headline: dict, start_year: int, end_year: int) -> dic
     dates = headline["dates"]
 
     fold_r2 = [
-        f["model_r2_log"]
-        for f in cv_results["fold_results"]
-        if start_year <= f["eval_year"] <= end_year
+        f.model_r2_log for f in cv_results.fold_results if start_year <= f.eval_year <= end_year
     ]
 
-    oof = pd.DataFrame(cv_results["oof_records"])
+    oof = pd.DataFrame([record.model_dump() for record in cv_results.oof_records])
     years = dates.iloc[oof["idx"]].to_numpy()
     in_window = (years >= start_year) & (years <= end_year)
     pred_dollars = from_log_target(oof["pred"].to_numpy()[in_window])
@@ -165,7 +160,7 @@ def pooled_window_metrics(headline: dict, start_year: int, end_year: int) -> dic
     }
 
 
-def build_per_year_table(frame: pd.DataFrame, cv_results: dict) -> pd.DataFrame:
+def build_per_year_table(frame: pd.DataFrame, cv_results: CrossValidationResults) -> pd.DataFrame:
     raw_df = pd.DataFrame(
         {
             "release_year": frame["RELEASE_YEAR"].to_numpy(),
@@ -297,9 +292,9 @@ def main() -> None:
         },
         "recent_window": recent_summary,
         "full_window": full_summary,
-        "mean_cv_mae_log": float(cv_results["mean_cv_mae"]),
-        "std_cv_mae_log": float(cv_results["std_cv_mae"]),
-        "mean_cv_rmsle": float(cv_results["mean_cv_rmsle"]),
+        "mean_cv_mae_log": cv_results.mean_cv_mae,
+        "std_cv_mae_log": cv_results.std_cv_mae,
+        "mean_cv_rmsle": cv_results.mean_cv_rmsle,
         "per_year": json.loads(full_table.to_json(orient="records")),
         "dropped_rows": dropped_json,
     }

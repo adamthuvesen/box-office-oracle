@@ -96,6 +96,7 @@ def test_container_train_passes_preprocessor_factory():
     per-fold factory, so each fold refits on train-year rows only (leakage-free)."""
     from box_office.ml import model_training
     from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
+    from box_office.ml.metrics_models import CrossValidationResults
 
     raw = _staging_frame()
     # Container load_data shape: raw preprocessor inputs + RELEASE_YEAR, GROSS_LOG.
@@ -114,20 +115,7 @@ def test_container_train_passes_preprocessor_factory():
     def fake_cross_validate(model_class, X_train, y_train_log, dates, **kwargs):
         seen["preprocessor_factory"] = kwargs.get("preprocessor_factory")
         seen["X_columns"] = list(X_train.columns)
-        return {
-            "mean_best_iteration": 10,
-            "mean_cv_mae": 0.5,
-            "std_cv_mae": 0.1,
-            "mean_cv_rmsle": 0.5,
-            "std_cv_rmsle": 0.1,
-            "cv_scores": [0.5],
-            "cv_rmsle_scores": [0.5],
-            "oof_predictions": {},
-            "oof_records": [],
-            "fold_results": [],
-            "feature_importances": None,
-            "feature_names": list(X_train.columns),
-        }
+        return CrossValidationResults.model_construct(mean_best_iteration=10)
 
     args = type("Args", (), {})()
     args.train = "/unused"

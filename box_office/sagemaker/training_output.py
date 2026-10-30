@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import tarfile
 import tempfile
@@ -13,7 +12,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
-from box_office.ml.metrics_models import TrainingMetrics
+from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation, TrainingMetrics
 from box_office.utils.aws_helpers import BOTO3_CONFIG
 from box_office.utils.safe_tarfile import extractall_data_filter
 
@@ -33,34 +32,34 @@ def parse_training_output_tarball(tarball_path: Path) -> dict[str, Any]:
 
         cv_path = Path(extract_dir) / "cv_results.json"
         if cv_path.exists():
-            with cv_path.open(encoding="utf-8") as f:
-                cv_results = json.load(f)
+            cv_results = CrossValidationResults.model_validate_json(
+                cv_path.read_text(encoding="utf-8")
+            )
             metrics.update(
                 {
-                    "cv_mean_mae": cv_results.get("mean_cv_mae"),
-                    "cv_std_mae": cv_results.get("std_cv_mae"),
-                    "cv_mean_rmsle": cv_results.get("mean_cv_rmsle"),
-                    "cv_std_rmsle": cv_results.get("std_cv_rmsle"),
-                    "cv_mean_best_iteration": cv_results.get("mean_best_iteration"),
+                    "cv_mean_mae": cv_results.mean_cv_mae,
+                    "cv_std_mae": cv_results.std_cv_mae,
+                    "cv_mean_rmsle": cv_results.mean_cv_rmsle,
+                    "cv_std_rmsle": cv_results.std_cv_rmsle,
+                    "cv_mean_best_iteration": cv_results.mean_best_iteration,
+                    "cv_results": cv_results.model_dump(),
                 }
             )
-            metrics["cv_results"] = cv_results
         else:
             logger.warning("cv_results.json not found in output tarball")
 
         oof_path = Path(extract_dir) / "oof_evaluation.json"
         if oof_path.exists():
-            with oof_path.open(encoding="utf-8") as f:
-                oof_results = json.load(f)
+            oof_results = OofEvaluation.model_validate_json(oof_path.read_text(encoding="utf-8"))
             metrics.update(
                 {
-                    "oof_r2": oof_results.get("oof_r2"),
-                    "oof_mae": oof_results.get("oof_mae"),
-                    "oof_rmsle": oof_results.get("oof_rmsle"),
-                    "oof_num_samples": oof_results.get("num_oof_samples"),
+                    "oof_r2": oof_results.oof_r2,
+                    "oof_mae": oof_results.oof_mae,
+                    "oof_rmsle": oof_results.oof_rmsle,
+                    "oof_num_samples": oof_results.num_oof_samples,
+                    "oof_results": oof_results.model_dump(),
                 }
             )
-            metrics["oof_results"] = oof_results
         else:
             logger.warning("oof_evaluation.json not found in output tarball")
 

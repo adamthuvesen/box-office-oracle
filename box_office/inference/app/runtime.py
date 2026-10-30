@@ -37,12 +37,11 @@ class ModelRuntime:
 
         if refreshed or not self._engine.is_loaded():
             paths = self._loader.get_model_artifacts_paths()
-            metadata = ModelInfo.from_registry_package(current[1]).model_dump()
             self._engine.load_model_artifacts(
                 model_path=paths["model"],
                 preprocessor_path=paths["preprocessor"],
                 scaler_path=paths["scaler"],
-                model_metadata=metadata,
+                model_info=ModelInfo.from_registry_package(current[1]),
             )
         return refreshed
 
@@ -54,6 +53,15 @@ class ModelRuntime:
 
     def get_model_info(self):
         return self._engine.get_model_info()
+
+    def describe_model(self) -> tuple[ModelInfo, bool] | None:
+        """The loaded model's info, else the latest approved package's; and whether it is loaded."""
+        if self._engine.is_loaded():
+            return self._engine.get_model_info(), True
+        package = self._loader.get_latest_approved_model_info()
+        if not package:
+            return None
+        return ModelInfo.from_registry_package(package), False
 
 
 def get_runtime() -> ModelRuntime:

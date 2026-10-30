@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # A stale lockfile fails here, before any lane runs.
-uv sync --locked --extra dev --extra inference --quiet
+uv sync --locked --extra dev --extra inference --extra train --quiet
 
 log_dir="$(mktemp -d)"
 trap 'rm -rf "$log_dir"' EXIT

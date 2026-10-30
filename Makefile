@@ -1,4 +1,4 @@
-.PHONY: help check fix verify slow install install-dev test test-unit test-integration lint format clean docker-build docker-test setup datasets web-data
+.PHONY: help check fix verify slow install install-dev test test-unit test-integration test-inference-lean lint format clean docker-build docker-test setup datasets web-data
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -27,27 +27,31 @@ setup: ## Verify uv is installed (no curl | sh)
 		exit 1; \
 	}
 
-install: setup ## Install production dependencies
-	uv sync --frozen
+install: setup ## Install the serving dependencies (what the Lambda image gets)
+	uv sync --extra inference --frozen
 
-install-dev: setup ## Install development dependencies
-	uv sync --extra dev --frozen
+install-dev: setup ## Install development, serving, and training dependencies
+	uv sync --extra dev --extra inference --extra train --frozen
 
 test: setup ## Run all tests
-	uv sync --extra dev --extra inference --frozen
+	uv sync --extra dev --extra inference --extra train --frozen
 	uv run pytest tests/ -v
 
 test-unit: setup ## Run unit tests only (markers)
-	uv sync --extra dev --extra inference --frozen
+	uv sync --extra dev --extra inference --extra train --frozen
 	uv run pytest tests/ -m "unit and not slow" -v
 
 test-integration: setup ## Run integration tests only
-	uv sync --extra dev --extra inference --frozen
+	uv sync --extra dev --extra inference --extra train --frozen
 	uv run pytest tests/ -m "integration and not slow" -v
 
 test-coverage: setup ## Run tests with coverage
-	uv sync --extra dev --extra inference --frozen
+	uv sync --extra dev --extra inference --extra train --frozen
 	uv run pytest tests/ -m "not integration and not slow" --cov=box_office --cov-report=xml --cov-report=term-missing
+
+test-inference-lean: setup ## Inference tests with only the serving dependencies (what the Lambda image gets)
+	UV_PROJECT_ENVIRONMENT=.venv-inference uv sync --locked --extra dev --extra inference --quiet
+	UV_PROJECT_ENVIRONMENT=.venv-inference uv run --no-sync pytest tests/inference
 
 lint: install-dev ## Run linting checks
 	uv run ruff check box_office tests scripts

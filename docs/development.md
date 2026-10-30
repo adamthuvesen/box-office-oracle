@@ -64,8 +64,8 @@ credentials are available.
 
 ```bash
 make clean                          # remove build/, caches (local setuptools artifacts)
-make install-dev                    # uv sync --extra dev
-make test                           # uv sync --extra dev --extra inference; pytest tests/ + inference tests
+make install-dev                    # uv sync --extra dev --extra inference --extra train
+make test                           # same extras; pytest tests/
 make lint                           # ruff check box_office tests scripts
 make format                         # ruff format box_office tests scripts
 

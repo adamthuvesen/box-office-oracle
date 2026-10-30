@@ -35,12 +35,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from box_office.inference.app.predictor import PredictionEngine
+from box_office.inference.app.predictor import ModelInfo, PredictionEngine
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.metrics_models import CrossValidationResults
 from box_office.ml.target import from_log_target
 from box_office.training_frame import PREPROCESSOR_INPUT_COLUMNS
 
@@ -63,7 +64,7 @@ IN_SAMPLE = "in_sample"
 NO_ACTUALS = "no_actuals"
 
 
-def load_artifacts() -> tuple[PredictionEngine, dict]:
+def load_artifacts() -> tuple[PredictionEngine, CrossValidationResults]:
     paths = {
         "model": ARTIFACT_DIR / MODEL_PKL,
         "preprocessor": ARTIFACT_DIR / FEATURE_PREPROCESSOR_PKL,
@@ -80,9 +81,9 @@ def load_artifacts() -> tuple[PredictionEngine, dict]:
         model_path=str(paths["model"]),
         preprocessor_path=str(paths["preprocessor"]),
         scaler_path=str(paths["scaler"]),
-        model_metadata={"model_id": "local-tmdb-1980-2026", "version": 1},
+        model_info=ModelInfo(model_id="local-tmdb-1980-2026", version=1),
     )
-    cv_results = json.loads(paths["cv_results"].read_text())
+    cv_results = CrossValidationResults.model_validate_json(paths["cv_results"].read_text())
     return engine, cv_results
 
 
@@ -95,17 +96,17 @@ def final_model_predictions(rows: pd.DataFrame, engine: PredictionEngine) -> np.
     return pred_dollars
 
 
-def oof_dollars_by_position(cv_results: dict, n_rows: int) -> dict[int, float]:
+def oof_dollars_by_position(cv_results: CrossValidationResults, n_rows: int) -> dict[int, float]:
     """OOF log-predictions keyed by positional index in the training frame."""
     positions: dict[int, float] = {}
-    for record in cv_results["oof_records"]:
-        idx = int(record["idx"])
+    for record in cv_results.oof_records:
+        idx = record.idx
         if not 0 <= idx < n_rows:
             raise AssertionError(
                 f"OOF idx {idx} outside the frame (n={n_rows}); cv_results.json "
                 "does not match the current training frame — rerun train_local."
             )
-        positions[idx] = float(from_log_target(record["pred"]))
+        positions[idx] = float(from_log_target(record.pred))
     return positions
 
 

@@ -89,12 +89,12 @@ def test_omitted_factory_matches_identity_factory():
         **FAST_MODEL_KWARGS,
     )
 
-    assert without["cv_scores"] == with_identity["cv_scores"]
-    assert without["oof_records"] == with_identity["oof_records"]
-    assert without["feature_names"] == with_identity["feature_names"]
-    assert without["mean_cv_mae"] == with_identity["mean_cv_mae"]
-    assert [f["mae_score"] for f in without["fold_results"]] == [
-        f["mae_score"] for f in with_identity["fold_results"]
+    assert without.cv_scores == with_identity.cv_scores
+    assert without.oof_records == with_identity.oof_records
+    assert without.feature_names == with_identity.feature_names
+    assert without.mean_cv_mae == with_identity.mean_cv_mae
+    assert [f.mae_score for f in without.fold_results] == [
+        f.mae_score for f in with_identity.fold_results
     ]
 
 
@@ -193,6 +193,6 @@ def test_factory_composes_with_real_feature_preprocessor():
         **FAST_MODEL_KWARGS,
     )
 
-    assert [f["error"] for f in results["fold_results"]] == [None, None]
-    assert results["feature_names"] == list(SELECTED_FEATURES)
-    assert len(results["oof_records"]) == int((years >= 2020).sum())
+    assert len(results.fold_results) == 2
+    assert results.feature_names == list(SELECTED_FEATURES)
+    assert len(results.oof_records) == int((years >= 2020).sum())

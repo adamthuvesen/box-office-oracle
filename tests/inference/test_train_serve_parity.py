@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from sklearn.preprocessing import StandardScaler
 
-from box_office.inference.app.predictor import PredictionEngine, PredictionRequest
+from box_office.inference.app.predictor import ModelInfo, PredictionEngine, PredictionRequest
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.model import fit_final_model
 from box_office.ml.target import from_log_target, to_log_target
@@ -58,7 +58,7 @@ def trained(tmp_path_factory):
         model_path=str(artifact_dir / "model.pkl"),
         preprocessor_path=str(artifact_dir / "preprocessor.pkl"),
         scaler_path=str(artifact_dir / "scaler.pkl"),
-        model_metadata={"model_id": "parity", "version": 1},
+        model_info=ModelInfo(model_id="parity", version=1),
     )
     training_path = from_log_target(model.predict(X_scaled))
     return frame, engine, training_path

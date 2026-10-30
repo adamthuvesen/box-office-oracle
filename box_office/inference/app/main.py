@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import sys
 import time
 import warnings
@@ -24,7 +25,7 @@ from box_office.ml.text_utils import LiteralEvalTooLarge
 from .config import get_settings
 from .integrity import ArtifactIntegrityError
 from .model_loader import ModelLoadError
-from .predictor import ModelInfo, PredictionResponse
+from .predictor import PredictionResponse
 from .runtime import get_runtime
 
 MAX_REQUEST_BODY_BYTES = 1024 * 1024  # 1 MiB
@@ -215,7 +216,7 @@ async def authenticate_request(request: Request, call_next):
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
-    if provided_key != expected_key:
+    if not secrets.compare_digest(provided_key.encode(), expected_key.encode()):
         logger.warning(
             "Authentication failed - invalid API key",
             extra={"path": request.url.path, "method": request.method},
@@ -395,44 +396,28 @@ async def predict(request: Request) -> PredictionResponse:
 @app.get("/model/info", tags=["model"])
 async def get_model_info() -> dict[str, Any]:
     """Get information about the currently loaded model."""
-    runtime = get_runtime()
-    engine = runtime._engine
+    described = get_runtime().describe_model()
+    if described is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "NO_MODEL_AVAILABLE",
+                "message": "No approved model available",
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
 
-    if not engine.is_loaded():
-        model_info = runtime._loader.get_latest_approved_model_info()
-
-        if not model_info:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "NO_MODEL_AVAILABLE",
-                    "message": "No approved model available",
-                    "timestamp": datetime.now(UTC).isoformat(),
-                },
-            )
-
-        normalized = ModelInfo.from_registry_package(model_info)
-        return {
-            "model_id": normalized.model_id,
-            "version": normalized.version,
-            "status": normalized.status,
-            "created_at": normalized.created_at,
-            "metrics": normalized.metrics,
-            "loaded": False,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-
-    model_info = engine.get_model_info()
-    return {
+    model_info, loaded = described
+    body: dict[str, Any] = {
         "model_id": model_info.model_id,
         "version": model_info.version,
         "status": model_info.status,
         "created_at": model_info.created_at,
         "metrics": model_info.metrics,
-        "framework": model_info.framework,
-        "loaded": True,
-        "timestamp": datetime.now(UTC).isoformat(),
     }
+    if loaded:
+        body["framework"] = model_info.framework
+    return body | {"loaded": loaded, "timestamp": datetime.now(UTC).isoformat()}
 
 
 # Module-scope Mangum adapter. Built once on cold start and reused across warm

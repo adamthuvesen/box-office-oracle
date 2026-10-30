@@ -35,7 +35,6 @@ Run:  uv run python scripts/train_local.py
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -46,7 +45,7 @@ from sklearn.preprocessing import StandardScaler
 
 from box_office.eval_windows import CONFIRMATION_END_YEAR, ITERATION_END_YEAR, START_EVAL_YEAR
 from box_office.inference.app.integrity import compute_sha256
-from box_office.inference.app.predictor import PredictionEngine, PredictionRequest
+from box_office.inference.app.predictor import ModelInfo, PredictionEngine, PredictionRequest
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
@@ -60,7 +59,9 @@ from box_office.ml.feature_schema import (
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
+from box_office.ml.metrics_models import CrossValidationResults
 from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
+from box_office.ml.model_metadata import LocalModelMetadata
 from box_office.ml.target import to_log_target
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
@@ -105,16 +106,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def json_default(obj: object) -> object:
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    raise TypeError(f"not JSON serializable: {type(obj).__name__}")
-
-
 def run_cross_validation(
     X_input: pd.DataFrame,
     y_log: pd.Series,
@@ -122,7 +113,7 @@ def run_cross_validation(
     end_eval_year: int,
     *,
     burn_holdout: bool = False,
-) -> dict:
+) -> CrossValidationResults:
     """Leakage-free CV: each fold fits a fresh preprocessor on train years
     only, so frequency features cannot see the eval year."""
     cv = TimeSeriesCrossValidator(
@@ -144,7 +135,7 @@ def save_artifact(
     model: BoxOfficeXGBoostModel,
     preprocessor: FeaturePreprocessorHigh,
     scaler: StandardScaler,
-    cv_results: dict,
+    cv_results: CrossValidationResults,
     n_rows: int,
     end_eval_year: int,
 ) -> dict[str, Path]:
@@ -158,22 +149,20 @@ def save_artifact(
     joblib.dump(preprocessor, paths["preprocessor"])
     joblib.dump(scaler, paths["scaler"])
 
-    (ARTIFACT_DIR / "cv_results.json").write_text(
-        json.dumps(cv_results, indent=2, default=json_default) + "\n"
-    )
+    (ARTIFACT_DIR / "cv_results.json").write_text(cv_results.model_dump_json(indent=2) + "\n")
 
-    metadata = {
-        SCHEMA_VERSION_METADATA_KEY: CURRENT_FEATURE_SCHEMA_VERSION,
-        "selected_features": list(SELECTED_FEATURES),
-        "training_rows": n_rows,
-        "cv_mean_mae_log": float(cv_results["mean_cv_mae"]),
-        "cv_mean_rmsle": float(cv_results["mean_cv_rmsle"]),
-        "mean_best_iteration": float(cv_results["mean_best_iteration"]),
-        "eval_years": f"{START_EVAL_YEAR}-{end_eval_year}",
-        "eval_discipline": EVAL_DISCIPLINE_NOTE,
-        "sha256": {name: compute_sha256(path) for name, path in paths.items()},
-    }
-    (ARTIFACT_DIR / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    metadata = LocalModelMetadata(
+        feature_schema_version=CURRENT_FEATURE_SCHEMA_VERSION,
+        selected_features=list(SELECTED_FEATURES),
+        training_rows=n_rows,
+        cv_mean_mae_log=cv_results.mean_cv_mae,
+        cv_mean_rmsle=cv_results.mean_cv_rmsle,
+        mean_best_iteration=cv_results.mean_best_iteration,
+        eval_years=f"{START_EVAL_YEAR}-{end_eval_year}",
+        eval_discipline=EVAL_DISCIPLINE_NOTE,
+        sha256={name: compute_sha256(path) for name, path in paths.items()},
+    )
+    (ARTIFACT_DIR / "metadata.json").write_text(metadata.model_dump_json(indent=2) + "\n")
     return paths
 
 
@@ -185,8 +174,8 @@ def smoke_check_inference_path(paths: dict[str, Path]) -> float:
     SageMaker registry, so the metadata check + ``PredictionEngine`` joblib
     load is the full locally-exercisable inference path).
     """
-    metadata = json.loads((ARTIFACT_DIR / "metadata.json").read_text())
-    artifact_version = metadata.get(SCHEMA_VERSION_METADATA_KEY)
+    metadata = LocalModelMetadata.model_validate_json((ARTIFACT_DIR / "metadata.json").read_text())
+    artifact_version = metadata.feature_schema_version
     if artifact_version != CURRENT_FEATURE_SCHEMA_VERSION:
         raise FeatureSchemaVersionMismatch(
             f"artifact has {SCHEMA_VERSION_METADATA_KEY}={artifact_version!r}; "
@@ -198,7 +187,7 @@ def smoke_check_inference_path(paths: dict[str, Path]) -> float:
         model_path=str(paths["model"]),
         preprocessor_path=str(paths["preprocessor"]),
         scaler_path=str(paths["scaler"]),
-        model_metadata={"model_id": "local-tmdb-1980-2026", "version": 1},
+        model_info=ModelInfo(model_id="local-tmdb-1980-2026", version=1),
     )
     response = engine.predict(
         PredictionRequest(
@@ -252,7 +241,7 @@ def main() -> None:
     # StandardScaler is NaN-aware (nanmean/nanvar); missing budgets stay NaN.
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns, index=X.index)
-    model = fit_final_model(X_scaled, y_log, cv_results["mean_best_iteration"])
+    model = fit_final_model(X_scaled, y_log, cv_results.mean_best_iteration)
 
     paths = save_artifact(
         model,
@@ -268,9 +257,9 @@ def main() -> None:
     print(EVAL_DISCIPLINE_NOTE)
     print(
         f"CV ({START_EVAL_YEAR}-{end_eval_year}): mean MAE (log) = "
-        f"{cv_results['mean_cv_mae']:.4f}, mean RMSLE = "
-        f"{cv_results['mean_cv_rmsle']:.4f}, mean best iteration = "
-        f"{cv_results['mean_best_iteration']:.0f}"
+        f"{cv_results.mean_cv_mae:.4f}, mean RMSLE = "
+        f"{cv_results.mean_cv_rmsle:.4f}, mean best iteration = "
+        f"{cv_results.mean_best_iteration:.0f}"
     )
     print(f"artifact saved under {ARTIFACT_DIR}/")
     print(

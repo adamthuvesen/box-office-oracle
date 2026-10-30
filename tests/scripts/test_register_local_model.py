@@ -14,6 +14,8 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
+from box_office.ml.model_metadata import LocalModelMetadata
 from scripts import register_local_model as register
 
 
@@ -72,9 +74,9 @@ def test_compute_oof_metrics_matches_dollar_space_pooled_r2(tmp_path):
     y_log = np.log1p(y_dollars)
     preds_log = y_log + np.array([0.1, -0.2, 0.05])
 
-    cv_results = {
-        "oof_predictions": {str(i): float(preds_log[i]) for i in range(3)},
-    }
+    cv_results = CrossValidationResults.model_construct(
+        oof_predictions={str(i): float(preds_log[i]) for i in range(3)},
+    )
     frame_path = tmp_path / "frame.parquet"
     frame.to_parquet(frame_path)
 
@@ -82,24 +84,19 @@ def test_compute_oof_metrics_matches_dollar_space_pooled_r2(tmp_path):
 
     expected = r2_score(y_dollars, np.expm1(preds_log))
     out = register.compute_oof_metrics(cv_results, frame_path)
-    assert out["oof_r2"] == pytest.approx(expected)
-    assert out["num_oof_samples"] == 3
+    assert out.oof_r2 == pytest.approx(expected)
+    assert out.num_oof_samples == 3
 
 
 def test_build_metrics_carries_gate_and_cv_fields():
-    cv_results = {
-        "mean_cv_mae": 0.7,
-        "std_cv_mae": 0.05,
-        "mean_cv_rmsle": 0.88,
-        "std_cv_rmsle": 0.04,
-        "mean_best_iteration": 143.0,
-    }
-    oof = {
-        "oof_r2": 0.5943,
-        "oof_mae": 8.2e7,
-        "oof_rmsle": 0.8746,
-        "num_oof_samples": 1159,
-    }
+    cv_results = CrossValidationResults.model_construct(
+        mean_cv_mae=0.7,
+        std_cv_mae=0.05,
+        mean_cv_rmsle=0.88,
+        std_cv_rmsle=0.04,
+        mean_best_iteration=143.0,
+    )
+    oof = OofEvaluation(oof_r2=0.5943, oof_mae=8.2e7, oof_rmsle=0.8746, num_oof_samples=1159)
     metrics = register.build_metrics(cv_results, oof)
     # oof_r2 is the field the promotion gate reads.
     assert metrics["oof_r2"] == 0.5943
@@ -108,7 +105,19 @@ def test_build_metrics_carries_gate_and_cv_fields():
 
 
 def test_provenance_metadata_marks_local_quota_blocked():
-    meta = register.provenance_metadata({"training_rows": 6077, "eval_years": "2015-2023"})
+    meta = register.provenance_metadata(
+        LocalModelMetadata(
+            feature_schema_version="9",
+            selected_features=["RELEASE_YEAR"],
+            training_rows=6077,
+            cv_mean_mae_log=0.7,
+            cv_mean_rmsle=0.88,
+            mean_best_iteration=143.0,
+            eval_years="2015-2023",
+            eval_discipline="iterate on <= 2023",
+            sha256={"model": "0" * 64},
+        )
+    )
     assert meta["trained_on"] == "local"
     assert meta["code_path"] == "container-identical"
     assert "quota" in meta["provenance_note"].lower()

@@ -23,46 +23,17 @@ classifiers = [
 ]
 requires-python = ">=3.14,<3.15"
 dependencies = [
-    # AWS & Cloud
+    # The serving closure: the Lambda image installs only these plus `inference`.
     "boto3==1.42.90",
     "botocore==1.42.90",
-
-    # Data & Plotting
+    "joblib==1.5.3",
     "numpy==2.5.4",
     "pandas==2.3.3",
     "pydantic==2.13.4",
-    "requests==2.34.2",
+    "pydantic-settings==2.14.1",
     "scikit-learn==1.7.2",
     "scipy==1.18.1",
-
-    # Data Transformation
-    "dbt-core==1.12.6",
-    "dbt-snowflake==1.12.5",
-
-    # Environment & Configuration
-    "python-dotenv==1.2.2",
-    "PyYAML==6.0.3",
-
-    # Machine Learning & Optimization
     "xgboost==3.2.0",
-
-    # SageMaker
-    "sagemaker==2.257.7",
-
-    # Security & Cryptography
-    "cryptography==46.0.7",
-
-    # Snowflake
-    "snowflake-connector-python[pandas]==4.6.0",
-
-    # Utilities
-    "joblib==1.5.3",
-
-    # Workflow Orchestration
-    "prefect==3.7.3",
-    "prefect-dbt==0.7.24",
-    "pydantic-settings==2.14.1",
-
 ]
 
 [project.optional-dependencies]
@@ -81,6 +52,20 @@ inference = [
     "fastapi==0.136.3",
     "mangum==0.21.0",
     "uvicorn==0.48.0",
+]
+
+# Training, data preparation, and ingestion: Prefect, dbt, SageMaker, Snowflake.
+train = [
+    "cryptography==46.0.7",
+    "dbt-core==1.12.6",
+    "dbt-snowflake==1.12.5",
+    "prefect==3.7.3",
+    "prefect-dbt==0.7.24",
+    "python-dotenv==1.2.2",
+    "PyYAML==6.0.3",
+    "requests==2.34.2",
+    "sagemaker==2.257.7",
+    "snowflake-connector-python[pandas]==4.6.0",
 ]
 
 

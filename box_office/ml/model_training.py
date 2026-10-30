@@ -10,7 +10,6 @@ from pathlib import Path
 
 import boto3
 import joblib
-import numpy as np
 import pandas as pd
 
 from box_office.config import MODEL_HYPERPARAMETERS, ModelHyperparameters
@@ -22,6 +21,7 @@ from box_office.ml.artifacts import (
 )
 from box_office.ml.cv import ModelEvaluator, TimeSeriesCrossValidator
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
+from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
 from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
 from box_office.utils.aws_helpers import parse_s3_uri, resolve_aws_region
 
@@ -186,7 +186,14 @@ def transform_for_final_fit(X_raw, preprocessor, scaler):
     )
 
 
-def save_results(model, cv_results, oof_results, args, processor_path, scaler_path):
+def save_results(
+    model,
+    cv_results: CrossValidationResults,
+    oof_results: OofEvaluation,
+    args,
+    processor_path,
+    scaler_path,
+):
     """Save model artifacts and evaluation metrics.
 
     ``processor_path`` / ``scaler_path`` were downloaded into ``model_dir`` by
@@ -205,37 +212,26 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
     logger.info(f"Final model saved to: {model_path}")
     logger.info(f"Bundled preprocessing artifacts: {processor_path}, {scaler_path}")
 
-    def convert_for_json(obj):
-        if isinstance(obj, (np.integer, np.int64)):
-            return int(obj)
-        if isinstance(obj, (np.floating, np.float64)):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return obj
-
     cv_results_path = output_data_dir / "cv_results.json"
-    with cv_results_path.open("w") as f:
-        json.dump(cv_results, f, indent=4, default=convert_for_json)
+    cv_results_path.write_text(cv_results.model_dump_json(indent=4))
     logger.info(f"CV results saved to: {cv_results_path}")
 
     oof_results_path = output_data_dir / "oof_evaluation.json"
-    with oof_results_path.open("w") as f:
-        json.dump(oof_results, f, indent=4, default=convert_for_json)
+    oof_results_path.write_text(oof_results.model_dump_json(indent=4))
     logger.info(f"OOF evaluation results saved to: {oof_results_path}")
 
     logger.info("Training metrics summary")
 
-    cv_mae = cv_results.get("mean_cv_mae", 0)
-    cv_mae_std = cv_results.get("std_cv_mae", 0)
-    cv_rmsle = cv_results.get("mean_cv_rmsle", 0)
-    cv_rmsle_std = cv_results.get("std_cv_rmsle", 0)
-    mean_best_iteration = cv_results.get("mean_best_iteration", 0)
-    oof_r2 = oof_results.get("oof_r2", 0)
-    oof_mae = oof_results.get("oof_mae", 0)
-    oof_rmsle = oof_results.get("oof_rmsle", 0)
-    oof_num_samples = oof_results.get("num_oof_samples", 0)
-    cv_folds = len(cv_results.get("cv_scores", []))
+    cv_mae = cv_results.mean_cv_mae
+    cv_mae_std = cv_results.std_cv_mae
+    cv_rmsle = cv_results.mean_cv_rmsle
+    cv_rmsle_std = cv_results.std_cv_rmsle
+    mean_best_iteration = cv_results.mean_best_iteration
+    oof_r2 = oof_results.oof_r2
+    oof_mae = oof_results.oof_mae
+    oof_rmsle = oof_results.oof_rmsle
+    oof_num_samples = oof_results.num_oof_samples
+    cv_folds = len(cv_results.cv_scores)
 
     # 1. Detailed console output
     logger.info("CROSS-VALIDATION PERFORMANCE METRICS:")
@@ -286,13 +282,9 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
             "mean_rmsle": cv_rmsle,
             "std_rmsle": cv_rmsle_std,
             "mean_best_iteration": mean_best_iteration,
-            "individual_fold_scores": cv_results.get("cv_scores", []),
-            "individual_rmsle_scores": cv_results.get("cv_rmsle_scores", []),
-            "individual_best_iterations": [
-                fr.get("best_iteration")
-                for fr in cv_results.get("fold_results", [])
-                if fr.get("best_iteration") is not None
-            ],
+            "individual_fold_scores": cv_results.cv_scores,
+            "individual_rmsle_scores": cv_results.cv_rmsle_scores,
+            "individual_best_iterations": [fr.best_iteration for fr in cv_results.fold_results],
         },
         "out_of_fold_evaluation": {
             "r2_score": oof_r2,
@@ -310,7 +302,7 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
 
     comprehensive_metrics_file = output_data_dir / "comprehensive_metrics.json"
     with comprehensive_metrics_file.open("w") as f:
-        json.dump(detailed_metrics, f, indent=2, default=convert_for_json)
+        json.dump(detailed_metrics, f, indent=2)
     logger.info(f"Detailed metrics saved to: {comprehensive_metrics_file}")
 
     # Per-year model-side metrics table. The log-budget baseline column is
@@ -319,7 +311,7 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
     from box_office.ml.backtest import assemble_per_year_metrics_table
 
     per_year_model_table = assemble_per_year_metrics_table(
-        model_fold_results=cv_results.get("fold_results", []),
+        model_fold_results=cv_results.fold_results,
         baseline_results=[],
     )
     per_year_path = output_data_dir / "per_year_model_metrics.json"
@@ -395,19 +387,18 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
         run_ctx = load_run_context() if load_run_context is not None else None
         if run_ctx:
             custom_metrics = {
-                "cv_mean_mae": cv_results.get("mean_cv_mae"),
-                "cv_mean_rmsle": cv_results.get("mean_cv_rmsle"),
-                "cv_std_mae": cv_results.get("std_cv_mae"),
-                "cv_std_rmsle": cv_results.get("std_cv_rmsle"),
-                "cv_mean_best_iteration": cv_results.get("mean_best_iteration"),
-                "oof_r2": oof_results.get("oof_r2"),
-                "oof_mae": oof_results.get("oof_mae"),
-                "oof_rmsle": oof_results.get("oof_rmsle"),
-                "oof_num_samples": oof_results.get("num_oof_samples"),
+                "cv_mean_mae": cv_results.mean_cv_mae,
+                "cv_mean_rmsle": cv_results.mean_cv_rmsle,
+                "cv_std_mae": cv_results.std_cv_mae,
+                "cv_std_rmsle": cv_results.std_cv_rmsle,
+                "cv_mean_best_iteration": cv_results.mean_best_iteration,
+                "oof_r2": oof_results.oof_r2,
+                "oof_mae": oof_results.oof_mae,
+                "oof_rmsle": oof_results.oof_rmsle,
+                "oof_num_samples": oof_results.num_oof_samples,
             }
             for k, v in custom_metrics.items():
-                if v is not None:
-                    run_ctx.log_metric(k, float(v))
+                run_ctx.log_metric(k, float(v))
             logger.info("Custom metrics logged to SageMaker Experiment")
     except Exception as e:
         logger.warning(f"Could not log custom metrics via run context: {e}")
@@ -455,10 +446,10 @@ def train(args):
     X_train_scaled = transform_for_final_fit(X_train, preprocessor, scaler)
     logger.info(
         "Training final model with %d estimators based on CV.",
-        int(cv_results["mean_best_iteration"]),
+        int(cv_results.mean_best_iteration),
     )
     final_model = fit_final_model(
-        X_train_scaled, y_train_log, cv_results["mean_best_iteration"], hyperparameters
+        X_train_scaled, y_train_log, cv_results.mean_best_iteration, hyperparameters
     )
 
     save_results(final_model, cv_results, oof_results, args, processor_path, scaler_path)
