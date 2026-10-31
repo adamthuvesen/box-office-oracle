@@ -41,7 +41,9 @@ class ModelRuntime:
                 model_path=paths["model"],
                 preprocessor_path=paths["preprocessor"],
                 scaler_path=paths["scaler"],
-                model_info=ModelInfo.from_registry_package(current[1]),
+                model_info=ModelInfo.from_registry_package(
+                    current[1], data_fingerprint=self._loader.get_data_fingerprint()
+                ),
             )
         return refreshed
 

@@ -52,6 +52,7 @@ from box_office.ml.artifacts import (
     MODEL_PKL,
 )
 from box_office.ml.cv import TimeSeriesCrossValidator
+from box_office.ml.data_fingerprint import DataFingerprint, fingerprint_training_frame
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.feature_schema import (
@@ -63,25 +64,10 @@ from box_office.ml.metrics_models import CrossValidationResults
 from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
 from box_office.ml.model_metadata import LocalModelMetadata
 from box_office.ml.target import to_log_target
+from box_office.training_frame import PREPROCESSOR_INPUT_COLUMNS
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 ARTIFACT_DIR = Path("artifacts/local")
-
-PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
-    "RELEASE_YEAR",
-    "RELEASE_DATE",
-    "PRODUCTION_BUDGET",
-    "RUNTIME",
-    "MPAA",
-    "GENRES",
-    "DIRECTOR",
-    "PRODUCTION_COMPANY",
-    "ACTORS",
-    "IP_TIER",
-    "PRIOR_FRANCHISE_GROSS_LOG",
-    "IS_FRANCHISE_FOLLOWUP",
-)
-
 
 EVAL_DISCIPLINE_NOTE = (
     "v9 adopted on 2015-2023 iteration evidence; 2024-2025 are a spent "
@@ -136,7 +122,7 @@ def save_artifact(
     preprocessor: FeaturePreprocessorHigh,
     scaler: StandardScaler,
     cv_results: CrossValidationResults,
-    n_rows: int,
+    data_fingerprint: DataFingerprint,
     end_eval_year: int,
 ) -> dict[str, Path]:
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -154,13 +140,14 @@ def save_artifact(
     metadata = LocalModelMetadata(
         feature_schema_version=CURRENT_FEATURE_SCHEMA_VERSION,
         selected_features=list(SELECTED_FEATURES),
-        training_rows=n_rows,
+        training_rows=data_fingerprint.rows,
         cv_mean_mae_log=cv_results.mean_cv_mae,
         cv_mean_rmsle=cv_results.mean_cv_rmsle,
         mean_best_iteration=cv_results.mean_best_iteration,
         eval_years=f"{START_EVAL_YEAR}-{end_eval_year}",
         eval_discipline=EVAL_DISCIPLINE_NOTE,
         sha256={name: compute_sha256(path) for name, path in paths.items()},
+        data_fingerprint=data_fingerprint,
     )
     (ARTIFACT_DIR / "metadata.json").write_text(metadata.model_dump_json(indent=2) + "\n")
     return paths
@@ -248,7 +235,9 @@ def main() -> None:
         preprocessor,
         scaler,
         cv_results,
-        n_rows=len(frame),
+        data_fingerprint=fingerprint_training_frame(
+            frame[[*PREPROCESSOR_INPUT_COLUMNS, "WORLDWIDE_GROSS"]]
+        ),
         end_eval_year=end_eval_year,
     )
     prediction = smoke_check_inference_path(paths)

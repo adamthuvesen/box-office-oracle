@@ -85,59 +85,54 @@ def run_raw_to_staging_dbt_transformations(approved=False):
         else:
             logger.info("Key path is already absolute: ***MASKED***")
 
-    try:
-        profiles_path = dbt_project_dir / "profiles.yml"
-        if not profiles_path.exists():
-            raise FileNotFoundError(f"profiles.yml not found at: {profiles_path}")
+    profiles_path = dbt_project_dir / "profiles.yml"
+    if not profiles_path.exists():
+        raise FileNotFoundError(f"profiles.yml not found at: {profiles_path}")
 
-        logger.info(f"Using profiles.yml at: {profiles_path}")
-        logger.info(f"dbt project directory: {dbt_project_dir}")
+    logger.info(f"Using profiles.yml at: {profiles_path}")
+    logger.info(f"dbt project directory: {dbt_project_dir}")
 
-        # Create .dbt directory if it doesn't exist
-        dbt_home_dir = Path("~/.dbt").expanduser()
-        if not dbt_home_dir.exists():
-            dbt_home_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created dbt home directory: {dbt_home_dir}")
+    # Create .dbt directory if it doesn't exist
+    dbt_home_dir = Path("~/.dbt").expanduser()
+    if not dbt_home_dir.exists():
+        dbt_home_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created dbt home directory: {dbt_home_dir}")
 
-        # Initialize PrefectDbtRunner with project directory
-        # Use the local profiles.yml in the transformations directory
-        runner = PrefectDbtRunner(
-            settings=PrefectDbtSettings(
-                project_dir=dbt_project_dir,
-                profiles_dir=dbt_project_dir,
-            ),
-            raise_on_failure=True,
-        )
+    # Initialize PrefectDbtRunner with project directory
+    # Use the local profiles.yml in the transformations directory
+    runner = PrefectDbtRunner(
+        settings=PrefectDbtSettings(
+            project_dir=dbt_project_dir,
+            profiles_dir=dbt_project_dir,
+        ),
+        raise_on_failure=True,
+    )
 
-        with _scoped_env(dbt_env):
-            logger.info("Installing dbt dependencies...")
-            # Fail fast: a broken packages.yml or unreachable hub silently masking
-            # itself as a "warning" produces confusing downstream dbt errors.
-            # Let the error bubble so the caller sees the dbt-deps failure directly.
-            runner.invoke(["deps"])
-            logger.info("dbt deps completed successfully")
+    with _scoped_env(dbt_env):
+        logger.info("Installing dbt dependencies...")
+        # Fail fast: a broken packages.yml or unreachable hub silently masking
+        # itself as a "warning" produces confusing downstream dbt errors.
+        # Let the error bubble so the caller sees the dbt-deps failure directly.
+        runner.invoke(["deps"])
+        logger.info("dbt deps completed successfully")
 
-            logger.info("Testing dbt connection...")
-            try:
-                runner.invoke(["debug"])
-                logger.info("dbt connection test successful")
-            except Exception as e:
-                logger.error(f"dbt debug failed: {e}")
-                raise RuntimeError(f"dbt connection test failed: {e}") from e
+        logger.info("Testing dbt connection...")
+        try:
+            runner.invoke(["debug"])
+            logger.info("dbt connection test successful")
+        except ValueError as e:
+            logger.error(f"dbt debug failed: {e}")
+            raise RuntimeError(f"dbt connection test failed: {e}") from e
 
-            logger.info("Building and testing dbt staging models...")
-            run_result = runner.invoke(["build", "--select", "staging"])
-            logger.info("dbt staging build completed successfully")
+        logger.info("Building and testing dbt staging models...")
+        run_result = runner.invoke(["build", "--select", "staging"])
+        logger.info("dbt staging build completed successfully")
 
-        # Log result details
-        if hasattr(run_result, "results") and run_result.results:
-            logger.info(f"dbt build completed: {len(run_result.results)} nodes processed")
+    # Log result details
+    if hasattr(run_result, "results") and run_result.results:
+        logger.info(f"dbt build completed: {len(run_result.results)} nodes processed")
 
-        return run_result
-
-    except Exception as e:
-        logger.error(f"Error running dbt transformations: {e}")
-        raise
+    return run_result
 
 
 @task(retries=3, retry_delay_seconds=exponential_backoff(backoff_factor=5))
@@ -159,29 +154,24 @@ def load_staging_box_office_from_snowflake():
     database = validate_sql_identifier(config.snowflake.database, "database")
     schema = validate_sql_identifier(config.snowflake.schemas.staging, "schema")
 
+    conn = create_snowflake_connection(schema=schema, use_private_key=True)
+
     try:
-        conn = create_snowflake_connection(schema=schema, use_private_key=True)
+        with conn.cursor() as cursor:
+            table = fully_qualified_name(database, schema, "STG_BOX_OFFICE")
+            query = f"SELECT * FROM {table}"
+            cursor.execute(query)
+            df = cursor.fetch_pandas_all()
+    finally:
+        conn.close()
 
-        try:
-            with conn.cursor() as cursor:
-                table = fully_qualified_name(database, schema, "STG_BOX_OFFICE")
-                query = f"SELECT * FROM {table}"
-                cursor.execute(query)
-                df = cursor.fetch_pandas_all()
-        finally:
-            conn.close()
+    # Enforce proper data types
+    df = enforce_data_types(df, table_type="training")
 
-        # Enforce proper data types
-        df = enforce_data_types(df, table_type="training")
+    logger.info(f"Successfully fetched {len(df)} rows from Snowflake.")
+    logger.info(f"Column names: {list(df.columns)}")
 
-        logger.info(f"Successfully fetched {len(df)} rows from Snowflake.")
-        logger.info(f"Column names: {list(df.columns)}")
-
-        return df
-
-    except Exception as e:
-        logger.error(f"Error loading data from Snowflake: {e}")
-        raise
+    return df
 
 
 @task

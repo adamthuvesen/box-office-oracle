@@ -5,12 +5,13 @@ from datetime import UTC, datetime
 
 import boto3
 import pandas as pd
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from prefect import get_run_logger, task
 from prefect.cache_policies import NONE as NO_CACHE
 from prefect.tasks import exponential_backoff
 
 from box_office.config import config
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.model_registry.aws_model_registry import (
     AWSModelRegistry,
     ModelRegistryRegistrationError,
@@ -193,6 +194,7 @@ def register_model_in_registry(
     aws_registry,
     performance_metrics=None,
     environment="dev",
+    data_fingerprint: DataFingerprint | None = None,
     approved=False,
 ):
     """Register the trained model in AWS Model Registry with comprehensive metrics."""
@@ -229,6 +231,8 @@ def register_model_in_registry(
             "instance_type": config.sagemaker.instance_type,
             "training_duration_minutes": round(duration / 60, 4),
         }
+        if data_fingerprint is not None:
+            metadata |= data_fingerprint.as_registry_metadata()
 
         # Register the model package
         aws_result = aws_registry.register_model_package(
@@ -268,30 +272,25 @@ def upload_preprocessing_artifacts_to_s3(
     logger = get_run_logger()
     logger.info("Uploading preprocessing artifacts to S3...")
 
-    try:
-        # Upload processor
-        processor_s3_uri = sagemaker_client.sagemaker_session.upload_data(
-            path=processor_path,
-            bucket=sagemaker_client.s3_bucket,
-            key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
-        )
+    # Upload processor
+    processor_s3_uri = sagemaker_client.sagemaker_session.upload_data(
+        path=processor_path,
+        bucket=sagemaker_client.s3_bucket,
+        key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
+    )
 
-        # Upload scaler
-        scaler_s3_uri = sagemaker_client.sagemaker_session.upload_data(
-            path=scaler_path,
-            bucket=sagemaker_client.s3_bucket,
-            key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
-        )
+    # Upload scaler
+    scaler_s3_uri = sagemaker_client.sagemaker_session.upload_data(
+        path=scaler_path,
+        bucket=sagemaker_client.s3_bucket,
+        key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
+    )
 
-        logger.info("Preprocessing artifacts uploaded successfully:")
-        logger.info(f"Processor: {processor_s3_uri}")
-        logger.info(f"Scaler: {scaler_s3_uri}")
+    logger.info("Preprocessing artifacts uploaded successfully:")
+    logger.info(f"Processor: {processor_s3_uri}")
+    logger.info(f"Scaler: {scaler_s3_uri}")
 
-        return {"processor_s3_uri": processor_s3_uri, "scaler_s3_uri": scaler_s3_uri}
-
-    except Exception as e:
-        logger.error(f"Failed to upload preprocessing artifacts: {e}")
-        raise
+    return {"processor_s3_uri": processor_s3_uri, "scaler_s3_uri": scaler_s3_uri}
 
 
 @task
@@ -320,7 +319,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
             model_package = sagemaker_client.describe_model_package(
                 ModelPackageName=model_package_arn
             )
-        except Exception as e:
+        except ClientError as e:
             return {
                 "promote": False,
                 "reason": f"Model package not found: {e!s}",
@@ -348,15 +347,14 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         if oof_r2 is None:
             metrics = model_package.get("ModelMetrics", {}).get("ModelQuality", {})
             if "Value" in metrics:
-                try:
-                    metrics_dict = (
-                        json.loads(metrics["Value"])
-                        if isinstance(metrics["Value"], str)
-                        else metrics["Value"]
-                    )
-                    oof_r2 = metrics_dict.get("oof_r2")
-                except json.JSONDecodeError, TypeError, AttributeError:
-                    pass
+                # The registry never writes ModelMetrics, so a malformed value is
+                # an anomaly to surface, not a reason to skip promotion quietly.
+                metrics_dict = (
+                    json.loads(metrics["Value"])
+                    if isinstance(metrics["Value"], str)
+                    else metrics["Value"]
+                )
+                oof_r2 = metrics_dict.get("oof_r2")
 
         if oof_r2 is None:
             logger.warning("Could not extract OOF R² from model package metrics")
@@ -393,7 +391,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
             "validation_time_seconds": time.time() - start_time,
         }
 
-    except Exception as e:
+    except (ClientError, BotoCoreError) as e:
         logger.error(f"Model validation failed: {e}")
         return {
             "promote": False,
@@ -452,7 +450,7 @@ def promote_model_in_aws_registry(model_package_arn, approval_description=None, 
                 "promotion_time_seconds": promotion_time,
             }
 
-    except Exception as e:
+    except (ClientError, BotoCoreError, ValueError) as e:
         promotion_time = time.time() - start_time
         logger.error(f"AWS Model Registry promotion failed: {e}")
         return {

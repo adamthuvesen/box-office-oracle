@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from box_office.ml.data_fingerprint import DataFingerprint
+
 
 class LocalModelMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -21,3 +23,4 @@ class LocalModelMetadata(BaseModel):
     eval_years: str
     eval_discipline: str
     sha256: dict[str, str]
+    data_fingerprint: DataFingerprint

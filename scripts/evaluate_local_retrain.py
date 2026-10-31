@@ -42,26 +42,12 @@ from box_office.ml.feature_schema import CURRENT_FEATURE_SCHEMA_VERSION
 from box_office.ml.metrics_models import CrossValidationResults
 from box_office.ml.model import BoxOfficeXGBoostModel
 from box_office.ml.target import from_log_target, to_log_target
+from box_office.training_frame import PREPROCESSOR_INPUT_COLUMNS
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 DROPPED_PATH = Path("data/generated/training/dropped_rows_1980_2026.csv")
 FLAGGED_PATH = Path("data/generated/training/flagged_kept_rows_1980_2026.csv")
 OUTPUT_DIR = Path("docs/internal/experiments/local_retrain")
-
-PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
-    "RELEASE_YEAR",
-    "RELEASE_DATE",
-    "PRODUCTION_BUDGET",
-    "RUNTIME",
-    "MPAA",
-    "GENRES",
-    "DIRECTOR",
-    "PRODUCTION_COMPANY",
-    "ACTORS",
-    "IP_TIER",
-    "PRIOR_FRANCHISE_GROSS_LOG",
-    "IS_FRANCHISE_FOLLOWUP",
-)
 
 RECENT_WINDOW_START = 2023
 

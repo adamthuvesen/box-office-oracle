@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError, NoCredentialsError, NoRegionError
 from sklearn.base import BaseEstimator
 
 # Import the module under test
@@ -156,7 +156,7 @@ class TestModelLoader:
     def test_init_aws_error(self):
         """Test initialization failure with AWS error."""
         with (
-            patch("boto3.client", side_effect=Exception("AWS connection failed")),
+            patch("boto3.client", side_effect=NoRegionError()),
             pytest.raises(ModelLoadError, match="Failed to initialize AWS clients"),
         ):
             ModelLoader("test-group")
@@ -247,6 +247,9 @@ class TestModelLoader:
                 "sha256": digest,
                 "size_bytes": str(Path(tar_path).stat().st_size),
                 "feature_schema_version": "9",
+                "data_rows": "6077",
+                "data_max_release_date": "2025-12-31",
+                "data_sha256": "ab" * 32,
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -259,9 +262,13 @@ class TestModelLoader:
 
             loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
             result = loader._download_and_load_model(sample_model_info)
+            loader._current_model_info = sample_model_info
 
             assert result is not None
             assert hasattr(result, "predict")
+            fingerprint = loader.get_data_fingerprint()
+            assert fingerprint is not None
+            assert (fingerprint.rows, fingerprint.max_release_date) == (6077, "2025-12-31")
             mock_sagemaker.describe_model_package.assert_called_once()
             mock_s3.download_file.assert_called_once()
         finally:

@@ -1,5 +1,6 @@
 """Every training path takes its XGBoost hyperparameters from config.ModelHyperparameters."""
 
+import json
 import logging
 import sys
 from unittest.mock import patch
@@ -35,3 +36,13 @@ def test_training_job_validation_uses_the_owner_ranges(override):
     hyperparameters = {**MODEL_HYPERPARAMETERS.model_dump(), **override}
     with pytest.raises(ValueError, match="Invalid hyperparameters"):
         _validate_hyperparameters(hyperparameters, logging.getLogger(__name__))
+
+
+def test_container_reads_sagemaker_hyperparameters_file(tmp_path, monkeypatch):
+    path = tmp_path / "hyperparameters.json"
+    path.write_text(json.dumps({"n_estimators": "300", "learning_rate": "0.05"}))
+    monkeypatch.setattr(model_training, "SAGEMAKER_HYPERPARAMETERS_PATH", path)
+    with patch.object(sys, "argv", ["train"]):
+        args = model_training.parse_args()
+    assert (args.n_estimators, args.learning_rate) == (300, 0.05)
+    assert args.max_depth == MODEL_HYPERPARAMETERS.max_depth

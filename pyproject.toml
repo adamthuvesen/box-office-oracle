@@ -110,7 +110,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004", "TID251"]
+select = ["E", "F", "W", "I", "UP", "B", "BLE", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004", "TID251"]
 ignore = ["E501"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
@@ -141,7 +141,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "box_office/ml/target.py" = ["TID251"]
-"tests/**" = ["TID251"]
+"tests/**" = ["BLE001", "TID251"]
 
 [tool.ruff.format]
 quote-style = "double"

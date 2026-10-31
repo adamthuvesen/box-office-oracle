@@ -25,6 +25,7 @@ _test_env = {
     "AWS_REGION": "eu-north-1",
     "SAGEMAKER_ROLE_ARN": "arn:aws:iam::123456789:role/test-sagemaker-role",
     "AWS_S3_BUCKET": "box-office-test-bucket",
+    "SAGEMAKER_TRAINING_IMAGE_URI": "123456789012.dkr.ecr.eu-north-1.amazonaws.com/box-office-training:test",
     # Snowflake Configuration (required)
     "SNOWFLAKE_USER": "test_user",
     "SNOWFLAKE_ACCOUNT": "test_account",

@@ -553,7 +553,7 @@ def run_backfill(config: BackfillConfig) -> BackfillState:
                     config=config,
                     state=state,
                 )
-            except Exception as exc:
+            except (requests.RequestException, ValueError) as exc:
                 failure = {"year": year, "page": page, "error": str(exc)}
                 state.failed_pages.append(failure)
                 stats["failed_pages"] += 1
@@ -586,7 +586,7 @@ def run_backfill(config: BackfillConfig) -> BackfillState:
                         config=config,
                         state=state,
                     )
-                except Exception as exc:
+                except (requests.RequestException, ValueError) as exc:
                     failure = {
                         "year": year,
                         "page": page,

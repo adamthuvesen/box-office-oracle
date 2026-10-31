@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 # Disable API key auth for the contract tests so we can exercise the
 # /predict handler directly without juggling headers.
@@ -276,9 +276,7 @@ class TestMaxStaleTTL:
 
     def test_within_ttl_serves_cached_model_on_refresh_failure(self, tmp_path):
         loader = self._make_loader(tmp_path, max_stale_seconds=3600)
-        with patch.object(
-            loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(loader, "_get_latest_approved_model_info", side_effect=BotoCoreError()):
             # Bypass cache-valid fast path
             loader._last_load_time = datetime.now(UTC) - timedelta(seconds=120)
             assert loader.refresh_model_if_needed() is False
@@ -290,9 +288,7 @@ class TestMaxStaleTTL:
         # Force the cached model to look ancient.
         loader._last_load_time = datetime.now(UTC) - timedelta(seconds=999)
         with (
-            patch.object(
-                loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
-            ),
+            patch.object(loader, "_get_latest_approved_model_info", side_effect=BotoCoreError()),
             pytest.raises(ModelLoadError),
         ):
             loader.refresh_model_if_needed()
@@ -416,6 +412,7 @@ class TestModelInfoContract:
     def _runtime(engine_loaded: bool, package: dict | None):
         from box_office.inference.app.predictor import ModelInfo
         from box_office.inference.app.runtime import ModelRuntime
+        from box_office.ml.data_fingerprint import DataFingerprint
 
         loader = MagicMock()
         loader.get_latest_approved_model_info.return_value = package
@@ -428,14 +425,22 @@ class TestModelInfoContract:
             created_at="2026-01-01",
             metrics={"oof_r2": 0.6},
             framework="XGBOOST",
+            data_fingerprint=DataFingerprint(
+                rows=6077, max_release_date="2025-12-31", content_sha256="ab" * 32
+            ),
         )
         return ModelRuntime(loader, engine)
 
-    def test_loaded_model_reports_framework(self, client):
+    def test_loaded_model_reports_framework_and_data_fingerprint(self, client):
         with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:
             get_runtime_mock.return_value = self._runtime(True, None)
             body = client.get("/model/info").json()
         assert (body["model_id"], body["loaded"], body["framework"]) == ("loaded", True, "XGBOOST")
+        assert body["data_fingerprint"] == {
+            "rows": 6077,
+            "max_release_date": "2025-12-31",
+            "content_sha256": "ab" * 32,
+        }
 
     def test_unloaded_model_falls_back_to_the_registry(self, client):
         package = {"ModelPackageArn": "arn:pkg", "ModelPackageVersion": 7}
@@ -444,6 +449,7 @@ class TestModelInfoContract:
             body = client.get("/model/info").json()
         assert (body["model_id"], body["version"], body["loaded"]) == ("arn:pkg", 7, False)
         assert "framework" not in body
+        assert body["data_fingerprint"] is None
 
     def test_no_model_returns_503(self, client):
         with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:

@@ -105,7 +105,7 @@ def apply_statements(statements: list[str], approved: bool = False) -> int:
                     rows = cursor.fetchall()
                     result = rows[0][0] if rows and rows[0] else "OK"
                     print(f"       -> {result}")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - CLI boundary: stop at the first failed grant
                     failures += 1
                     print(f"       -> FAILED: {exc}", file=sys.stderr)
                     break

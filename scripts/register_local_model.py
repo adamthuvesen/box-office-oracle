@@ -121,6 +121,7 @@ def provenance_metadata(metadata: LocalModelMetadata) -> dict[str, str]:
         ),
         "training_rows": str(metadata.training_rows),
         "eval_years": metadata.eval_years,
+        **metadata.data_fingerprint.as_registry_metadata(),
     }
 
 

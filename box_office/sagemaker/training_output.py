@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import tarfile
 import tempfile
@@ -115,9 +114,8 @@ def download_and_parse_training_output(
             return {}
         raise
     finally:
-        if tarball_path and Path(tarball_path).exists():
-            with contextlib.suppress(OSError):
-                Path(tarball_path).unlink()
+        if tarball_path:
+            Path(tarball_path).unlink(missing_ok=True)
 
 
 def build_training_metrics(

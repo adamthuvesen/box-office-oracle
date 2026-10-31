@@ -14,6 +14,7 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
 from box_office.ml.model_metadata import LocalModelMetadata
 from scripts import register_local_model as register
@@ -116,11 +117,16 @@ def test_provenance_metadata_marks_local_quota_blocked():
             eval_years="2015-2023",
             eval_discipline="iterate on <= 2023",
             sha256={"model": "0" * 64},
+            data_fingerprint=DataFingerprint(
+                rows=6077, max_release_date="2025-12-31", content_sha256="ab" * 32
+            ),
         )
     )
     assert meta["trained_on"] == "local"
     assert meta["code_path"] == "container-identical"
     assert "quota" in meta["provenance_note"].lower()
     assert meta["training_rows"] == "6077"
+    assert meta["data_max_release_date"] == "2025-12-31"
+    assert meta["data_sha256"] == "ab" * 32
     # every value must be a str — CustomerMetadataProperties rejects non-strings.
     assert all(isinstance(v, str) for v in meta.values())

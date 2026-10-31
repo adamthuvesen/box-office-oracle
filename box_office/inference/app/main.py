@@ -414,6 +414,9 @@ async def get_model_info() -> dict[str, Any]:
         "status": model_info.status,
         "created_at": model_info.created_at,
         "metrics": model_info.metrics,
+        "data_fingerprint": (
+            model_info.data_fingerprint.model_dump() if model_info.data_fingerprint else None
+        ),
     }
     if loaded:
         body["framework"] = model_info.framework

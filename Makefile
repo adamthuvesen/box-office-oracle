@@ -1,4 +1,4 @@
-.PHONY: help check fix verify slow install install-dev test test-unit test-integration test-inference-lean lint format clean docker-build docker-test setup datasets web-data
+.PHONY: help check fix verify slow install install-dev test test-unit test-integration test-inference-lean training-image lint format clean docker-build docker-test setup datasets web-data
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -86,6 +86,9 @@ docker-test: docker-build ## Test Docker image
 		--entrypoint python \
 		box-office-inference:latest \
 		-c "import fastapi, mangum, boto3, pandas, numpy, sklearn, xgboost, pydantic; print('All dependencies available')"
+
+training-image: setup ## Build and push the SageMaker training image (spends: refuses until ARGS carries the approval flag; docs/training-image.md)
+	@scripts/build_training_image.sh $(ARGS)
 
 pipeline-run: install-dev ## Run ML pipeline (spends: refuses until ARGS carries the approval flag)
 	uv run box-office-pipeline --environment dev $(ARGS)

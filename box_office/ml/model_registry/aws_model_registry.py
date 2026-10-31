@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import compute_sha256_stream, parse_s3_uri
@@ -322,50 +322,12 @@ class AWSModelRegistry:
                 "approval_status": approval_status,
             }
 
-        except Exception as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error(f"Failed to update model approval status: {e}", exc_info=True)
             return {
                 "status": "error",
                 "error": str(e),
             }
-
-    def list_model_packages(
-        self,
-        model_package_group_name: str | None = None,
-        approval_status: str | None = None,
-        max_results: int = 10,
-    ) -> list[dict[str, Any]]:
-
-        try:
-            list_request = {
-                "MaxResults": max_results,
-                "SortBy": "CreationTime",
-                "SortOrder": "Descending",
-            }
-
-            if model_package_group_name:
-                list_request["ModelPackageGroupName"] = model_package_group_name
-
-            if approval_status:
-                list_request["ModelApprovalStatus"] = approval_status
-
-            response = self.sagemaker_client.list_model_packages(**list_request)
-
-            return response.get("ModelPackageSummaryList", [])
-
-        except Exception as e:
-            logger.error(f"Failed to list model packages: {e}", exc_info=True)
-            return []
-
-    def get_latest_approved_model(self, model_package_group_name: str) -> dict[str, Any] | None:
-
-        approved_models = self.list_model_packages(
-            model_package_group_name=model_package_group_name,
-            approval_status="Approved",
-            max_results=1,
-        )
-
-        return approved_models[0] if approved_models else None
 
     def _get_default_inference_spec(self, framework: str, framework_version: str) -> dict[str, Any]:
         """Build a default inference spec via SageMaker SDK image-URI lookup, with an ECR-URL fallback."""
@@ -380,7 +342,7 @@ class AWSModelRegistry:
                 region=self.region_name,
                 version=framework_version,
             )
-        except Exception as e:
+        except (ValueError, ClientError, BotoCoreError) as e:
             logger.warning(f"Could not retrieve image URI dynamically: {e}. Using fallback.")
             account_id = self._get_account_id()
             framework_images = {

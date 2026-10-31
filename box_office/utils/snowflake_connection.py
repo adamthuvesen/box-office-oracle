@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import snowflake.connector
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
@@ -43,7 +44,7 @@ def load_private_key_from_file(private_key_path: str, passphrase: str | None = N
 
         return private_key_bytes
 
-    except Exception as e:
+    except (OSError, ValueError, TypeError, UnsupportedAlgorithm) as e:
         raise ValueError(f"Failed to load private key from {private_key_path}: {e!s}") from e
 
 
@@ -139,15 +140,6 @@ def create_snowflake_connection(
                 # to password / browser auth.
                 logger.warning(f"Private key file missing, falling back to password auth: {e}")
                 use_private_key = False
-            except Exception:
-                # Decryption errors, permission errors, malformed PEM, etc. —
-                # silently swapping identity here was the C-tier root of H20.
-                # Re-raise so the caller surfaces the real problem instead of
-                # silently authenticating as a different role.
-                logger.error(
-                    "Failed to load private key (not a missing-file case); refusing to fall back"
-                )
-                raise
 
     if not use_private_key:
         if use_browser_auth or os.environ.get("SNOWFLAKE_AUTHENTICATOR") == "externalbrowser":
@@ -171,13 +163,9 @@ def create_snowflake_connection(
         f"Schema: {schema}"
     )
 
-    try:
-        conn = snowflake.connector.connect(**connection_params)
-        logger.info("Snowflake connection established successfully")
-        return conn
-    except Exception as e:
-        logger.error(f"Failed to connect to Snowflake: {e}")
-        raise
+    conn = snowflake.connector.connect(**connection_params)
+    logger.info("Snowflake connection established successfully")
+    return conn
 
 
 def enforce_data_types(df: pd.DataFrame, table_type: str = "training") -> pd.DataFrame:
@@ -220,31 +208,23 @@ def enforce_data_types(df: pd.DataFrame, table_type: str = "training") -> pd.Dat
         if col in expected_numerical or col.startswith(
             ("GENRE_", "IS_", "BUDGET_", "RATING_", "COVID_")
         ):
-            try:
-                # Snowflake sometimes returns NULLs as strings; normalize before numeric coerce.
-                if df_converted[col].dtype == "object":
-                    df_converted[col] = df_converted[col].replace(
-                        ["NULL", "null", "None", "NaN", ""], np.nan
-                    )
+            # Snowflake sometimes returns NULLs as strings; normalize before numeric coerce.
+            if df_converted[col].dtype == "object":
+                df_converted[col] = df_converted[col].replace(
+                    ["NULL", "null", "None", "NaN", ""], np.nan
+                )
 
-                df_converted[col] = pd.to_numeric(df_converted[col], errors="coerce")
+            df_converted[col] = pd.to_numeric(df_converted[col], errors="coerce")
 
-                if original_dtype != df_converted[col].dtype:
-                    converted_count += 1
-                    logger.debug(f"{col}: {original_dtype}  {df_converted[col].dtype}")
+            if original_dtype != df_converted[col].dtype:
+                converted_count += 1
+                logger.debug(f"{col}: {original_dtype}  {df_converted[col].dtype}")
 
-            except Exception as e:
-                logger.warning(f"Could not convert {col} to numeric: {e}")
-
-        elif col in ["RELEASE_DATE", "release_date"]:
-            try:
-                if df_converted[col].dtype == "object":
-                    df_converted[col] = pd.to_datetime(df_converted[col], errors="coerce")
-                    if original_dtype != df_converted[col].dtype:
-                        converted_count += 1
-                        logger.debug(f"{col}: {original_dtype}  datetime64")
-            except Exception as e:
-                logger.warning(f"Could not convert {col} to datetime: {e}")
+        elif col in ["RELEASE_DATE", "release_date"] and df_converted[col].dtype == "object":
+            df_converted[col] = pd.to_datetime(df_converted[col], errors="coerce")
+            if original_dtype != df_converted[col].dtype:
+                converted_count += 1
+                logger.debug(f"{col}: {original_dtype}  datetime64")
 
     logger.info(f"Data type enforcement complete: {converted_count} columns converted")
 

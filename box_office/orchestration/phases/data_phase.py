@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from box_office.config import config
+from box_office.ml.data_fingerprint import DataFingerprint, fingerprint_training_frame
 from box_office.orchestration.tasks.data_tasks import (
     apply_feature_engineering,
     load_staging_box_office_from_snowflake,
@@ -36,6 +37,7 @@ class DataPhaseResult:
     processor_path: str
     scaler_path: str
     feature_names: list[str]
+    data_fingerprint: DataFingerprint
 
 
 def run_data_phase(logger, approved: bool = False) -> DataPhaseResult:
@@ -77,6 +79,7 @@ def run_data_phase(logger, approved: bool = False) -> DataPhaseResult:
         processor_path=processor_path,
         scaler_path=scaler_path,
         feature_names=X_train_processed.columns.tolist(),
+        data_fingerprint=fingerprint_training_frame(pd.concat([X_train, y_train], axis=1)),
     )
 
 

@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 import pandas as pd
 
+from box_office.ml.data_fingerprint import DataFingerprint
+
 
 def test_train_phase_does_not_call_snowflake_reload():
     from box_office.orchestration.phases import data_phase, train_phase
@@ -19,6 +21,9 @@ def test_train_phase_does_not_call_snowflake_reload():
         processor_path="/tmp/p.pkl",
         scaler_path="/tmp/s.pkl",
         feature_names=["A"],
+        data_fingerprint=DataFingerprint(
+            rows=1, max_release_date="2020-01-01", content_sha256="0" * 64
+        ),
     )
 
     with (
@@ -80,6 +85,9 @@ def test_sagemaker_training_frames_upload_raw_frame_with_unscaled_release_year()
         processor_path="/tmp/p.pkl",
         scaler_path="/tmp/s.pkl",
         feature_names=["RELEASE_YEAR", "A"],
+        data_fingerprint=DataFingerprint(
+            rows=1, max_release_date="2020-01-01", content_sha256="0" * 64
+        ),
     )
 
     X_train, y_train = sagemaker_training_frames(data)

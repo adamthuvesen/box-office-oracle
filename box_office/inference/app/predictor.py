@@ -21,6 +21,7 @@ from pydantic import (
     field_validator,
 )
 
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.feature_schema import FeatureContractMismatch
 from box_office.ml.target import from_log_target
 from box_office.ml.text_utils import MAX_LITERAL_EVAL_BYTES, LiteralEvalTooLarge
@@ -157,9 +158,12 @@ class ModelInfo(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     metrics: dict[str, float] = Field(default_factory=dict)
     framework: str = "scikit-learn"
+    data_fingerprint: DataFingerprint | None = None
 
     @classmethod
-    def from_registry_package(cls, package: dict[str, Any]) -> Self:
+    def from_registry_package(
+        cls, package: dict[str, Any], data_fingerprint: DataFingerprint | None = None
+    ) -> Self:
         """Normalize a SageMaker model package summary for API and runtime use."""
         created_at = package.get("CreationTime")
         return cls(
@@ -173,6 +177,7 @@ class ModelInfo(BaseModel):
             ),
             metrics=package.get("metrics", {}),
             framework=package.get("framework", "unknown"),
+            data_fingerprint=data_fingerprint,
         )
 
 
@@ -211,6 +216,7 @@ class PredictionEngine:
             )
 
         except Exception as e:
+            # Unpickling an artifact can raise any exception type.
             logger.error(f"Failed to load model artifacts: {e!s}", exc_info=True)
             raise RuntimeError(f"Model loading failed: {e!s}") from e
 
@@ -322,6 +328,8 @@ class PredictionEngine:
         except FeatureContractMismatch:
             raise
         except Exception as e:
+            # Request boundary: the unpickled preprocessor can raise any type on
+            # user input; the API turns RuntimeError into its 500 contract.
             logger.error(f"Feature preprocessing failed: {e!s}", exc_info=True)
             raise RuntimeError(f"Feature preprocessing failed: {e!s}") from e
 
@@ -357,6 +365,7 @@ class PredictionEngine:
             return response
 
         except Exception as e:
+            # Request boundary, as in _preprocess_frame.
             logger.error(f"Prediction failed: {e!s}", exc_info=True)
             raise RuntimeError(f"Prediction failed: {e!s}") from e
 

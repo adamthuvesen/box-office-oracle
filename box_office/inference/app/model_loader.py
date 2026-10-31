@@ -22,6 +22,7 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.feature_schema import (
     CURRENT_FEATURE_SCHEMA_VERSION,
     SCHEMA_VERSION_METADATA_KEY,
@@ -84,7 +85,7 @@ class ModelLoader:
         except NoCredentialsError as e:
             logger.error(f"AWS credentials not configured: {e}")
             raise ModelLoadError(f"AWS credentials not configured: {e}") from e
-        except Exception as e:
+        except BotoCoreError as e:
             logger.exception("Failed to initialize AWS clients")
             raise ModelLoadError(f"Failed to initialize AWS clients: {e}") from e
 
@@ -94,6 +95,7 @@ class ModelLoader:
         self._current_model_info = None
         self._last_load_time = None
         self._extracted_artifacts_cache = {}
+        self._data_fingerprints: dict[str, DataFingerprint | None] = {}
 
         logger.info(f"ModelLoader initialized for group: {model_package_group_name}")
 
@@ -127,11 +129,8 @@ class ModelLoader:
             FeatureSchemaVersionMismatch,
         ):
             raise
-        except (ClientError, BotoCoreError, OSError, pickle.UnpicklingError) as e:
+        except (ClientError, BotoCoreError, OSError, KeyError, pickle.UnpicklingError) as e:
             logger.error(f"Failed to load model: {e}", exc_info=True)
-            raise ModelLoadError(f"Unexpected error loading model: {e}") from e
-        except Exception as e:
-            logger.exception("Unexpected error loading model")
             raise ModelLoadError(f"Unexpected error loading model: {e}") from e
 
     def get_current_model(self) -> tuple[Any, dict[str, Any]] | None:
@@ -237,6 +236,18 @@ class ModelLoader:
 
             customer_meta = package_details.get("CustomerMetadataProperties", {}) or {}
             expected_sha256 = self._validated_manifest_sha256(model_package_arn, customer_meta)
+            fingerprint = DataFingerprint.from_registry_metadata(customer_meta)
+            self._data_fingerprints[model_package_arn] = fingerprint
+            if fingerprint is None:
+                logger.warning("Model package %s records no data fingerprint", model_package_arn)
+            else:
+                logger.info(
+                    "Model %s trained on %d rows through %s (data sha256 %s)",
+                    model_package_arn,
+                    fingerprint.rows,
+                    fingerprint.max_release_date,
+                    fingerprint.content_sha256[:16],
+                )
 
             temp_path = self._download_model_archive(bucket, key)
             try:
@@ -272,6 +283,7 @@ class ModelLoader:
             logger.error(f"Error downloading model: {e}", exc_info=True)
             raise ModelLoadError(f"Failed to download model: {e}") from e
         except Exception as e:
+            # Artifact boundary: unpickling a cached model can raise any type.
             logger.exception("Unexpected error downloading model")
             raise ModelLoadError(f"Failed to download model: {e}") from e
 
@@ -340,6 +352,7 @@ class ModelLoader:
             logger.info(f"Downloaded model to: {temp_path}")
             return temp_path
         except Exception:
+            # Remove the partial download, then re-raise; nothing is swallowed.
             if Path(temp_path).exists():
                 Path(temp_path).unlink()
             raise
@@ -458,9 +471,6 @@ class ModelLoader:
         ) as e:
             logger.error(f"Error extracting/loading model: {e}", exc_info=True)
             raise ModelLoadError(f"Failed to extract/load model: {e}") from e
-        except Exception as e:
-            logger.exception("Unexpected error extracting/loading model")
-            raise ModelLoadError(f"Failed to extract/load model: {e}") from e
 
     def _validate_model(self, model_obj: Any, model_info: dict[str, Any]) -> None:
         try:
@@ -504,9 +514,6 @@ class ModelLoader:
             raise
         except (TypeError, AttributeError, ValueError, KeyError) as e:
             logger.error(f"Model validation failed: {e}")
-            raise ModelValidationError(f"Unexpected validation error: {e}") from e
-        except Exception as e:
-            logger.exception("Unexpected model validation failure")
             raise ModelValidationError(f"Unexpected validation error: {e}") from e
 
     def _validate_xgboost_model(self, model_obj: Any) -> None:
@@ -563,6 +570,12 @@ class ModelLoader:
     def get_latest_approved_model_info(self) -> dict[str, Any] | None:
         return self._get_latest_approved_model_info()
 
+    def get_data_fingerprint(self) -> DataFingerprint | None:
+        """The current model's training-data fingerprint, if its package records one."""
+        if self._current_model_info is None:
+            return None
+        return self._data_fingerprints.get(self._current_model_info["ModelPackageArn"])
+
     def get_model_artifacts_paths(self) -> dict[str, str]:
         """Get paths to model artifacts, reusing cached extracted artifacts."""
         if self._current_model is None:
@@ -585,8 +598,3 @@ class ModelLoader:
         except KeyError as e:
             logger.error(f"Failed to get model artifacts paths: {e}")
             raise ModelLoadError(f"Failed to get model artifacts paths: missing {e}") from e
-        except ModelLoadError:
-            raise
-        except Exception as e:
-            logger.exception("Unexpected error resolving model artifact paths")
-            raise ModelLoadError(f"Failed to get model artifacts paths: {e}") from e

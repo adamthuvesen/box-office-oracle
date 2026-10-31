@@ -7,8 +7,8 @@ import boto3
 import pandas as pd
 import sagemaker
 from pydantic import ValidationError
+from sagemaker.estimator import Estimator
 from sagemaker.inputs import TrainingInput
-from sagemaker.xgboost.estimator import XGBoost
 
 from box_office.config import CrossValidationWindow, ModelHyperparameters, config
 from box_office.utils.approval import require_approval
@@ -172,9 +172,18 @@ def train_xgboost_model_with_timeseries_cv_framework(
     experiment_config=None,
     approved=False,
 ):
-    """Launch a SageMaker training job using the XGBoost Framework Estimator,
-    running the in-container time-series CV training script."""
+    """Launch a SageMaker training job on the repository's training image.
+
+    The image (infrastructure/docker/training) runs
+    ``box_office.ml.model_training``: time-series CV and the final fit.
+    """
     require_approval("launching a SageMaker training job", approved)
+    image_uri = config.sagemaker.training_image_uri
+    if not image_uri:
+        raise ValueError(
+            "SAGEMAKER_TRAINING_IMAGE_URI is not set. Build and push the training "
+            "image first (docs/training-image.md)."
+        )
 
     # Separate XGBoost hyperparameters from custom script parameters
     xgboost_params = {
@@ -194,22 +203,15 @@ def train_xgboost_model_with_timeseries_cv_framework(
     # Log hyperparameters in structured format - use original for logging
     _log_hyperparameters_block(hyperparameters, logger)
 
-    logger.info("Configuring SageMaker XGBoost Framework Estimator...")
+    logger.info("Configuring SageMaker Estimator on image %s", image_uri)
     logger.info(f"XGBoost hyperparameters: {xgboost_params}")
     logger.info(f"Custom script parameters (env vars): {custom_params}")
 
-    # The source_dir needs to include the full box_office package structure
-    # so that imports like "from box_office.ml.model" work correctly.
-    project_root = str(Path(__file__).parent.parent.parent.resolve())
-
-    xgb_estimator = XGBoost(
-        entry_point="box_office/ml/model_training.py",
-        source_dir=project_root,
+    xgb_estimator = Estimator(
+        image_uri=image_uri,
         role=sagemaker_client.role,
         instance_type=config.sagemaker.instance_type,
         instance_count=1,
-        framework_version=config.sagemaker.framework_version,
-        py_version="py3",  # Required for framework mode
         output_path=f"s3://{sagemaker_client.s3_bucket}/{sagemaker_client.s3_prefix}/output",
         sagemaker_session=sagemaker_client.sagemaker_session,
         hyperparameters=xgboost_params,  # XGBoost hyperparameters

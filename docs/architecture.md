@@ -10,7 +10,7 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 | Data warehouse      | Snowflake                    | RAW → STAGING schemas                                                                                               |
 | Transformations     | dbt-core + dbt-snowflake     | `[transformations/](../transformations/)`                                                                           |
 | Feature engineering | scikit-learn + pandas        | Single `Pipeline` built by [`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)                 |
-| Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV                                                                                       |
+| Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV, custom image ([training-image.md](training-image.md))                               |
 | Model registry      | AWS SageMaker Model Registry | manual approval gate at R² ≥ 0.55                                                                                   |
 | Inference           | Lambda (container image)     | `[box_office/inference/](../box_office/inference)`                                                                  |
 | Orchestration       | Prefect                      | Three-phase flow in [`box_office/orchestration/flows/ml_pipeline.py`](../box_office/orchestration/flows/ml_pipeline.py) |
@@ -83,11 +83,11 @@ Fold 2: Train on <2016, evaluate on 2016
 Fold 9: Train on <2023, evaluate on 2023
 ```
 
-Hyperparameters: `n_estimators=1500`, `learning_rate=0.04`, `max_depth=4`, `min_child_weight=2`, `reg_lambda=0.2`, early stopping at 50 rounds. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
+The year windows live in [`box_office/eval_windows.py`](../box_office/eval_windows.py): eval years 2015-2023 for iteration on both the local and the cloud path, and 2024-2025 as the spent confirmation set. A CV window that reaches 2024 refuses to run unless the caller burns the holdout on purpose. Hyperparameters live in `ModelHyperparameters` ([`box_office/config.py`](../box_office/config.py)): `n_estimators=1500`, `learning_rate=0.04`, `max_depth=4`, `min_child_weight=2`, `reg_lambda=0.2`, early stopping at 50 rounds. Both paths fit the final model with `fit_final_model` ([`box_office/ml/model.py`](../box_office/ml/model.py)) and record a data fingerprint (rows, latest release date, content hash) in the model metadata; the Lambda loader logs it and `/model/info` returns it. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
 
 Each fold reports both **dollar-space R²** and **median APE** alongside the log-space loss. The per-fold output is merged with a `LogBudgetBaseline` (revenue ≈ a · budget^b, fit on the same training window) by `box_office.ml.backtest_report` to produce the final per-year table the README quotes.
 
-Per-fold failures are caught and logged; the loop raises `CrossValidationFailed` only if every fold fails (with `__cause__` chained to the last exception).
+A failed fold fails the run: the loop raises `CrossValidationFailed` with `__cause__` chained to the fold's exception, because a partial CV scores a different window.
 
 ## Model registry
 

@@ -39,7 +39,11 @@ def run_ml_pipeline_logic(
     data = run_data_phase(logger, approved=approved)
     train = run_train_phase(data, logger, approved=approved)
     registry = run_registry_phase(
-        train.training_metrics, environment=environment, logger=logger, approved=approved
+        train.training_metrics,
+        environment=environment,
+        logger=logger,
+        data_fingerprint=data.data_fingerprint,
+        approved=approved,
     )
 
     estimator = train.estimator

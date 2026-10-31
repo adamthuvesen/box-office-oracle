@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import pickle
+import sys
 import time
 from pathlib import Path
 
 import boto3
 import joblib
 import pandas as pd
+from botocore.exceptions import BotoCoreError, ClientError
 
 from box_office.config import MODEL_HYPERPARAMETERS, ModelHyperparameters
 from box_office.eval_windows import ITERATION_CV_FOLDS, ITERATION_END_YEAR, START_EVAL_YEAR
@@ -41,8 +43,19 @@ setup_logging_once()
 logger = logging.getLogger(__name__)
 
 
+SAGEMAKER_HYPERPARAMETERS_PATH = Path("/opt/ml/input/config/hyperparameters.json")
+
+
+def _sagemaker_hyperparameter_args() -> list[str]:
+    """``--name value`` pairs from the file SageMaker writes for a custom image."""
+    if not SAGEMAKER_HYPERPARAMETERS_PATH.exists():
+        return []
+    hyperparameters = json.loads(SAGEMAKER_HYPERPARAMETERS_PATH.read_text())
+    return [arg for name, value in hyperparameters.items() for arg in (f"--{name}", str(value))]
+
+
 def parse_args():
-    """Parse command-line arguments passed to the training script."""
+    """Parse the training arguments: the command line, then SageMaker's hyperparameters file."""
     parser = argparse.ArgumentParser()
 
     # SageMaker channel paths; fall back to local defaults outside SageMaker.
@@ -60,7 +73,7 @@ def parse_args():
     for name, default in MODEL_HYPERPARAMETERS.model_dump().items():
         parser.add_argument(f"--{name}", type=type(default), default=default)
 
-    args = parser.parse_args()
+    args = parser.parse_args(sys.argv[1:] + _sagemaker_hyperparameter_args())
 
     # Custom parameters injected via Estimator.environment. The lowercase names are the
     # contract with the training job's environment dict (see sagemaker_train_job.py).
@@ -82,20 +95,13 @@ def load_data(train_path):
     logger.info(f"Loading training data from: {train_path}")
 
     # SageMaker stages a channel as a directory of files.
-    try:
-        parquet_files = [f.name for f in Path(train_path).iterdir() if f.name.endswith(".parquet")]
-        if not parquet_files:
-            raise FileNotFoundError(
-                f"No .parquet file found in the training directory: {train_path}"
-            )
+    parquet_files = [f.name for f in Path(train_path).iterdir() if f.name.endswith(".parquet")]
+    if not parquet_files:
+        raise FileNotFoundError(f"No .parquet file found in the training directory: {train_path}")
 
-        data_path = Path(train_path) / parquet_files[0]
-        data = pd.read_parquet(data_path)
-        logger.info(f"Loaded data with shape: {data.shape} from {data_path}")
-
-    except Exception as e:
-        logger.error(f"Error loading data from {train_path}: {e}")
-        raise
+    data_path = Path(train_path) / parquet_files[0]
+    data = pd.read_parquet(data_path)
+    logger.info(f"Loaded data with shape: {data.shape} from {data_path}")
 
     date_col = "RELEASE_YEAR"
     target_col = "GROSS_LOG"
@@ -156,7 +162,7 @@ def load_preprocessing_artifacts(args):
         scaler_bucket, scaler_key = parse_s3_uri(args.scaler_s3_uri)
         scaler_path = Path(args.model_dir) / FEATURE_SCALER_PKL
         s3_client.download_file(scaler_bucket, scaler_key, str(scaler_path))
-    except Exception as e:
+    except (ClientError, BotoCoreError, ValueError) as e:
         raise RuntimeError(
             f"Failed to download preprocessing artifacts: {e}. "
             f"Ensure artifacts exist at processor_s3_uri={args.processor_s3_uri} "
@@ -370,7 +376,8 @@ def save_results(
 
         logger.info(f"Sent {len(cloudwatch_metrics)} metrics to CloudWatch")
 
-    except Exception as e:
+    except (ClientError, BotoCoreError) as e:
+        # CloudWatch metrics are telemetry; the artifacts above are already saved.
         logger.warning(f"Could not send CloudWatch metrics: {e}")
 
     # 5. Performance summary
@@ -400,7 +407,9 @@ def save_results(
             for k, v in custom_metrics.items():
                 run_ctx.log_metric(k, float(v))
             logger.info("Custom metrics logged to SageMaker Experiment")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        # The optional SageMaker Experiments SDK has no documented error types;
+        # a failure here only loses experiment metrics, never the artifacts.
         logger.warning(f"Could not log custom metrics via run context: {e}")
 
 

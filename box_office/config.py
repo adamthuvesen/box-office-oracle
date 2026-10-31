@@ -114,7 +114,11 @@ class _PathsView:
 
 @dataclass(frozen=True)
 class _SagemakerView:
+    # The ECR URI of the training image (infrastructure/docker/training); unset
+    # until it is built and pushed (docs/training-image.md).
+    training_image_uri: str | None = None
     instance_type: str = "ml.m5.large"
+    # The registry's inference container spec only; training uses training_image_uri.
     framework_version: str = "1.7-1"
     s3_prefix: str = "box-office"
 
@@ -142,6 +146,8 @@ class Settings(BaseSettings):
     SNOWFLAKE_DATABASE: str
     SNOWFLAKE_SCHEMA_RAW: str = "RAW"
     SNOWFLAKE_SCHEMA_STAGING: str = "STAGING"
+
+    SAGEMAKER_TRAINING_IMAGE_URI: str | None = None
 
     def model_post_init(self, __context) -> None:
         """Pre-compute the nested view dataclasses once.
@@ -177,7 +183,11 @@ class Settings(BaseSettings):
         )
         object.__setattr__(self, "_model", _ModelView())
         object.__setattr__(self, "_paths", _PathsView())
-        object.__setattr__(self, "_sagemaker", _SagemakerView())
+        object.__setattr__(
+            self,
+            "_sagemaker",
+            _SagemakerView(training_image_uri=self.SAGEMAKER_TRAINING_IMAGE_URI),
+        )
 
     @property
     def aws(self) -> _AwsView:

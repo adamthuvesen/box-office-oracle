@@ -429,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
             use_browser_auth=args.browser_auth,
         )
         loader.run(args.parquet, approved=args.approved)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: one stderr line, exit 1
         logger.error("Load failed: %s", exc)
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

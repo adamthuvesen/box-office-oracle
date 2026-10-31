@@ -56,7 +56,7 @@ HYPERPARAMETERS = {
 
 def test_training_job_refuses_without_approval():
     client = _fake_sagemaker_client()
-    with patch.object(sagemaker_train_job, "XGBoost") as estimator_class:
+    with patch.object(sagemaker_train_job, "Estimator") as estimator_class:
         with pytest.raises(ApprovalRequired):
             sagemaker_train_job.train_xgboost_model_with_timeseries_cv_framework(
                 client, "s3://train", (10, 3), HYPERPARAMETERS
@@ -66,11 +66,31 @@ def test_training_job_refuses_without_approval():
 
 def test_training_job_fits_when_approved():
     client = _fake_sagemaker_client()
-    with patch.object(sagemaker_train_job, "XGBoost") as estimator_class:
+    with patch.object(sagemaker_train_job, "Estimator") as estimator_class:
         sagemaker_train_job.train_xgboost_model_with_timeseries_cv_framework(
             client, "s3://train", (10, 3), HYPERPARAMETERS, approved=True
         )
         estimator_class.return_value.fit.assert_called_once_with({"train": "s3://train"})
+    assert estimator_class.call_args.kwargs["image_uri"] == (
+        sagemaker_train_job.config.sagemaker.training_image_uri
+    )
+
+
+def test_training_job_refuses_without_a_training_image(monkeypatch):
+    sagemaker_view = sagemaker_train_job.config.sagemaker
+    monkeypatch.setattr(
+        sagemaker_train_job.config,
+        "_sagemaker",
+        type(sagemaker_view)(training_image_uri=None),
+    )
+    with (
+        patch.object(sagemaker_train_job, "Estimator") as estimator_class,
+        pytest.raises(ValueError, match="SAGEMAKER_TRAINING_IMAGE_URI"),
+    ):
+        sagemaker_train_job.train_xgboost_model_with_timeseries_cv_framework(
+            _fake_sagemaker_client(), "s3://train", (10, 3), HYPERPARAMETERS, approved=True
+        )
+    estimator_class.assert_not_called()
 
 
 def test_training_upload_refuses_without_approval():
