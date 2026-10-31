@@ -1,6 +1,6 @@
 """Box-office feature engineering as a composed sklearn Pipeline."""
 
-from box_office.ml.feature_pipeline._helpers import _column
+from box_office.ml.feature_pipeline._helpers import last_column
 from box_office.ml.feature_pipeline.constants import (
     CORE_NUMERICAL_FEATURES,
     GENRE_VOCABULARY,
@@ -13,14 +13,14 @@ from box_office.ml.feature_pipeline.transformers.core import CoreNumericalTransf
 from box_office.ml.feature_pipeline.transformers.financial import FinancialTransformer
 from box_office.ml.feature_pipeline.transformers.genre import (
     GenreTransformer,
-    _map_super_genre,
-    _split_genre_field,
+    map_super_genre,
+    split_genre_field,
 )
 from box_office.ml.feature_pipeline.transformers.industry import IndustryTransformer
 from box_office.ml.feature_pipeline.transformers.select import (
+    DropPreEngineered,
     FeatureSelector,
-    _DropPreEngineered,
-    _SelectEngineered,
+    SelectEngineered,
 )
 from box_office.ml.feature_pipeline.transformers.temporal import TemporalTransformer
 
@@ -32,15 +32,15 @@ __all__ = [
     "RAW_INPUT_COLUMNS_TO_DROP",
     "SELECTED_FEATURES",
     "CoreNumericalTransformer",
+    "DropPreEngineered",
     "FeatureSelector",
     "FinancialTransformer",
     "GenreTransformer",
     "IndustryTransformer",
+    "SelectEngineered",
     "TemporalTransformer",
-    "_DropPreEngineered",
-    "_SelectEngineered",
-    "_column",
-    "_map_super_genre",
-    "_split_genre_field",
     "build_feature_pipeline",
+    "last_column",
+    "map_super_genre",
+    "split_genre_field",
 ]

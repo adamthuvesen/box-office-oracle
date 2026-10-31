@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -18,15 +20,15 @@ class IndustryTransformer(BaseEstimator, TransformerMixin):
     UNKNOWN_MPAA = "unknown"
 
     def __init__(self) -> None:
-        self.director_freq_map: dict[str, int] = {}
-        self.company_freq_map: dict[str, int] = {}
+        self.director_freq_map: dict[Any, int] = {}
+        self.company_freq_map: dict[Any, int] = {}
         self.actor_freq_map: Counter[str] = Counter()
-        self.global_director_freq = 0
-        self.global_company_freq = 0
-        self.global_actor_freq = 0
+        self.global_director_freq: float = 0
+        self.global_company_freq: float = 0
+        self.global_actor_freq: float = 0
         self.mpaa_encoder = LabelEncoder()
 
-    def fit(self, X: pd.DataFrame, y=None) -> IndustryTransformer:
+    def fit(self, X: pd.DataFrame, y: object = None) -> IndustryTransformer:
         # Seed the unknown bucket so transform() can route unseen ratings.
         mpaa_train = X["MPAA"].fillna("Not Rated").tolist()
         mpaa_train.append(self.UNKNOWN_MPAA)
@@ -39,11 +41,11 @@ class IndustryTransformer(BaseEstimator, TransformerMixin):
         self.actor_freq_map = Counter(a for sub in actor_lists for a in sub)
 
         director_counts = X["DIRECTOR"].value_counts()
-        self.global_director_freq = director_counts.median() if len(director_counts) else 0
+        self.global_director_freq = float(director_counts.median()) if len(director_counts) else 0
         company_counts = X["PRODUCTION_COMPANY"].value_counts()
-        self.global_company_freq = company_counts.median() if len(company_counts) else 0
+        self.global_company_freq = float(company_counts.median()) if len(company_counts) else 0
         self.global_actor_freq = (
-            np.median(list(self.actor_freq_map.values())) if self.actor_freq_map else 0
+            float(np.median(list(self.actor_freq_map.values()))) if self.actor_freq_map else 0
         )
         self.is_fitted_ = True
         return self
@@ -51,7 +53,7 @@ class IndustryTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         new = pd.DataFrame(index=X.index)
         mpaa_values = X["MPAA"].fillna("Not Rated")
-        known = set(self.mpaa_encoder.classes_)
+        known = set(cast("Iterable[str]", self.mpaa_encoder.classes_))
         new["MPAA_ENCODED"] = self.mpaa_encoder.transform(
             mpaa_values.where(mpaa_values.isin(known), self.UNKNOWN_MPAA)
         )
@@ -71,7 +73,7 @@ class IndustryTransformer(BaseEstimator, TransformerMixin):
         actor_freq_map = self.actor_freq_map
         global_actor_freq = self.global_actor_freq
 
-        def _actor_freqs(xs):
+        def _actor_freqs(xs: list[str]) -> tuple[float, float, float]:
             if not xs:
                 return (global_actor_freq, 0.0, 0.0)
             freqs = [actor_freq_map.get(a, 0) for a in xs]

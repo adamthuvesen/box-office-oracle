@@ -7,15 +7,16 @@ help: ## Show this help message
 check: setup ## Fast gate: locked sync, ruff check, ruff format check, fast tests (CI runs this)
 	@scripts/check.sh
 
-fix: install-dev ## Auto-fix lint and format with ruff
+fix: install-dev ## Auto-fix lint and format with ruff; regenerate the web contract
 	uv run ruff check --fix box_office tests scripts
 	uv run ruff format box_office tests scripts
+	uv run python scripts/generate_web_contract.py
 
 verify: ## Drive the real app (verify skill, Phase 7); pass subcommands as ARGS=...
 	@echo "verify skill not built yet (Phase 7)" >&2
 	@exit 1
 
-slow: setup ## Full test suite and offline dbt parse
+slow: setup ## Full test suite, pinned infra linters (actionlint, checkov), offline dbt parse
 	@scripts/slow.sh
 
 setup: ## Verify uv is installed (no curl | sh)

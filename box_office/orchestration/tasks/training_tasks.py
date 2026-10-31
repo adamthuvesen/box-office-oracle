@@ -72,7 +72,7 @@ def train_model(
 
     training_start = time.time()
 
-    # XGBoost hyperparameters using framework mode
+    # XGBoost hyperparameters from their owner, config.ModelHyperparameters
     xgboost_hyperparameters = config.model.hyperparameters.model_dump()
 
     # Custom script parameters for the training script

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -12,7 +14,7 @@ from box_office.ml.feature_pipeline.constants import (
 )
 
 
-class _DropPreEngineered(BaseEstimator, TransformerMixin):
+class DropPreEngineered(BaseEstimator, TransformerMixin):
     """Strip any pre-existing engineered columns from input.
 
     Input snapshots can include offline-encoded columns (``mpaa_encoded``,
@@ -27,7 +29,7 @@ class _DropPreEngineered(BaseEstimator, TransformerMixin):
         "PRODUCTION_COMPANY_ENCODED",
     )
 
-    def fit(self, X: pd.DataFrame, y=None) -> _DropPreEngineered:
+    def fit(self, X: pd.DataFrame, y: object = None) -> DropPreEngineered:
         self.is_fitted_ = True
         return self
 
@@ -36,13 +38,13 @@ class _DropPreEngineered(BaseEstimator, TransformerMixin):
         return X.drop(columns=present) if present else X
 
 
-class _SelectEngineered(BaseEstimator, TransformerMixin):
+class SelectEngineered(BaseEstimator, TransformerMixin):
     """Final step: drop raw input columns, then refuse non-numeric leftovers."""
 
-    def __init__(self, raw_cols=RAW_INPUT_COLUMNS_TO_DROP) -> None:
+    def __init__(self, raw_cols: Iterable[str] = RAW_INPUT_COLUMNS_TO_DROP) -> None:
         self.raw_cols = tuple(raw_cols)
 
-    def fit(self, X: pd.DataFrame, y=None) -> _SelectEngineered:
+    def fit(self, X: pd.DataFrame, y: object = None) -> SelectEngineered:
         self.is_fitted_ = True
         return self
 
@@ -76,10 +78,10 @@ class FeatureSelector(BaseEstimator, TransformerMixin):
     ``GENRE_horror``, which is not itself selected).
     """
 
-    def __init__(self, selected=SELECTED_FEATURES) -> None:
+    def __init__(self, selected: Iterable[str] = SELECTED_FEATURES) -> None:
         self.selected = tuple(selected)
 
-    def fit(self, X: pd.DataFrame, y=None) -> FeatureSelector:
+    def fit(self, X: pd.DataFrame, y: object = None) -> FeatureSelector:
         self.is_fitted_ = True
         return self
 
@@ -97,3 +99,9 @@ class FeatureSelector(BaseEstimator, TransformerMixin):
                 "out of sync with the transformers."
             )
         return X.loc[:, list(self.selected)]
+
+
+# Pickled preprocessors in the model registry reference these classes by their old private
+# names. Keep the names resolvable so those artifacts still load.
+_DropPreEngineered = DropPreEngineered
+_SelectEngineered = SelectEngineered

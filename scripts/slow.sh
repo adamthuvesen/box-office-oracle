@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# The slow gate: the full test suite and an offline dbt parse. Needs network
-# access to fetch dbt packages, and no Snowflake credentials.
+# The slow gate: the full test suite, the pinned infra linters, and an offline
+# dbt parse. Needs network access to fetch dbt packages and the linters once,
+# and no Snowflake credentials.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 uv sync --locked --extra dev --extra inference --extra train --quiet
 uv run --no-sync pytest tests/
+scripts/lint_infra.sh
 
 export SNOWFLAKE_ACCOUNT="${SNOWFLAKE_ACCOUNT:-offline}"
 export SNOWFLAKE_USER="${SNOWFLAKE_USER:-offline}"

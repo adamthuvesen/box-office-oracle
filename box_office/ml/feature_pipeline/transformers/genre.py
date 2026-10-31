@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import CountVectorizer
@@ -60,17 +62,19 @@ class GenreTransformer(BaseEstimator, TransformerMixin):
             vocabulary=self.vocabulary,
             binary=True,
             tokenizer=_pipe_split,
-            token_pattern=None,
             lowercase=True,
         )
+        # sklearn accepts None here (a custom tokenizer replaces the pattern); its default
+        # sets the declared type to str, so the call cannot pass None directly.
+        self.vectorizer.set_params(token_pattern=None)
         self.super_genre_map: dict[str, int] = {}
         self.super_genre_other_val = -1
 
-    def fit(self, X: pd.DataFrame, y=None) -> GenreTransformer:
-        genre_lists = X["GENRES"].apply(_split_genre_field)
+    def fit(self, X: pd.DataFrame, y: object = None) -> GenreTransformer:
+        genre_lists = X["GENRES"].apply(split_genre_field)
         genre_texts = genre_lists.apply(lambda g: "|".join(g).lower() if g else "unknown")
         self.vectorizer.fit(genre_texts)
-        super_genres = genre_lists.apply(_map_super_genre)
+        super_genres = genre_lists.apply(map_super_genre)
         top = super_genres.value_counts().index
         self.super_genre_map = {g: i for i, g in enumerate(top)}
         self.super_genre_other_val = -1
@@ -78,20 +82,20 @@ class GenreTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        genre_lists = X["GENRES"].apply(_split_genre_field)
+        genre_lists = X["GENRES"].apply(split_genre_field)
         genre_texts = genre_lists.apply(lambda g: "|".join(g).lower() if g else "unknown")
         mat = self.vectorizer.transform(genre_texts).toarray()
         cols = [f"GENRE_{n}" for n in self.vectorizer.get_feature_names_out()]
         new = pd.DataFrame(mat, columns=cols, index=X.index)
         new["SUPER_GENRE_ENCODED"] = (
-            genre_lists.apply(_map_super_genre)
+            genre_lists.apply(map_super_genre)
             .map(self.super_genre_map)
             .fillna(self.super_genre_other_val)
         )
         return pd.concat([X, new], axis=1)
 
 
-def _split_genre_field(value) -> list[str]:
+def split_genre_field(value: object) -> list[str]:
     """Lowercase + canonicalize multi-word genres to underscored tokens."""
     out: list[str] = []
     for tok in process_text_list(value):
@@ -102,7 +106,7 @@ def _split_genre_field(value) -> list[str]:
     return out
 
 
-def _map_super_genre(genres) -> str:
+def map_super_genre(genres: Iterable[str]) -> str:
     genre_set = set(genres)
     for required_genres, label in _SUPER_GENRE_RULES:
         if required_genres.issubset(genre_set):

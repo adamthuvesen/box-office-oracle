@@ -19,7 +19,7 @@ class CoreNumericalTransformer(BaseEstimator, TransformerMixin):
     defaults defined by the feature contract.
     """
 
-    def fit(self, X: pd.DataFrame, y=None) -> CoreNumericalTransformer:
+    def fit(self, X: pd.DataFrame, y: object = None) -> CoreNumericalTransformer:
         self.is_fitted_ = True
         return self
 

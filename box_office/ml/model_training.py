@@ -416,7 +416,6 @@ def save_results(
 def train(args):
     """Main training orchestrator function."""
     logger.info("Starting Box Office Prediction Model Training")
-    logger.info("Running in XGBoost framework mode with custom metric capture")
     logger.info(f"Training parameters: {vars(args)}")
 
     X_train, y_train_log, dates = load_data(args.train)

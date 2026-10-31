@@ -68,7 +68,7 @@ Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/dat
 | Industry              | 6    | Frequency encoding of director / studio / actor / MPAA                                        |
 | Financial             | 13   | Production budget logs, CPI adjustment, and safe budget interactions                          |
 
-`TransformerMixin`-style augmenting steps: each one returns the input frame plus its new columns, so the pipeline is debuggable via `set_output(transform="pandas")`. The final `_SelectEngineered` step drops the raw input columns the transformers consumed.
+`TransformerMixin`-style augmenting steps: each one returns the input frame plus its new columns, so the pipeline is debuggable via `set_output(transform="pandas")`. The final `SelectEngineered` step drops the raw input columns the transformers consumed.
 
 Outcome-derived and post-release signals are not feature inputs. `tests/test_feature_leakage_guard.py` rejects any column whose absolute Pearson correlation with the log-target exceeds 0.99 on a synthetic year and blocks forbidden leakage names from the feature contract.
 
