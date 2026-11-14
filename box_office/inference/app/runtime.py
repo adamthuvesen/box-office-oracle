@@ -53,13 +53,15 @@ class ModelRuntime:
     def predict(self, request: PredictionRequest) -> PredictionResponse:
         return self._engine.predict(request)
 
-    def get_model_info(self):
+    def get_model_info(self) -> ModelInfo | None:
         return self._engine.get_model_info()
 
     def describe_model(self) -> tuple[ModelInfo, bool] | None:
         """The loaded model's info, else the latest approved package's; and whether it is loaded."""
         if self._engine.is_loaded():
-            return self._engine.get_model_info(), True
+            info = self._engine.get_model_info()
+            if info is not None:
+                return info, True
         package = self._loader.get_latest_approved_model_info()
         if not package:
             return None

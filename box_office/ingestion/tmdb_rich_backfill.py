@@ -305,7 +305,7 @@ def request_json(
 
 def normalize_keywords(payload: dict[str, Any]) -> str:
     keywords = payload.get("keywords") or {}
-    values = keywords.get("keywords") if isinstance(keywords, dict) else []
+    values = (keywords.get("keywords") if isinstance(keywords, dict) else None) or []
     return ", ".join(
         str(keyword.get("name", "")).strip()
         for keyword in values
@@ -315,8 +315,8 @@ def normalize_keywords(payload: dict[str, Any]) -> str:
 
 def normalize_credits(payload: dict[str, Any]) -> dict[str, str]:
     credits = payload.get("credits") or {}
-    crew = credits.get("crew") if isinstance(credits, dict) else []
-    cast = credits.get("cast") if isinstance(credits, dict) else []
+    crew = (credits.get("crew") if isinstance(credits, dict) else None) or []
+    cast = (credits.get("cast") if isinstance(credits, dict) else None) or []
 
     directors = [
         str(member.get("name", "")).strip()
@@ -335,7 +335,7 @@ def normalize_credits(payload: dict[str, Any]) -> dict[str, str]:
 
 def normalize_mpaa(payload: dict[str, Any]) -> str:
     release_dates = payload.get("release_dates") or {}
-    results = release_dates.get("results") if isinstance(release_dates, dict) else []
+    results = (release_dates.get("results") if isinstance(release_dates, dict) else None) or []
     for country_release in results:
         if not isinstance(country_release, dict):
             continue

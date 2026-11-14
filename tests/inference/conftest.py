@@ -3,6 +3,7 @@
 import pickle
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import numpy as np
@@ -13,7 +14,7 @@ from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 
 
 @pytest.fixture
-def valid_prediction_payload() -> dict:
+def valid_prediction_payload() -> dict[str, Any]:
     return {
         "budget": 50_000_000,
         "runtime": 120,

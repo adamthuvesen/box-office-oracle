@@ -7,6 +7,8 @@ satisfies the SELECTED_FEATURES contract through FeaturePreprocessorHigh.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -20,7 +22,7 @@ from box_office.training_frame import (
 )
 
 
-def _staging_row(**overrides) -> dict:
+def _staging_row(**overrides) -> dict[str, Any]:
     row = {
         "TMDB_ID": 1,
         "IMDB_ID": "tt0000001",
@@ -100,7 +102,7 @@ class TestBuildProductionTrainingFrame:
         )
         kept, _dropped = build_production_training_frame(staging, overrides_path=None)
         assert len(kept) == 1
-        assert np.isnan(kept.loc[0, "PRODUCTION_BUDGET"])
+        assert pd.isna(kept.loc[0, "PRODUCTION_BUDGET"])
 
     def test_actors_become_list_literal(self):
         staging = pd.DataFrame([_staging_row(ACTORS="Mark Hamill, Harrison Ford")])
@@ -134,7 +136,7 @@ class TestFranchiseFeatures:
                 "WORLDWIDE_GROSS": [200_000_000.0, 426_900_000.0, 50_000_000.0],
             }
         )
-        collection_map = dict.fromkeys((10, 11, 12), "collection:7")
+        collection_map: dict[int, str] = dict.fromkeys((10, 11, 12), "collection:7")
         # Middle film is a known-bad gross artifact the quality gate drops.
         eligible = pd.Series([True, False, True])
         out = add_franchise_features(frame, collection_map, eligible_as_prior=eligible)

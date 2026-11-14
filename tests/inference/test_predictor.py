@@ -75,7 +75,7 @@ class TestPredictionRequest:
             "release_year": 2024,
         }
 
-        request = PredictionRequest(**request_data)
+        request = PredictionRequest.model_validate(request_data)
 
         assert request.budget == 50000000
         assert request.runtime == 120
@@ -98,11 +98,13 @@ class TestPredictionRequest:
             "release_year": 2024,
         }
 
-        request = PredictionRequest(
-            **base,
-            ip_tier=1,
-            prior_franchise_gross=2_000_000_000,
-            is_franchise_followup=True,
+        request = PredictionRequest.model_validate(
+            {
+                **base,
+                "ip_tier": 1,
+                "prior_franchise_gross": 2_000_000_000,
+                "is_franchise_followup": True,
+            }
         )
         assert request.ip_tier == 1
         assert request.prior_franchise_gross == 2_000_000_000
@@ -110,7 +112,7 @@ class TestPredictionRequest:
 
         for bad in ({"ip_tier": 0}, {"ip_tier": 6}, {"prior_franchise_gross": -1}):
             with pytest.raises(ValidationError):
-                PredictionRequest(**base, **bad)
+                PredictionRequest.model_validate({**base, **bad})
 
     def test_valid_request_full(self):
         """Test valid request with all fields."""
@@ -127,7 +129,7 @@ class TestPredictionRequest:
             "return_confidence": False,
         }
 
-        request = PredictionRequest(**request_data)
+        request = PredictionRequest.model_validate(request_data)
 
         assert request.budget == 100000000
         assert request.genre == ["Action", "Adventure"]
@@ -145,12 +147,12 @@ class TestPredictionRequest:
             "release_year": 2024,
         }
 
-        request = PredictionRequest(**request_data)
+        request = PredictionRequest.model_validate(request_data)
         assert request.genre == ["Comedy"]
 
         # Genre as list string
         request_data["genre"] = "['Action', 'Comedy']"
-        request = PredictionRequest(**request_data)
+        request = PredictionRequest.model_validate(request_data)
         assert request.genre == ["Action", "Comedy"]
 
     def test_actors_string_conversion(self):
@@ -164,15 +166,15 @@ class TestPredictionRequest:
             "actors": "['Tom Cruise', 'Emily Blunt']",
         }
 
-        request = PredictionRequest(**request_data)
+        request = PredictionRequest.model_validate(request_data)
         assert request.actors == ["Tom Cruise", "Emily Blunt"]
 
         request_data["actors"] = "[]"
-        request = PredictionRequest(**request_data)
+        request = PredictionRequest.model_validate(request_data)
         assert request.actors == []
 
         request_data["actors"] = "Tom Cruise"
-        request = PredictionRequest(**request_data)
+        request = PredictionRequest.model_validate(request_data)
         assert request.actors == ["Tom Cruise"]
 
     def test_invalid_budget_negative(self):
@@ -186,7 +188,7 @@ class TestPredictionRequest:
         }
 
         with pytest.raises(ValidationError) as exc_info:
-            PredictionRequest(**request_data)
+            PredictionRequest.model_validate(request_data)
 
         errors = exc_info.value.errors()
         assert any(error["loc"] == ("budget",) for error in errors)
@@ -202,7 +204,7 @@ class TestPredictionRequest:
         }
 
         with pytest.raises(ValidationError) as exc_info:
-            PredictionRequest(**request_data)
+            PredictionRequest.model_validate(request_data)
 
         errors = exc_info.value.errors()
         assert any(error["loc"] == ("runtime",) for error in errors)
@@ -218,7 +220,7 @@ class TestPredictionRequest:
         }
 
         with pytest.raises(ValidationError) as exc_info:
-            PredictionRequest(**request_data)
+            PredictionRequest.model_validate(request_data)
 
         errors = exc_info.value.errors()
         assert any(error["loc"] == ("release_month",) for error in errors)
@@ -237,7 +239,7 @@ class TestPredictionRequest:
         }
 
         with pytest.raises(ValidationError) as exc_info:
-            PredictionRequest(**request_data)
+            PredictionRequest.model_validate(request_data)
 
         errors = exc_info.value.errors()
         rejected = {error["loc"][0] for error in errors}
@@ -248,7 +250,7 @@ class TestPredictionRequest:
         request_data = {"budget": 50000000}
 
         with pytest.raises(ValidationError) as exc_info:
-            PredictionRequest(**request_data)
+            PredictionRequest.model_validate(request_data)
 
         errors = exc_info.value.errors()
         required_fields = {"runtime", "genre", "release_month", "release_year"}
@@ -270,7 +272,7 @@ class TestPredictionResponse:
             "processing_time_ms": 45.2,
         }
 
-        response = PredictionResponse(**response_data)
+        response = PredictionResponse.model_validate(response_data)
 
         assert response.prediction == 125000000.0
         assert response.model_id == "model_003"
@@ -289,7 +291,7 @@ class TestPredictionResponse:
             "processing_time_ms": 45.2,
         }
 
-        response = PredictionResponse(**response_data)
+        response = PredictionResponse.model_validate(response_data)
         assert response.prediction_interval_heuristic is None
 
     def test_numpy_type_conversion(self):
@@ -302,7 +304,7 @@ class TestPredictionResponse:
             "processing_time_ms": np.float32(45.2),
         }
 
-        response = PredictionResponse(**response_data)
+        response = PredictionResponse.model_validate(response_data)
 
         assert isinstance(response.prediction, float)
         assert isinstance(response.model_version, int)
@@ -323,7 +325,7 @@ class TestModelInfo:
             "framework": "xgboost",
         }
 
-        info = ModelInfo(**info_data)
+        info = ModelInfo.model_validate(info_data)
 
         assert info.model_id == "box-office-model-v3"
         assert info.version == 3
@@ -436,7 +438,7 @@ class TestPredictionEngine:
                 model_path=model_path,
                 preprocessor_path=preprocessor_path,
                 scaler_path=scaler_path,
-                model_info=ModelInfo(**sample_model_metadata),
+                model_info=ModelInfo.model_validate(sample_model_metadata),
             )
 
             assert prediction_engine.model is not None
@@ -454,7 +456,7 @@ class TestPredictionEngine:
                 model_path="/nonexistent/model.pkl",
                 preprocessor_path="/nonexistent/preprocessor.pkl",
                 scaler_path="/nonexistent/scaler.pkl",
-                model_info=ModelInfo(**sample_model_metadata),
+                model_info=ModelInfo.model_validate(sample_model_metadata),
             )
 
     def test_is_loaded(self, prediction_engine, mock_model, mock_preprocessor, mock_scaler):
@@ -472,7 +474,7 @@ class TestPredictionEngine:
         """Test get_model_info method."""
         assert prediction_engine.get_model_info() is None
 
-        prediction_engine.model_info = ModelInfo(**sample_model_metadata)
+        prediction_engine.model_info = ModelInfo.model_validate(sample_model_metadata)
 
         info = prediction_engine.get_model_info()
         assert info is not None
@@ -631,7 +633,7 @@ class TestPredictionEngine:
         prediction_engine.model = mock_model
         prediction_engine.preprocessor = mock_preprocessor
         prediction_engine.scaler = mock_scaler
-        prediction_engine.model_info = ModelInfo(**sample_model_metadata)
+        prediction_engine.model_info = ModelInfo.model_validate(sample_model_metadata)
         prediction_engine._is_loaded = True
 
         response = prediction_engine.predict(sample_request)
@@ -658,7 +660,7 @@ class TestPredictionEngine:
         prediction_engine.model = mock_model
         prediction_engine.preprocessor = mock_preprocessor
         prediction_engine.scaler = mock_scaler
-        prediction_engine.model_info = ModelInfo(**sample_model_metadata)
+        prediction_engine.model_info = ModelInfo.model_validate(sample_model_metadata)
         prediction_engine._is_loaded = True
 
         request = PredictionRequest(
@@ -692,7 +694,7 @@ class TestPredictionEngine:
         prediction_engine.model = failing_model
         prediction_engine.preprocessor = mock_preprocessor
         prediction_engine.scaler = mock_scaler
-        prediction_engine.model_info = ModelInfo(**sample_model_metadata)
+        prediction_engine.model_info = ModelInfo.model_validate(sample_model_metadata)
         prediction_engine._is_loaded = True
 
         with pytest.raises(RuntimeError, match="Prediction failed"):
@@ -717,7 +719,7 @@ class TestPredictionEngine:
         prediction_engine.model = mock_model
         prediction_engine.preprocessor = mock_preprocessor
         prediction_engine.scaler = mock_scaler
-        prediction_engine.model_info = ModelInfo(**sample_model_metadata)
+        prediction_engine.model_info = ModelInfo.model_validate(sample_model_metadata)
         prediction_engine._is_loaded = True
 
         # Force the model to emit NaN; the predictor should propagate NaN
@@ -823,7 +825,7 @@ class TestPredictionEngineIntegration:
                 model_path=model_path,
                 preprocessor_path=preprocessor_path,
                 scaler_path=scaler_path,
-                model_info=ModelInfo(**model_metadata),
+                model_info=ModelInfo.model_validate(model_metadata),
             )
 
             request_data = {
@@ -851,6 +853,7 @@ class TestPredictionEngineIntegration:
             assert response.processing_time_ms > 0
 
             model_info = engine.get_model_info()
+            assert model_info is not None
             assert model_info.model_id == "realistic-model-v1"
             assert model_info.metrics["rmse"] == pytest.approx(0.15)
 

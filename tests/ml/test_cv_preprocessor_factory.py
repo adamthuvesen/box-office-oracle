@@ -5,13 +5,15 @@ train-years rows only for every fold, and omitting the kwarg must leave the
 existing (pre-engineered X) behavior untouched.
 """
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
 from box_office.ml.cv import TimeSeriesCrossValidator
 from box_office.ml.model import BoxOfficeXGBoostModel
 
-FAST_MODEL_KWARGS = {"n_estimators": 10, "max_depth": 2}
+FAST_MODEL_KWARGS: dict[str, Any] = {"n_estimators": 10, "max_depth": 2}
 
 UNSEEN_DEFAULT_FREQ = -123.0
 
@@ -33,7 +35,7 @@ class _RecordingFrequencyPreprocessor:
 
     def __init__(self, calls: list[tuple[str, pd.DataFrame, pd.DataFrame]]):
         self._calls = calls
-        self._freq: dict[str, int] = {}
+        self._freq: dict[Any, int] = {}
 
     def fit_transform(self, X: pd.DataFrame) -> pd.DataFrame:
         self._freq = X["DIRECTOR"].value_counts().to_dict()
@@ -70,7 +72,7 @@ def test_omitted_factory_matches_identity_factory():
     """The kwarg is a pure opt-in: no factory and an identity factory must
     produce identical results on an already-engineered matrix."""
     X, y, dates = _engineered_frame()
-    cv_kwargs = {
+    cv_kwargs: dict[str, Any] = {
         "cv_folds": 2,
         "start_eval_year": 2020,
         "end_year": 2021,

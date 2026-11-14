@@ -5,13 +5,22 @@ import re
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import compute_sha256_stream, parse_s3_uri
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+    from mypy_boto3_sagemaker.literals import ModelApprovalStatusType
+    from mypy_boto3_sagemaker.type_defs import (
+        CreateModelPackageInputTypeDef,
+        InferenceSpecificationTypeDef,
+        UpdateModelPackageInputTypeDef,
+    )
 
 # Validation constants
 VALID_APPROVAL_STATUSES = {"Approved", "Rejected", "PendingManualApproval"}
@@ -42,7 +51,7 @@ class ModelRegistryRegistrationError(RuntimeError):
     """Creating or registering a SageMaker model package or group failed."""
 
 
-def _compute_sha256_of_s3_object(s3_client, model_data_url: str) -> tuple[str, int]:
+def _compute_sha256_of_s3_object(s3_client: S3Client, model_data_url: str) -> tuple[str, int]:
     """Download the object at ``model_data_url`` to a temp file and stream-hash it."""
     bucket, key = parse_s3_uri(model_data_url)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
@@ -60,7 +69,7 @@ def _compute_sha256_of_s3_object(s3_client, model_data_url: str) -> tuple[str, i
 class AWSModelRegistry:
     """AWS SageMaker Model Registry client for managing model packages."""
 
-    def __init__(self, region_name: str | None = None):
+    def __init__(self, region_name: str | None = None) -> None:
         self.region_name = region_name
         self.sagemaker_client = boto3.client("sagemaker", region_name=region_name)
         self.s3_client = boto3.client("s3", region_name=region_name)
@@ -126,7 +135,7 @@ class AWSModelRegistry:
         framework_version: str = "1.7-1",
         model_approval_status: str = "PendingManualApproval",
         inference_specification: dict[str, Any] | None = None,
-        metrics: dict[str, float] | None = None,
+        metrics: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         training_job_name: str | None = None,
         approved: bool = False,
@@ -157,12 +166,7 @@ class AWSModelRegistry:
         ):
             inference_specification["Containers"][0]["ModelDataUrl"] = model_data_url
 
-        model_package_request = {
-            "ModelPackageGroupName": model_package_group_name,
-            "ModelApprovalStatus": model_approval_status,
-            "InferenceSpecification": inference_specification,
-            "ModelPackageDescription": f"Box office prediction model - {datetime.now(UTC).isoformat()}",
-        }
+        customer_metadata: dict[str, str] = {}
 
         # Optionally link back to the training job so the Studio UI shows the connection.
         # The describe-job lookup is best-effort: a missing job is benign (we still
@@ -174,11 +178,7 @@ class AWSModelRegistry:
                 )
                 training_job_arn = tj_resp.get("TrainingJobArn")
                 if training_job_arn:
-                    if "CustomerMetadataProperties" not in model_package_request:
-                        model_package_request["CustomerMetadataProperties"] = {}
-                    model_package_request["CustomerMetadataProperties"]["training_job_arn"] = (
-                        training_job_arn
-                    )
+                    customer_metadata["training_job_arn"] = training_job_arn
             except ClientError as e:
                 if _is_resource_not_found(e):
                     logger.warning(
@@ -192,14 +192,9 @@ class AWSModelRegistry:
         # (metrics + free-form metadata) goes into CustomerMetadataProperties,
         # which only accepts string values up to 256 chars per field.
         if metadata:
-            model_package_request["CustomerMetadataProperties"] = {
-                key: str(value) for key, value in metadata.items()
-            }
+            customer_metadata.update({key: str(value) for key, value in metadata.items()})
 
         if metrics:
-            if "CustomerMetadataProperties" not in model_package_request:
-                model_package_request["CustomerMetadataProperties"] = {}
-
             # Allowlist essential metrics; long URIs and hyperparameters would
             # exceed the 256-char-per-field cap.
             essential_metrics = [
@@ -223,13 +218,11 @@ class AWSModelRegistry:
                         else str(metric_value)
                     )
                     if len(short_value) <= 250:
-                        model_package_request["CustomerMetadataProperties"][metric_name] = (
-                            short_value
-                        )
+                        customer_metadata[metric_name] = short_value
 
             framework_info = f"{framework}_{framework_version}"
             if len(framework_info) <= 250:
-                model_package_request["CustomerMetadataProperties"]["framework"] = framework_info
+                customer_metadata["framework"] = framework_info
 
         # Compute SHA256 + size_bytes of the uploaded model artifact and store
         # them in CustomerMetadataProperties. The inference loader verifies
@@ -240,12 +233,18 @@ class AWSModelRegistry:
             SCHEMA_VERSION_METADATA_KEY,
         )
 
-        model_package_request.setdefault("CustomerMetadataProperties", {})
-        model_package_request["CustomerMetadataProperties"]["sha256"] = sha256
-        model_package_request["CustomerMetadataProperties"]["size_bytes"] = str(size_bytes)
-        model_package_request["CustomerMetadataProperties"][SCHEMA_VERSION_METADATA_KEY] = (
-            CURRENT_FEATURE_SCHEMA_VERSION
-        )
+        customer_metadata["sha256"] = sha256
+        customer_metadata["size_bytes"] = str(size_bytes)
+        customer_metadata[SCHEMA_VERSION_METADATA_KEY] = CURRENT_FEATURE_SCHEMA_VERSION
+        model_package_request: CreateModelPackageInputTypeDef = {
+            "ModelPackageGroupName": model_package_group_name,
+            "ModelApprovalStatus": cast("ModelApprovalStatusType", model_approval_status),
+            "InferenceSpecification": cast(
+                "InferenceSpecificationTypeDef", inference_specification
+            ),
+            "ModelPackageDescription": f"Box office prediction model - {datetime.now(UTC).isoformat()}",
+            "CustomerMetadataProperties": customer_metadata,
+        }
         logger.info("Model artifact manifest: sha256=%s size_bytes=%d", sha256[:16], size_bytes)
 
         # Create the model package. Hard failures (auth, throttling, validation
@@ -305,9 +304,9 @@ class AWSModelRegistry:
             )
 
         try:
-            update_request = {
+            update_request: UpdateModelPackageInputTypeDef = {
                 "ModelPackageArn": model_package_arn,
-                "ModelApprovalStatus": approval_status,
+                "ModelApprovalStatus": cast("ModelApprovalStatusType", approval_status),
             }
 
             if approval_description:

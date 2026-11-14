@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cache
+from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -149,45 +150,44 @@ class Settings(BaseSettings):
 
     SAGEMAKER_TRAINING_IMAGE_URI: str | None = None
 
-    def model_post_init(self, __context) -> None:
+    _aws: _AwsView
+    _snowflake: _SnowflakeView
+    _model: _ModelView
+    _paths: _PathsView
+    _sagemaker: _SagemakerView
+
+    # Declared so a type checker accepts Settings() and Settings(_env_file=None): pydantic
+    # fills the required fields from the environment, which a synthesized __init__ hides.
+    def __init__(self, **values: Any) -> None:
+        super().__init__(**values)
+
+    def model_post_init(self, context: object, /) -> None:
         """Pre-compute the nested view dataclasses once.
 
         The views materialise at ``Settings()`` construction and subsequent
         reads are pure attribute lookups; ``config.aws is config.aws`` holds.
         """
-        object.__setattr__(
-            self,
-            "_aws",
-            _AwsView(
-                region=self.AWS_REGION,
-                s3_bucket=self.AWS_S3_BUCKET,
-                sagemaker_role_arn=self.SAGEMAKER_ROLE_ARN,
+        self._aws = _AwsView(
+            region=self.AWS_REGION,
+            s3_bucket=self.AWS_S3_BUCKET,
+            sagemaker_role_arn=self.SAGEMAKER_ROLE_ARN,
+        )
+        self._snowflake = _SnowflakeView(
+            user=self.SNOWFLAKE_USER,
+            account=self.SNOWFLAKE_ACCOUNT,
+            database=self.SNOWFLAKE_DATABASE,
+            warehouse=self.SNOWFLAKE_WAREHOUSE,
+            password=self.SNOWFLAKE_PASSWORD,
+            private_key_path=self.SNOWFLAKE_PRIVATE_KEY_PATH,
+            private_key_passphrase=self.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE,
+            schemas=_SnowflakeSchemas(
+                raw=self.SNOWFLAKE_SCHEMA_RAW,
+                staging=self.SNOWFLAKE_SCHEMA_STAGING,
             ),
         )
-        object.__setattr__(
-            self,
-            "_snowflake",
-            _SnowflakeView(
-                user=self.SNOWFLAKE_USER,
-                account=self.SNOWFLAKE_ACCOUNT,
-                database=self.SNOWFLAKE_DATABASE,
-                warehouse=self.SNOWFLAKE_WAREHOUSE,
-                password=self.SNOWFLAKE_PASSWORD,
-                private_key_path=self.SNOWFLAKE_PRIVATE_KEY_PATH,
-                private_key_passphrase=self.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE,
-                schemas=_SnowflakeSchemas(
-                    raw=self.SNOWFLAKE_SCHEMA_RAW,
-                    staging=self.SNOWFLAKE_SCHEMA_STAGING,
-                ),
-            ),
-        )
-        object.__setattr__(self, "_model", _ModelView())
-        object.__setattr__(self, "_paths", _PathsView())
-        object.__setattr__(
-            self,
-            "_sagemaker",
-            _SagemakerView(training_image_uri=self.SAGEMAKER_TRAINING_IMAGE_URI),
-        )
+        self._model = _ModelView()
+        self._paths = _PathsView()
+        self._sagemaker = _SagemakerView(training_image_uri=self.SAGEMAKER_TRAINING_IMAGE_URI)
 
     @property
     def aws(self) -> _AwsView:

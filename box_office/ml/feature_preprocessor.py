@@ -34,15 +34,18 @@ class FeaturePreprocessorHigh:
     guards the orchestration relies on.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.pipeline = build_feature_pipeline()
         self._feature_names: list[str] | None = None
 
     def fit(self, X: pd.DataFrame) -> FeaturePreprocessorHigh:
         # Capture column names from a single fit_transform pass; the transformed
         # output is discarded because fit() only needs the schema.
-        self._feature_names = list(self.pipeline.fit_transform(X).columns)
+        self._feature_names = self._fit_feature_names(X)
         return self
+
+    def _fit_feature_names(self, X: pd.DataFrame) -> list[str]:
+        return list(self.pipeline.fit_transform(X).columns)
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         return self._guard_output(self.pipeline.transform(X))
@@ -82,7 +85,7 @@ class FeaturePreprocessorHigh:
         dbt feature metadata, etc.).
         """
         if self._feature_names is None:
-            self.fit(_SCHEMA_FIXTURE)
+            self._feature_names = self._fit_feature_names(_SCHEMA_FIXTURE)
         if self._feature_names != list(SELECTED_FEATURES):
             raise FeatureNameCollisionError(
                 "Pipeline feature names drifted from the SELECTED_FEATURES contract. "

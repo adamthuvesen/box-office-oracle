@@ -201,10 +201,10 @@ class ModelLoader:
                 MaxResults=1,
             )
             summaries = response.get("ModelPackageSummaryList", [])
-            return summaries[0] if summaries else None
+            return cast("dict[str, Any]", summaries[0]) if summaries else None
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
+            error_code = e.response.get("Error", {}).get("Code")
             if error_code == "ValidationException":
                 logger.error(f"Model package group not found: {self.model_package_group_name}")
                 return None
@@ -226,8 +226,9 @@ class ModelLoader:
             if cached_model is not None:
                 return cached_model
 
-            package_details = self.sagemaker_client.describe_model_package(
-                ModelPackageName=model_package_arn
+            package_details = cast(
+                "dict[str, Any]",
+                self.sagemaker_client.describe_model_package(ModelPackageName=model_package_arn),
             )
             model_data_url = self._model_data_url(package_details)
 
@@ -266,7 +267,7 @@ class ModelLoader:
         except ArtifactIntegrityError, FeatureSchemaVersionMismatch:
             raise
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
+            error_code = e.response.get("Error", {}).get("Code")
             if error_code == "NoSuchKey":
                 raise ModelLoadError(f"Model file not found in S3: {model_data_url}") from e
             elif error_code == "NoSuchBucket":
@@ -578,7 +579,7 @@ class ModelLoader:
 
     def get_model_artifacts_paths(self) -> dict[str, str]:
         """Get paths to model artifacts, reusing cached extracted artifacts."""
-        if self._current_model is None:
+        if self._current_model is None or self._current_model_info is None:
             raise ModelLoadError("No model loaded. Call load_latest_approved_model first.")
 
         try:

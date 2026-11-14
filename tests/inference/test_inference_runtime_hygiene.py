@@ -58,7 +58,10 @@ class TestMangumHoisting:
         import sys
         import types
 
-        fake_mangum = types.ModuleType("mangum")
+        class FakeMangumModule(types.ModuleType):
+            Mangum: MagicMock
+
+        fake_mangum = FakeMangumModule("mangum")
         MockMangum = MagicMock(return_value=MagicMock())
         fake_mangum.Mangum = MockMangum
 

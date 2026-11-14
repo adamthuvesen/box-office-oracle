@@ -108,13 +108,13 @@ class PredictionRequest(BaseModel):
 
     @field_validator("genre")
     @classmethod
-    def validate_genre(cls, v):
+    def validate_genre(cls, v: object) -> list[str]:
         """Convert genre to list format."""
         return _normalize_str_list(v)
 
     @field_validator("actors")
     @classmethod
-    def validate_actors(cls, v):
+    def validate_actors(cls, v: object) -> list[str]:
         """Convert actors to list format."""
         return _normalize_str_list(v)
 
@@ -172,7 +172,7 @@ class ModelInfo(BaseModel):
             status=package.get("ModelApprovalStatus", "unknown"),
             created_at=(
                 created_at.isoformat()
-                if hasattr(created_at, "isoformat")
+                if isinstance(created_at, datetime)
                 else str(created_at or "unknown")
             ),
             metrics=package.get("metrics", {}),
@@ -183,10 +183,11 @@ class ModelInfo(BaseModel):
 
 class PredictionEngine:
     def __init__(self):
-        self.model = None
-        self.preprocessor = None
-        self.scaler = None
-        self.model_info = None
+        # Unpickled artifacts: joblib returns Any.
+        self.model: Any = None
+        self.preprocessor: Any = None
+        self.scaler: Any = None
+        self.model_info: ModelInfo | None = None
         self._is_loaded = False
 
     def load_model_artifacts(
@@ -337,6 +338,10 @@ class PredictionEngine:
         if not self.is_loaded():
             raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
 
+        model_info = self.model_info
+        if model_info is None:
+            raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
+
         start_time = datetime.now(UTC)
 
         try:
@@ -352,8 +357,8 @@ class PredictionEngine:
 
             response = PredictionResponse(
                 prediction=float(prediction_value),
-                model_id=self.model_info.model_id,
-                model_version=self.model_info.version,
+                model_id=model_info.model_id,
+                model_version=model_info.version,
                 prediction_interval_heuristic=prediction_interval_heuristic,
                 timestamp=datetime.now(UTC).isoformat() + "Z",
                 processing_time_ms=processing_time,

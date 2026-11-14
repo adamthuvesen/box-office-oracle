@@ -11,10 +11,11 @@ import secrets
 import sys
 import time
 import warnings
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -27,6 +28,9 @@ from .integrity import ArtifactIntegrityError
 from .model_loader import ModelLoadError
 from .predictor import PredictionResponse
 from .runtime import get_runtime
+
+if TYPE_CHECKING:
+    from mangum.types import LambdaContext, LambdaEvent
 
 MAX_REQUEST_BODY_BYTES = 1024 * 1024  # 1 MiB
 
@@ -178,7 +182,9 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def authenticate_request(request: Request, call_next):
+async def authenticate_request(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """Authenticate requests using API key when authentication is enabled."""
     if request.url.path == "/health":
         return await call_next(request)
@@ -232,7 +238,9 @@ async def authenticate_request(request: Request, call_next):
 
 
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
+async def log_requests(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """Log all requests with timing information."""
     start_time = time.time()
     correlation_id = f"req_{int(start_time * 1000000)}"
@@ -437,7 +445,7 @@ try:
         _mangum_handler = Mangum(
             app,
             lifespan="off",  # Disable lifespan for Lambda
-            api_gateway_base_path=None,  # Auto-detect base path
+            api_gateway_base_path="/",
             text_mime_types=[
                 "application/json",
                 "application/javascript",
@@ -451,7 +459,7 @@ except ImportError:
     _mangum_handler = None
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: LambdaEvent, context: LambdaContext) -> dict[str, Any]:
     """AWS Lambda entry point.
 
     Delegates to the module-scope Mangum adapter so each invocation pays only
@@ -468,10 +476,10 @@ def lambda_handler(event, context):
     logger.info(
         "Lambda invocation started",
         extra={
-            "request_id": context.aws_request_id if context else "unknown",
-            "function_name": context.function_name if context else "unknown",
-            "remaining_time_ms": (context.get_remaining_time_in_millis() if context else "unknown"),
-            "memory_limit": context.memory_limit_in_mb if context else "unknown",
+            "request_id": context.aws_request_id,
+            "function_name": context.function_name,
+            "remaining_time_ms": context.get_remaining_time_in_millis(),
+            "memory_limit": context.memory_limit_in_mb,
         },
     )
     response = _mangum_handler(event, context)

@@ -65,7 +65,7 @@ def parse_training_output_tarball(tarball_path: Path) -> dict[str, Any]:
     return metrics
 
 
-def fetch_training_job_duration(job_name: str, region: str) -> dict[str, float] | None:
+def fetch_training_job_duration(job_name: str, region: str) -> dict[str, float | str | None] | None:
     """Return training duration fields from ``describe_training_job``."""
     sagemaker_boto = boto3.client("sagemaker", region_name=region, config=BOTO3_CONFIG)
     try:

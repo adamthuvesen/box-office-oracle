@@ -1,10 +1,12 @@
 """Time-series cross-validation and OOF evaluation."""
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import mean_absolute_error, r2_score
 
 from box_office.config import MODEL_HYPERPARAMETERS
@@ -129,12 +131,12 @@ class TimeSeriesCrossValidator:
 
     def cross_validate(
         self,
-        model_class,
-        X_train,
-        y_train_log,
-        dates,
-        preprocessor_factory=None,
-        **model_kwargs,
+        model_class: Callable[..., Any],
+        X_train: pd.DataFrame,
+        y_train_log: pd.Series,
+        dates: pd.Series,
+        preprocessor_factory: Callable[[], Any] | None = None,
+        **model_kwargs: Any,
     ) -> CrossValidationResults:
         """Perform time series cross-validation with forward chaining.
 
@@ -310,7 +312,9 @@ class TimeSeriesCrossValidator:
 
 class ModelEvaluator:
     @staticmethod
-    def evaluate_oof_performance(cv_results: CrossValidationResults, y_train_log) -> OofEvaluation:
+    def evaluate_oof_performance(
+        cv_results: CrossValidationResults, y_train_log: pd.Series
+    ) -> OofEvaluation:
         """Evaluate out-of-fold predictions."""
         logger.info("Evaluating out-of-fold performance...")
 
@@ -323,7 +327,7 @@ class ModelEvaluator:
 
         # Reset index to ensure positional alignment with CV results
         y_train_log = y_train_log.reset_index(drop=True)
-        y_true_log = y_train_log.iloc[indices].values
+        y_true_log = y_train_log.to_numpy()[indices]
 
         oof_preds = from_log_target(oof_preds_log)
         y_true = from_log_target(y_true_log)

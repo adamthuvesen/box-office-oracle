@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # AWS Configuration
     aws_region: str = Field(default="eu-north-1", description="AWS region")
     # Model Registry Configuration
-    model_registry_group_name: str | None = Field(
-        default=None,
+    model_registry_group_name: str = Field(
+        default="",
         description="SageMaker Model Registry group name. Composed from project_name and environment when unset.",
     )
 

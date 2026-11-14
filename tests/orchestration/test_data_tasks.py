@@ -51,6 +51,23 @@ def test_dbt_task_builds_and_tests_staging(dbt_task):
     assert runner_factory.call_args.kwargs["raise_on_failure"] is True
 
 
+def test_dbt_task_logs_the_nodes_the_build_processed(tmp_path, monkeypatch, dbt_task):
+    from unittest.mock import MagicMock
+
+    from dbt.artifacts.schemas.run import RunExecutionResult
+    from dbt.cli.main import dbtRunnerResult
+
+    data_tasks, runner, _ = dbt_task
+    logger = MagicMock()
+    monkeypatch.setattr(data_tasks, "get_run_logger", lambda: logger)
+    build = RunExecutionResult(results=[MagicMock(), MagicMock()], elapsed_time=1.0, args={})
+    runner.invoke.side_effect = [None, None, dbtRunnerResult(success=True, result=build)]
+
+    data_tasks.run_raw_to_staging_dbt_transformations.fn(approved=True)
+
+    logger.info.assert_any_call("dbt build completed: 2 nodes processed")
+
+
 def test_dbt_task_propagates_build_failure(dbt_task):
     data_tasks, runner, _ = dbt_task
     runner.invoke.side_effect = [None, None, ValueError("dbt failed")]

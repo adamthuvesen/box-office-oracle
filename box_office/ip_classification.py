@@ -19,7 +19,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 import pandas as pd
 import yaml
@@ -283,7 +283,10 @@ def classify_movies(
     df = normalized.merge(metadata, on="tmdb_id", how="left")
     collection_counts = _collection_movie_counts(df)
 
-    records = df.to_dict(orient="records")
+    records = [
+        {str(column): value for column, value in row.items()}
+        for row in df.to_dict(orient="records")
+    ]
     contexts = [_match_context(row) for row in records]
     brand_matches = [_brand_match(context, rules) for context in contexts]
     prior = prior_franchise_stats(
@@ -466,7 +469,7 @@ def _collection_movie_counts(df: pd.DataFrame) -> dict[int, int]:
     if rows.empty:
         return {}
     counts = rows.groupby("collection_id")["tmdb_id"].size()
-    return {int(cid): int(count) for cid, count in counts.items()}
+    return dict(zip(map(int, counts.index), map(int, counts), strict=True))
 
 
 def _brand_tier_at(rule: BrandRule, year: int) -> TierPeriod | None:
@@ -634,8 +637,8 @@ def _classify_row(
         )
 
     if source_match or source_work:
-        if _is_awareness_only(awareness) and source_work is None:
-            rule, match = source_match  # type: ignore[misc]
+        if source_match is not None and source_work is None and _is_awareness_only(awareness):
+            rule, match = source_match
             return _awareness_only_classification(
                 awareness,
                 {
@@ -697,7 +700,7 @@ def _classify_row(
     )
 
 
-def _is_awareness_only(awareness: str | None) -> bool:
+def _is_awareness_only(awareness: str | None) -> TypeGuard[str]:
     if not awareness:
         return False
     sources = set(awareness.split(","))

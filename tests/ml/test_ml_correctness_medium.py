@@ -133,8 +133,8 @@ class TestOOFCollisionDetection:
         """
         from box_office.ml.exceptions import OOFIndexCollision
 
-        seen: set = set()
-        records: list = []
+        seen: set[tuple[int, int]] = set()
+        records: list[object] = []
         # First insertion: fine.
         key = (1, 7)
         seen.add(key)

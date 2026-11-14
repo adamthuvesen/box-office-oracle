@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
 
 import pandas as pd
 
@@ -16,8 +18,8 @@ def _payload(
     title: str = "Test Movie",
     revenue: int = 20_000_000,
     language: str = "en",
-    genres: list[dict] | None = None,
-) -> dict:
+    genres: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     return {
         "id": tmdb_id,
         "imdb_id": f"tt{tmdb_id:07d}",
@@ -66,7 +68,7 @@ def _payload(
     }
 
 
-def _write_web_data(path: Path, rows: list[dict]) -> None:
+def _write_web_data(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rows))
 
@@ -263,8 +265,8 @@ def test_request_json_retries_after_rate_limit(monkeypatch):
         def __init__(
             self,
             status_code: int,
-            payload: dict,
-            headers: dict | None = None,
+            payload: dict[str, Any],
+            headers: dict[str, str] | None = None,
         ):
             self.status_code = status_code
             self._payload = payload
@@ -277,22 +279,18 @@ def test_request_json_retries_after_rate_limit(monkeypatch):
         def json(self):
             return self._payload
 
-    class FakeSession:
-        def __init__(self):
-            self.responses = [
-                FakeResponse(429, {}, {"Retry-After": "0"}),
-                FakeResponse(200, {"ok": True}),
-            ]
-
-        def get(self, *args, **kwargs):
-            return self.responses.pop(0)
+    session = MagicMock()
+    session.get.side_effect = [
+        FakeResponse(429, {}, {"Retry-After": "0"}),
+        FakeResponse(200, {"ok": True}),
+    ]
 
     monkeypatch.setenv("TMDB_API_TOKEN", "token")
     monkeypatch.setattr(rich.time, "sleep", lambda *_: None)
     state = rich.BackfillState(started_at=rich.utc_now())
 
     result = rich.request_json(
-        FakeSession(),
+        session,
         "https://example.test",
         params={},
         config=rich.BackfillConfig(max_retries=1),

@@ -1,9 +1,12 @@
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
 import joblib
 import pandas as pd
+from dbt.artifacts.schemas.run import RunExecutionResult
+from dbt.cli.main import dbtRunnerResult
 from prefect import get_run_logger, task
 from prefect.tasks import exponential_backoff
 from prefect_dbt import PrefectDbtRunner, PrefectDbtSettings
@@ -26,30 +29,27 @@ from box_office.utils.snowflake_loader import (
 
 
 @contextmanager
-def _scoped_env(updates: dict):
+def _scoped_env(updates: dict[str, str]) -> Generator[None]:
     """Apply ``updates`` to ``os.environ`` for the duration of the with block.
 
     Restores the prior values (or removes the key if it was previously absent)
     on exit so concurrent Prefect tasks on the same worker do not leak env vars
     between runs.
     """
-    sentinel = object()
-    previous = {k: os.environ.get(k, sentinel) for k in updates}
+    previous = {k: os.environ.get(k) for k in updates}
     try:
-        for k, v in updates.items():
-            if v is not None:
-                os.environ[k] = v
+        os.environ.update(updates)
         yield
     finally:
         for k, prior in previous.items():
-            if prior is sentinel:
+            if prior is None:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = prior
 
 
 @task(retries=3, retry_delay_seconds=exponential_backoff(backoff_factor=5))
-def run_raw_to_staging_dbt_transformations(approved=False):
+def run_raw_to_staging_dbt_transformations(approved: bool = False) -> dbtRunnerResult:
     """
     Run dbt transformations to create staging models from raw data.
     Uses PrefectDbtRunner for better integration with Prefect flows.
@@ -65,7 +65,7 @@ def run_raw_to_staging_dbt_transformations(approved=False):
     # at module level. ``_scoped_env`` will install these for the duration of
     # the dbt invocation and restore the prior values on exit so concurrent
     # tasks don't leak state.
-    dbt_env: dict = {}
+    dbt_env: dict[str, str] = {}
     if "SNOWFLAKE_DATABASE" not in os.environ:
         dbt_env["SNOWFLAKE_DATABASE"] = config.snowflake.database
     if "SNOWFLAKE_WAREHOUSE" not in os.environ:
@@ -129,8 +129,9 @@ def run_raw_to_staging_dbt_transformations(approved=False):
         logger.info("dbt staging build completed successfully")
 
     # Log result details
-    if hasattr(run_result, "results") and run_result.results:
-        logger.info(f"dbt build completed: {len(run_result.results)} nodes processed")
+    build_result = run_result.result
+    if isinstance(build_result, RunExecutionResult) and build_result.results:
+        logger.info(f"dbt build completed: {len(build_result.results)} nodes processed")
 
     return run_result
 
@@ -175,7 +176,9 @@ def load_staging_box_office_from_snowflake():
 
 
 @task
-def split_data(df, target_column, split_year=None):
+def split_data(
+    df: pd.DataFrame, target_column: str, split_year: int | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Split the frame at the confirmation set: training rows are the years before it."""
     logger = get_run_logger()
 
@@ -216,7 +219,9 @@ def split_data(df, target_column, split_year=None):
 
 
 @task
-def apply_feature_engineering(X_train, X_val):
+def apply_feature_engineering(
+    X_train: pd.DataFrame, X_val: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame, FeaturePreprocessorHigh]:
     """Apply feature engineering to the training and validation sets."""
     logger = get_run_logger()
     logger.info("Starting feature preprocessing...")
@@ -231,7 +236,9 @@ def apply_feature_engineering(X_train, X_val):
 
 
 @task
-def scale_features(X_train_processed, X_val_processed):
+def scale_features(
+    X_train_processed: pd.DataFrame, X_val_processed: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame, StandardScaler]:
     """Apply standard scaling to the processed features."""
     logger = get_run_logger()
     logger.info("Applying standard scaling to features...")
@@ -254,7 +261,7 @@ def scale_features(X_train_processed, X_val_processed):
 
 
 @task
-def transform_targets(y_train, y_val):
+def transform_targets(y_train: pd.Series, y_val: pd.Series) -> tuple[pd.Series, pd.Series]:
     """Apply log transformation to the target variables."""
     logger = get_run_logger()
     logger.info("Applying log transformation to target variables...")
@@ -268,7 +275,11 @@ def transform_targets(y_train, y_val):
 
 
 @task
-def save_artifacts(processor, scaler, artifact_dir=None):
+def save_artifacts(
+    processor: FeaturePreprocessorHigh,
+    scaler: StandardScaler,
+    artifact_dir: str | Path | None = None,
+) -> tuple[str, str]:
     """Save the fitted processor and scaler objects."""
     logger = get_run_logger()
 

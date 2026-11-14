@@ -2,6 +2,7 @@
 
 import os
 import unittest
+from typing import Any
 from unittest.mock import patch
 
 from pydantic import ValidationError
@@ -31,7 +32,7 @@ DOCUMENTED_ENV_VARS = {
 }
 
 
-def _required_env() -> dict:
+def _required_env() -> dict[str, Any]:
     return {
         "AWS_S3_BUCKET": "test-bucket",
         "SAGEMAKER_ROLE_ARN": "arn:test",

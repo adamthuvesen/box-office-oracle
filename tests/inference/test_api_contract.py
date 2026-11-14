@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -409,7 +410,7 @@ class TestResponseFieldRename:
 
 class TestModelInfoContract:
     @staticmethod
-    def _runtime(engine_loaded: bool, package: dict | None):
+    def _runtime(engine_loaded: bool, package: dict[str, Any] | None):
         from box_office.inference.app.predictor import ModelInfo
         from box_office.inference.app.runtime import ModelRuntime
         from box_office.ml.data_fingerprint import DataFingerprint

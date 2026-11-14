@@ -104,6 +104,14 @@ def _is_missing(value: Any) -> bool:
     return value is None or pd.isna(value)
 
 
+def _optional_float(value: Any) -> float | None:
+    return None if _is_missing(value) else float(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    return None if _is_missing(value) else int(value)
+
+
 def _optional_str(value: Any) -> str | None:
     if _is_missing(value):
         return None
@@ -146,25 +154,18 @@ def clean_movie_source_data(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFram
                 actions.append("set_worldwide_gross")
             reasons.append(correction.reason)
 
-        budget = row.get("production_budget")
-        if not _is_missing(budget) and float(budget) < MIN_ROI_BUDGET:
+        budget = _optional_float(row.get("production_budget"))
+        if budget is not None and budget < MIN_ROI_BUDGET:
             row["production_budget"] = None
             _set_missing_source(row)
             actions.append("set_production_budget")
             reasons.append("budget_under_1000_placeholder")
 
-        gross = row.get("worldwide_gross")
+        gross = _optional_float(row.get("worldwide_gross"))
         imdb_id = _optional_str(row.get("imdb_id"))
-        vote_count = row.get("vote_count")
-        has_zero_votes = "vote_count" in row.index and (
-            _is_missing(vote_count) or int(vote_count) == 0
-        )
-        if (
-            not _is_missing(gross)
-            and float(gross) >= 1_000_000
-            and imdb_id is None
-            and has_zero_votes
-        ):
+        vote_count = _optional_int(row.get("vote_count"))
+        has_zero_votes = "vote_count" in row.index and (vote_count is None or vote_count == 0)
+        if gross is not None and gross >= 1_000_000 and imdb_id is None and has_zero_votes:
             row["worldwide_gross"] = None
             actions.append("set_worldwide_gross")
             reasons.append("high_gross_without_imdb_or_votes")

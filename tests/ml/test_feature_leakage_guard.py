@@ -59,7 +59,7 @@ def test_no_feature_correlates_perfectly_with_target(synthetic_movies):
             continue
         y = target_log.loc[group_idx]
         for col in features.columns:
-            x = features.loc[group_idx, col]
+            x = features[col].loc[group_idx]
             if x.nunique(dropna=True) < 2 or y.nunique(dropna=True) < 2:
                 continue
             corr = float(x.corr(y))

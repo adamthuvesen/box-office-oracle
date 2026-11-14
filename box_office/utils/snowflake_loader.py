@@ -5,7 +5,7 @@ import re
 SQL_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def validate_sql_identifier(name: str, identifier_type: str = "identifier") -> str:
+def validate_sql_identifier(name: object, identifier_type: str = "identifier") -> str:
     """Reject strings that are unsafe as Snowflake unquoted identifiers."""
     if not isinstance(name, str) or not SQL_IDENTIFIER_PATTERN.match(name):
         raise ValueError(

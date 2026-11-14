@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 
 from box_office.movie_data_quality import clean_movie_source_data
@@ -14,7 +16,7 @@ def _row(
     gross: float | None = 10_000_000,
     vote_count: int | None = 100,
     runtime: int | None = 100,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "tmdb_id": tmdb_id,
         "imdb_id": imdb_id,

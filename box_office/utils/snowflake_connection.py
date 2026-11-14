@@ -8,6 +8,7 @@ using both password and private key authentication methods.
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -53,7 +54,7 @@ def create_snowflake_connection(
     use_private_key: bool = True,
     private_key_passphrase: str | None = None,
     use_browser_auth: bool = False,
-    **additional_params,
+    **additional_params: Any,
 ) -> snowflake.connector.SnowflakeConnection:
     """Create a Snowflake connection using key-pair (preferred) or password auth.
 
@@ -63,7 +64,7 @@ def create_snowflake_connection(
     if schema is None:
         schema = config.snowflake.schemas.staging
 
-    connection_params = {
+    connection_params: dict[str, Any] = {
         "user": config.snowflake.user,
         "account": config.snowflake.account,
         "warehouse": config.snowflake.warehouse,

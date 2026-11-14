@@ -8,6 +8,7 @@ source-work success — never from total collection gross (leakage).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -25,7 +26,7 @@ def _row(
     company: str = "",
     gross: int = 50_000_000,
     release_date: str | None = "default",
-) -> dict:
+) -> dict[str, Any]:
     return {
         "tmdb_id": tmdb_id,
         "imdb_id": f"tt{tmdb_id:07d}",
@@ -43,8 +44,8 @@ def _raw(
     tmdb_id: int,
     *,
     collection_id: int | None = None,
-    collection_name: str | None = None,
-) -> dict:
+    collection_name: str | float | None = None,
+) -> dict[str, Any]:
     return {
         "tmdb_id": tmdb_id,
         "collection_id": collection_id,
@@ -53,7 +54,13 @@ def _raw(
     }
 
 
-def _classify(rows: list[dict], raw_rows: list[dict] | None = None) -> pd.DataFrame:
+def _movie(output: pd.DataFrame, title: str) -> dict[str, Any]:
+    return {str(column): value for column, value in output.loc[[title]].iloc[0].items()}
+
+
+def _classify(
+    rows: list[dict[str, Any]], raw_rows: list[dict[str, Any]] | None = None
+) -> pd.DataFrame:
     rules = load_rules(Path("data/ip_rules.yml"))
     raw_metadata = pd.DataFrame(raw_rows or [_raw(row["tmdb_id"]) for row in rows])
     output, _ = classify_movies(pd.DataFrame(rows), raw_metadata, rules)
@@ -118,7 +125,7 @@ def test_true_story_is_awareness_source_not_ip() -> None:
         ]
     )
 
-    row = output.loc["Oppenheimer"]
+    row = _movie(output, "Oppenheimer")
     assert row["ip_tier"] == 5
     assert row["ip_scope"] == "none"
     assert row["awareness_source"] == "true_story,biography"
@@ -132,12 +139,12 @@ def test_cinderella_man_is_not_public_domain_cinderella_ip() -> None:
         ]
     )
 
-    row = output.loc["Cinderella Man"]
+    row = _movie(output, "Cinderella Man")
     assert row["ip_tier"] == 5
     assert row["ip_scope"] == "none"
     assert row["awareness_source"] == "true_story,biography"
 
-    flash_row = output.loc["Ricki and the Flash"]
+    flash_row = _movie(output, "Ricki and the Flash")
     assert flash_row["ip_tier"] == 5
     assert flash_row["ip_scope"] == "none"
 
@@ -199,7 +206,7 @@ def test_collection_fallback_and_keyword_adaptation() -> None:
 def test_first_harry_potter_is_tier_1_via_period_not_gross() -> None:
     output = _classify([_row(40, "Harry Potter and the Philosopher's Stone", year=2001)])
 
-    row = output.loc["Harry Potter and the Philosopher's Stone"]
+    row = _movie(output, "Harry Potter and the Philosopher's Stone")
     assert row["ip_tier"] == 1
     assert row["prior_franchise_gross"] == 0.0
     assert row["tier_basis"].startswith("brand:Wizarding World")
@@ -258,7 +265,7 @@ def test_tier_by_period_respects_from_year() -> None:
 
     assert output.loc["Fantastic Four", "ip_tier"] == 2
     assert output.loc["Ant-Man", "ip_tier"] == 1
-    assert "from 2013" in output.loc["Ant-Man", "tier_basis"]
+    assert "from 2013" in str(output.loc["Ant-Man", "tier_basis"])
 
 
 def test_source_work_bestseller_is_tier_3_from_its_year() -> None:
@@ -270,7 +277,7 @@ def test_source_work_bestseller_is_tier_3_from_its_year() -> None:
     )
 
     assert output.loc["The Da Vinci Code", "ip_tier"] == 3
-    assert output.loc["The Da Vinci Code", "tier_basis"].startswith("source_work:")
+    assert str(output.loc["The Da Vinci Code", "tier_basis"]).startswith("source_work:")
     assert output.loc["Gone Girl", "ip_tier"] == 3
 
 
@@ -300,11 +307,11 @@ def test_brand_matched_predecessor_still_counts_via_shared_collection() -> None:
         ],
     )
 
-    predecessor = output.loc["Snow White and the Huntsman"]
+    predecessor = _movie(output, "Snow White and the Huntsman")
     assert predecessor["ip_tier"] == 3  # public-domain brand rule, not pooled gross
     assert predecessor["prior_franchise_gross"] == 0.0
 
-    followup = output.loc["The Huntsman: Winter's War"]
+    followup = _movie(output, "The Huntsman: Winter's War")
     assert followup["ip_tier"] == 3  # $396M prior >= $100M threshold
     assert followup["prior_franchise_gross"] == 396_000_000
     assert followup["is_sequel_or_spinoff"]
@@ -321,7 +328,7 @@ def test_unrelated_same_brand_films_do_not_pool_gross() -> None:
         ]
     )
 
-    elektra = output.loc["Elektra"]
+    elektra = _movie(output, "Elektra")
     assert elektra["prior_franchise_gross"] == 0.0
     assert elektra["ip_tier"] == 2
     assert elektra["tier_basis"].startswith("brand:Marvel tier 2")
@@ -341,7 +348,7 @@ def test_null_release_date_films_never_count_as_prior() -> None:
         ],
     )
 
-    followup = output.loc["Mystery Origin 2"]
+    followup = _movie(output, "Mystery Origin 2")
     assert followup["prior_franchise_gross"] == 0.0
     assert followup["ip_tier"] == 4  # sequel keyword floor, no prior magnitude
 
@@ -354,7 +361,7 @@ def test_nan_collection_name_does_not_inherit_umbrella_scope() -> None:
         [_raw(130, collection_id=None, collection_name=float("nan"))],
     )
 
-    row = output.loc["Black Panther"]
+    row = _movie(output, "Black Panther")
     assert row["ip_scope"] == "brand_origin"
     assert "collection_name" not in row["evidence_json"]
 
@@ -364,7 +371,7 @@ def test_source_work_only_match_has_book_provenance() -> None:
     # keyword, so provenance must still be filled in (book).
     output = _classify([_row(140, "Jaws", year=2000)])
 
-    row = output.loc["Jaws"]
+    row = _movie(output, "Jaws")
     assert row["ip_scope"] == "adaptation"
     assert row["ip_source_type"] == "book"
     assert row["brand_origin"] == "book"

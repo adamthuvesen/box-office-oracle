@@ -197,9 +197,8 @@ class TestModelLoader:
     ):
         """Test handling of validation error when model group doesn't exist."""
         _mock_s3, mock_sagemaker = mock_aws_clients
-        error_response = {"Error": {"Code": "ValidationException"}}
         mock_sagemaker.list_model_packages.side_effect = ClientError(
-            error_response, "ListModelPackages"
+            {"Error": {"Code": "ValidationException"}}, "ListModelPackages"
         )
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
@@ -400,8 +399,9 @@ class TestModelLoader:
         mock_s3, mock_sagemaker = mock_aws_clients
         mock_sagemaker.describe_model_package.return_value = sample_model_package_details
 
-        error_response = {"Error": {"Code": "NoSuchKey"}}
-        mock_s3.download_file.side_effect = ClientError(error_response, "GetObject")
+        mock_s3.download_file.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey"}}, "GetObject"
+        )
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 

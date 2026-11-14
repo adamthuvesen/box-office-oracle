@@ -20,6 +20,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+from urllib.parse import unquote
 
 import pandas as pd
 import requests
@@ -143,7 +145,7 @@ def fetch_enwiki_titles(
             imdb_id = row["imdb"]["value"]
             article_url = row["article"]["value"]
             title = article_url.rsplit("/wiki/", 1)[-1].replace("_", " ")
-            titles.setdefault(imdb_id, requests.utils.unquote(title))
+            titles.setdefault(imdb_id, unquote(title))
         logger.info(
             "Wikidata sitelinks: %d/%d imdb ids resolved",
             len(titles),
@@ -197,7 +199,8 @@ def fetch_wikitexts(
         for page in payload.get("pages", []):
             if page.get("missing"):
                 continue
-            requested = final_to_requested.get(page["title"], page["title"])
+            page_title: str = page["title"]
+            requested = final_to_requested.get(page_title, page_title)
             revisions = page.get("revisions", [])
             if revisions:
                 wikitexts[requested] = revisions[0]["slots"]["main"]["content"]
@@ -390,7 +393,7 @@ def write_outputs(
     filled: pd.DataFrame,
     audit: pd.DataFrame,
     config: WikipediaFillConfig,
-) -> dict:
+) -> dict[str, Any]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     filled, source_quality = clean_movie_source_data(filled)
     filled.to_csv(config.filled_csv_path, index=False)
@@ -435,7 +438,7 @@ def write_outputs(
     return manifest
 
 
-def run(config: WikipediaFillConfig) -> dict:
+def run(config: WikipediaFillConfig) -> dict[str, Any]:
     df = pd.read_csv(config.input_path)
     missing = df[df["production_budget_source"] == "missing"]
     logger.info("Rows with missing budget: %d", len(missing))

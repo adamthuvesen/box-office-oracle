@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 
 import argparse
+import importlib
 import json
 import logging
 import os
 import pickle
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import boto3
 import joblib
 import pandas as pd
 from botocore.exceptions import BotoCoreError, ClientError
+from sklearn.preprocessing import StandardScaler
 
 from box_office.config import MODEL_HYPERPARAMETERS, ModelHyperparameters
 from box_office.eval_windows import ITERATION_CV_FOLDS, ITERATION_END_YEAR, START_EVAL_YEAR
@@ -27,13 +31,18 @@ from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
 from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
 from box_office.utils.aws_helpers import parse_s3_uri, resolve_aws_region
 
+if TYPE_CHECKING:
+    from mypy_boto3_cloudwatch.type_defs import DimensionTypeDef, MetricDatumTypeDef
+
+# The SageMaker Experiments SDK exists only inside SageMaker's own images.
+load_run_context: Callable[[], Any] | None
 try:
-    from smexperiments.experiment_context import load_run_context  # pyright: ignore[reportMissingImports]
+    load_run_context = importlib.import_module("smexperiments.experiment_context").load_run_context
 except ImportError:
     load_run_context = None
 
 
-def setup_logging_once():
+def setup_logging_once() -> None:
     """Configure logging only if not already configured."""
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -54,7 +63,7 @@ def _sagemaker_hyperparameter_args() -> list[str]:
     return [arg for name, value in hyperparameters.items() for arg in (f"--{name}", str(value))]
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Parse the training arguments: the command line, then SageMaker's hyperparameters file."""
     parser = argparse.ArgumentParser()
 
@@ -90,7 +99,7 @@ def parse_args():
     return args
 
 
-def load_data(train_path):
+def load_data(train_path: str | Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     """Load training data from the directory specified by SageMaker."""
     logger.info(f"Loading training data from: {train_path}")
 
@@ -128,14 +137,16 @@ def load_data(train_path):
     return X_train, y_train_log, dates
 
 
-def hyperparameters_from_args(args) -> ModelHyperparameters:
+def hyperparameters_from_args(args: argparse.Namespace) -> ModelHyperparameters:
     """The XGBoost hyperparameters the estimator passed, validated by their owner."""
     return ModelHyperparameters(
         **{name: getattr(args, name) for name in ModelHyperparameters.model_fields}
     )
 
 
-def load_preprocessing_artifacts(args):
+def load_preprocessing_artifacts(
+    args: argparse.Namespace,
+) -> tuple[FeaturePreprocessorHigh, StandardScaler, Path, Path]:
     """Download the pipeline-fitted preprocessor + scaler from S3 into model_dir.
 
     These were fit on all training rows in the data phase; the container reuses
@@ -178,7 +189,9 @@ def load_preprocessing_artifacts(args):
     )
 
 
-def transform_for_final_fit(X_raw, preprocessor, scaler):
+def transform_for_final_fit(
+    X_raw: pd.DataFrame, preprocessor: FeaturePreprocessorHigh, scaler: StandardScaler
+) -> pd.DataFrame:
     """Engineer + scale the raw frame with the pipeline-fitted artifacts.
 
     NaN-aware: StandardScaler uses nanmean/nanvar, so missing budgets stay NaN
@@ -193,13 +206,13 @@ def transform_for_final_fit(X_raw, preprocessor, scaler):
 
 
 def save_results(
-    model,
+    model: BoxOfficeXGBoostModel,
     cv_results: CrossValidationResults,
     oof_results: OofEvaluation,
-    args,
-    processor_path,
-    scaler_path,
-):
+    args: argparse.Namespace,
+    processor_path: Path,
+    scaler_path: Path,
+) -> None:
     """Save model artifacts and evaluation metrics.
 
     ``processor_path`` / ``scaler_path`` were downloaded into ``model_dir`` by
@@ -330,11 +343,11 @@ def save_results(
         cloudwatch = boto3.client("cloudwatch", region_name=aws_region)
         logger.info(f"CloudWatch client created for region: {aws_region}")
 
-        dimensions = [
+        dimensions: list[DimensionTypeDef] = [
             {"Name": "Environment", "Value": "dev"},
             {"Name": "ModelType", "Value": "XGBoost"},
         ]
-        cloudwatch_metrics = [
+        cloudwatch_metrics: list[MetricDatumTypeDef] = [
             {
                 "MetricName": "OOF_R2_Score",
                 "Value": oof_r2,
@@ -413,7 +426,7 @@ def save_results(
         logger.warning(f"Could not log custom metrics via run context: {e}")
 
 
-def train(args):
+def train(args: argparse.Namespace) -> None:
     """Main training orchestrator function."""
     logger.info("Starting Box Office Prediction Model Training")
     logger.info(f"Training parameters: {vars(args)}")

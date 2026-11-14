@@ -1,19 +1,20 @@
 """Regression metrics for log-transformed targets."""
 
 import numpy as np
+import numpy.typing as npt
 from scipy.stats import spearmanr
 from sklearn.metrics import mean_squared_error
 
 
-def rmse_on_log_scale(y_true, y_pred):
+def rmse_on_log_scale(y_true: npt.ArrayLike, y_pred: npt.ArrayLike) -> float:
     """RMSE on already-log-transformed inputs.
 
     Callers MUST pass ``log1p``-transformed targets and predictions.
     """
-    return np.sqrt(mean_squared_error(y_true, y_pred))
+    return float(np.sqrt(mean_squared_error(y_true, y_pred)))
 
 
-def spearman_rank_corr(y_true, y_pred) -> float:
+def spearman_rank_corr(y_true: npt.ArrayLike, y_pred: npt.ArrayLike) -> float:
     """Spearman rank correlation between truth and prediction.
 
     Rank-based, so monotonic transforms (e.g. ``expm1``) don't change it —
@@ -28,4 +29,5 @@ def spearman_rank_corr(y_true, y_pred) -> float:
     # short-circuit so scipy doesn't warn and we return a clean NaN.
     if y_true.size < 2 or np.ptp(y_true) == 0 or np.ptp(y_pred) == 0:
         return float("nan")
-    return float(spearmanr(y_true, y_pred).statistic)
+    rho, _ = spearmanr(y_true, y_pred)
+    return float(rho)

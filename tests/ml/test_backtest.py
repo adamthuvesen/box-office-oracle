@@ -14,9 +14,14 @@ from box_office.ml.backtest_report import build_report
 from box_office.ml.metrics_models import CrossValidationResults, FoldResult
 
 
-def _fold(**metrics) -> FoldResult:
-    defaults = {"fold_number": 1, "mae_score": 0.5, "best_iteration": 100, "train_samples": 500}
-    return FoldResult(**(defaults | metrics))
+def _fold(**metrics: float) -> FoldResult:
+    defaults: dict[str, float] = {
+        "fold_number": 1,
+        "mae_score": 0.5,
+        "best_iteration": 100,
+        "train_samples": 500,
+    }
+    return FoldResult.model_validate(defaults | metrics)
 
 
 def _cv_results(fold_results: list[FoldResult]) -> CrossValidationResults:
