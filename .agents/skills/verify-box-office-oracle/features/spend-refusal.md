@@ -23,4 +23,4 @@ Preconditions: none.
 ## Gotchas
 
 - Python clients do not use `PATH`, so the drive also sets a dead proxy and disables the AWS metadata endpoint. The temp HOME holds no credentials.
-- The pipeline starts a temporary Prefect server on loopback before the gate refuses inside a task.
+- The pipeline refuses in the flow body, before any task runs.
