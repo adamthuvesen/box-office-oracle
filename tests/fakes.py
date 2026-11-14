@@ -5,10 +5,8 @@ test passes it wherever the real type is expected. The ``*_mock`` attributes exp
 ``MagicMock`` behind each client with its mock type, for stubbing and call assertions.
 """
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
-from box_office.inference.app.model_loader import ModelLoader
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.sagemaker.sagemaker_train_job import SageMakerClient
 
@@ -24,16 +22,6 @@ class FakeSageMakerClient(SageMakerClient):
         self.sagemaker_session = self.session_mock
         self.s3_bucket = "bucket"
         self.s3_prefix = "prefix"
-
-
-class FakeModelLoader(ModelLoader):
-    def __init__(self) -> None:
-        self.sagemaker_mock = MagicMock()
-        self.s3_mock = MagicMock()
-        self.sagemaker_client = self.sagemaker_mock
-        self.s3_client = self.s3_mock
-        self.cache_dir = Path("unused-cache-dir")
-        self._extracted_artifacts_cache = {}
 
 
 class FakeModelRegistry(AWSModelRegistry):

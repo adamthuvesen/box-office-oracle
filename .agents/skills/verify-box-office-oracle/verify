@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""Drive box-office-oracle end to end on a temp copy of the checkout, with seeded synthetic fixtures.
+
+  verify                changed drives (by files changed against main), else the smoke drive
+  verify all            every drive
+  verify list           each drive, what it proves, and the paths it covers
+  verify <drive>...     named drives
+  verify control        plant one known defect in a temp copy; pass only on its expected failure
+  verify doctor         check the isolation before a run
+  verify exec -- CMD    run CMD inside the isolated environment, for diagnosis
+
+Run it through `make verify ARGS=...` so the locked environment is synced first.
+"""
+
+import atexit
+import importlib.util
+import json
+import re
+import shutil
+import sys
+import time
+from collections.abc import Callable
+from pathlib import Path
+
+import drives
+import harness
+from harness import DriveFailure, Session
+
+RUNS_DIR = harness.ROOT / ".verify" / "runs"
+SMOKE_DRIVE = "spend-refusal"
+SHARED_PATHS = (
+    "pyproject.toml",
+    "uv.lock",
+    "Makefile",
+    ".python-version",
+    ".agents/skills/verify-box-office-oracle/",
+)
+REQUIRED_MODULES = ("pandas", "xgboost", "fastapi", "httpx", "numpy", "joblib")
+# Planted defect for `control`: serving returns the negated dollar value. Run after a clean training.
+CONTROL_FILE = "box_office/ml/target.py"
+CONTROL_OLD = 'return cast("T", np.expm1(log_target))'
+CONTROL_NEW = 'return cast("T", -np.expm1(log_target))'
+CONTROL_DRIVE = "serve"
+CONTROL_TOKEN = drives.PREDICTION_NOT_POSITIVE
+
+
+def new_run_dir() -> Path:
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    sha = harness.git("rev-parse", "--short=7", "HEAD")
+    dirty = "-dirty" if harness.git("status", "--porcelain") else ""
+    run_dir = RUNS_DIR / f"{stamp}-{sha}{dirty}"
+    run_dir.mkdir(parents=True)
+    return run_dir
+
+
+def preflight(session: Session) -> None:
+    missing = [m for m in REQUIRED_MODULES if importlib.util.find_spec(m) is None]
+    if missing:
+        raise DriveFailure(harness.CRASH, f"missing modules {missing}; run through `make verify`")
+    where = session.run(
+        "preflight",
+        "import-origin",
+        [sys.executable, "-c", "import box_office; print(box_office.__file__)"],
+    )
+    session.check(
+        Path(where.stdout.strip()).is_relative_to(session.copy),
+        harness.CRASH,
+        f"box_office imports from {where.stdout.strip()}, not the copy",
+    )
+    for tool in harness.TRIPWIRES:
+        found = session.run("preflight", f"which-{tool}", ["/usr/bin/which", tool])
+        session.check(
+            found.stdout.strip().startswith(str(session.tripwire_bin)),
+            harness.CRASH,
+            f"{tool} resolves to {found.stdout.strip()}",
+        )
+
+
+def run_drive(session: Session, name: str) -> tuple[bool, str, float]:
+    session.assertions = 0
+    started = time.monotonic()
+    try:
+        detail = drives.DRIVES[name].run(session)
+        if session.assertions == 0:
+            raise DriveFailure(harness.NO_ASSERTIONS, f"{name} finished without asserting anything")
+        ok = True
+    except DriveFailure as failure:
+        ok, detail = False, f"{failure.token}: {failure.detail}"
+    except SystemExit as exit_:
+        ok, detail = False, f"{harness.EARLY_EXIT}: drive exited with {exit_.code!r}"
+    except Exception as error:  # noqa: BLE001 - a drive crash is a FAIL line, not a traceback
+        ok, detail = False, f"{harness.CRASH}: {error!r}"
+    return ok, detail, time.monotonic() - started
+
+
+def write_manifest(run_dir: Path, name: str, ok: bool, detail: str) -> None:
+    block = (
+        f"feature: {name}\nentry: verify {name}\nresult: {'pass' if ok else 'fail'}\n"
+        f"detail: {detail}\nsha: {harness.git('rev-parse', 'HEAD')}\n"
+        f"dirty: {str(bool(harness.git('status', '--porcelain'))).lower()}\nstarted: {harness.now_utc()}\n\n"
+    )
+    with (run_dir / "manifest.txt").open("a") as manifest:
+        manifest.write(block)
+
+
+def with_session(body: Callable[[Session, Path], bool]) -> int:
+    before = harness.checkout_state()
+    run_dir = new_run_dir()
+    session = Session(run_dir)
+    atexit.register(session.cleanup)
+    ok = body(session, run_dir)
+    changed = harness.changed_paths(before)
+    if changed:
+        ok = False
+        print(f"FAIL checkout {harness.CHECKOUT_CHANGED}: {changed[:10]}")
+    (run_dir / "summary.json").write_text(json.dumps({"result": "pass" if ok else "fail"}) + "\n")
+    print(f"evidence: {run_dir.relative_to(harness.ROOT)}/")
+    return 0 if ok else 1
+
+
+def run_named(names: list[str]) -> int:
+    def body(session: Session, run_dir: Path) -> bool:
+        results: dict[str, bool | None] = dict.fromkeys(names)
+        try:
+            preflight(session)
+        except DriveFailure as failure:
+            print(f"FAIL preflight {failure}")
+            return False
+        for name in names:
+            ok, detail, seconds = run_drive(session, name)
+            results[name] = ok
+            write_manifest(run_dir, name, ok, detail)
+            print(f"{'PASS' if ok else 'FAIL'} {name} {seconds:.1f}s {detail}")
+        skipped = [n for n, r in results.items() if r is None]
+        if skipped:
+            print(f"FAIL {harness.SKIPPED}: {skipped}")
+        return not skipped and all(results.values())
+
+    return with_session(body)
+
+
+def run_control() -> int:
+    def body(session: Session, run_dir: Path) -> bool:
+        try:
+            preflight(session)
+            drives.DRIVES["train-local"].run(session)
+            target = session.copy / CONTROL_FILE
+            text = target.read_text()
+            if text.count(CONTROL_OLD) != 1:
+                raise DriveFailure(
+                    harness.CRASH,
+                    f"{CONTROL_FILE} no longer contains the line the control plants into",
+                )
+            target.write_text(text.replace(CONTROL_OLD, CONTROL_NEW))
+        except DriveFailure as failure:
+            print(f"FAIL control setup {failure}")
+            return False
+        ok, detail, _ = run_drive(session, CONTROL_DRIVE)
+        matched = not ok and detail.startswith(f"{CONTROL_TOKEN}:")
+        write_manifest(run_dir, f"control:{CONTROL_DRIVE}", matched, detail)
+        print(
+            f"{'PASS' if matched else 'FAIL'} control {CONTROL_DRIVE} expected {CONTROL_TOKEN}, got {'pass' if ok else detail[:200]}"
+        )
+        return matched
+
+    return with_session(body)
+
+
+def changed_drives() -> list[str]:
+    try:
+        base = harness.git("merge-base", "HEAD", "main")
+        files = set(harness.git("diff", "--name-only", base).splitlines())
+        files |= {
+            re.sub(r"^.. ", "", line)
+            for line in harness.git("status", "--porcelain", "--untracked-files=all").splitlines()
+        }
+    except Exception:  # noqa: BLE001 - no usable git history: run everything
+        return list(drives.DRIVES)
+    if any(f == p or f.startswith(p) for f in files for p in SHARED_PATHS):
+        return list(drives.DRIVES)
+    hit = [
+        d.name
+        for d in drives.DRIVES.values()
+        if any(f.startswith(p) for f in files for p in d.paths)
+    ]
+    return hit or [SMOKE_DRIVE]
+
+
+def main(args: list[str]) -> int:
+    if not args:
+        return run_named(changed_drives())
+    command, rest = args[0], args[1:]
+    if command == "all":
+        return run_named(list(drives.DRIVES))
+    if command == "list":
+        for drive in drives.DRIVES.values():
+            print(f"{drive.name}\n  proves: {drive.proves}\n  paths: {', '.join(drive.paths)}")
+        return 0
+    if command == "control":
+        return run_control()
+    if command == "doctor":
+
+        def check(session: Session, _run_dir: Path) -> bool:
+            preflight(session)
+            print("doctor: ok")
+            return True
+
+        return with_session(check)
+    if command == "exec":
+        argv = rest[1:] if rest[:1] == ["--"] else rest
+        if not argv or (shutil.which(argv[0]) is None and not Path(argv[0]).exists()):
+            print("usage: verify exec -- COMMAND [ARGS...]", file=sys.stderr)
+            return 2
+        session = Session(new_run_dir())
+        atexit.register(session.cleanup)
+        done = session.run("exec", "command", argv, expect_exit=None)
+        sys.stdout.write(done.stdout)
+        sys.stderr.write(done.stderr)
+        return done.returncode
+    unknown = [n for n in args if n not in drives.DRIVES]
+    if unknown:
+        print(f"unknown drive {unknown}; see `verify list`", file=sys.stderr)
+        return 2
+    return run_named(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

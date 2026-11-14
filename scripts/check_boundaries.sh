@@ -25,6 +25,10 @@ PY
 cat >"$scratch/box_office/inference/planted_registry_violation.py" <<'PY'
 from box_office.ml.model_registry import aws_model_registry  # noqa: F401
 PY
+cat >"$scratch/tests/inference/planted_train_only_import.py" <<'PY'
+import sagemaker  # noqa: F401
+from tests.fakes import FakeSageMakerClient  # noqa: F401
+PY
 cat >"$scratch/box_office/utils/planted_process_call.py" <<'PY'
 import asyncio
 import os

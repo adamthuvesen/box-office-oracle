@@ -9,7 +9,7 @@ from box_office.ml.feature_schema import (
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
-from tests.fakes import FakeModelLoader
+from tests.inference.fakes import FakeModelLoader
 
 
 def _describe_response(schema_version: str | None) -> dict[str, Any]:

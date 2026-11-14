@@ -6,7 +6,6 @@ from pathlib import Path
 
 import boto3
 import pandas as pd
-from pydantic import ValidationError
 from sagemaker.estimator import Estimator
 from sagemaker.inputs import TrainingInput
 from sagemaker.session import Session
@@ -103,40 +102,15 @@ def upload_processed_data_to_s3(
     return train_input
 
 
-def _validate_hyperparameters(
-    hyperparameters: Mapping[str, object], logger: logging.Logger
-) -> None:
-    """Validate hyperparameters and log any validation errors clearly."""
-    validation_errors = []
-
-    try:
-        ModelHyperparameters.model_validate(
-            {k: v for k, v in hyperparameters.items() if k in XGBOOST_PARAM_KEYS}
+def require_training_image() -> str:
+    """Return the training image URI, or raise before any phase spends money."""
+    image_uri = config.sagemaker.training_image_uri
+    if not image_uri:
+        raise ValueError(
+            "SAGEMAKER_TRAINING_IMAGE_URI is not set. Build and push the training "
+            "image first (docs/training-image.md)."
         )
-    except ValidationError as e:
-        validation_errors.extend(
-            f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()
-        )
-
-    cv_keys = set(CrossValidationWindow.model_fields)
-    try:
-        CrossValidationWindow.model_validate(
-            {k: v for k, v in hyperparameters.items() if k in cv_keys}
-        )
-    except ValidationError as e:
-        validation_errors.extend(
-            f"{'.'.join(map(str, err['loc'])) or 'cross_validation'}: {err['msg']}"
-            for err in e.errors()
-        )
-
-    # Log validation results
-    if validation_errors:
-        logger.error("Hyperparameter validation failed:")
-        for error in validation_errors:
-            logger.error(f"- {error}")
-        raise ValueError(f"Invalid hyperparameters: {'; '.join(validation_errors)}")
-    else:
-        logger.info("Hyperparameter validation passed")
+    return image_uri
 
 
 def _log_hyperparameters_block(
@@ -191,12 +165,7 @@ def train_xgboost_model_with_timeseries_cv_framework(
     ``box_office.ml.model_training``: time-series CV and the final fit.
     """
     require_approval("launching a SageMaker training job", approved)
-    image_uri = config.sagemaker.training_image_uri
-    if not image_uri:
-        raise ValueError(
-            "SAGEMAKER_TRAINING_IMAGE_URI is not set. Build and push the training "
-            "image first (docs/training-image.md)."
-        )
+    image_uri = require_training_image()
 
     # Separate XGBoost hyperparameters from custom script parameters
     xgboost_params: dict[str, str | PipelineVariable] = {
@@ -209,9 +178,6 @@ def train_xgboost_model_with_timeseries_cv_framework(
         for k, v in hyperparameters.items()
         if k not in XGBOOST_PARAM_KEYS
     }
-
-    # Validate hyperparameters first
-    _validate_hyperparameters(hyperparameters, logger)
 
     # Log hyperparameters in structured format - use original for logging
     _log_hyperparameters_block(hyperparameters, logger)

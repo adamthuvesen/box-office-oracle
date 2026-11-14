@@ -76,7 +76,6 @@ train = [
 
 [project.scripts]
 box-office-pipeline = "box_office.orchestration.flows.ml_pipeline:main"
-box-office-api = "box_office.inference.app.main:cli_main"
 box-office-rich-backfill = "box_office.ingestion.tmdb_rich_backfill:main"
 box-office-curated-movies = "box_office.ingestion.curated_movies:main"
 box-office-wikipedia-budget-fill = "box_office.ingestion.wikipedia_budget_fill:main"
@@ -201,6 +200,7 @@ ignore_imports = [
     "box_office.ingestion.tmdb_rich_backfill -> requests",
     "scripts.export_web_data -> requests",
     "scripts.refetch_collections -> requests",
+    "scripts.validate_inference_api -> urllib.request",
 ]
 
 [[tool.importlinter.contracts]]
@@ -227,6 +227,21 @@ name = "The Lambda path does not import the model registry writer"
 type = "forbidden"
 source_modules = ["box_office.inference"]
 forbidden_modules = ["box_office.ml.model_registry"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Inference tests import nothing train-only"
+type = "forbidden"
+source_modules = ["tests.inference"]
+forbidden_modules = [
+    "box_office.sagemaker",
+    "box_office.orchestration",
+    "sagemaker",
+    "prefect",
+    "dbt",
+    "snowflake",
+    "tests.fakes",
+]
 allow_indirect_imports = true
 
 [tool.basedpyright]

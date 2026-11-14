@@ -70,7 +70,7 @@ Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/dat
 
 `TransformerMixin`-style augmenting steps: each one returns the input frame plus its new columns, so the pipeline is debuggable via `set_output(transform="pandas")`. The final `SelectEngineered` step drops the raw input columns the transformers consumed.
 
-Outcome-derived and post-release signals are not feature inputs. `tests/test_feature_leakage_guard.py` rejects any column whose absolute Pearson correlation with the log-target exceeds 0.99 on a synthetic year and blocks forbidden leakage names from the feature contract.
+Outcome-derived and post-release signals are not feature inputs. `tests/ml/test_feature_leakage_guard.py` rejects any column whose absolute Pearson correlation with the log-target exceeds 0.99 on a synthetic year and blocks forbidden leakage names from the feature contract.
 
 ## Training
 
@@ -116,11 +116,11 @@ Three roles, no `ACCOUNTADMIN` at runtime:
 
 | Role                | Owns                                      | Used by                                            |
 | ------------------- | ----------------------------------------- | -------------------------------------------------- |
-| `DBT_RUNNER`        | `STAGING`, `ML_TRAINING`, `FEATURE_STORE` | `box-office-pipeline` + dbt; read-only on `RAW`    |
+| `DBT_RUNNER`        | `STAGING`                                 | `box-office-pipeline` + dbt; read-only on `RAW`    |
 | `BOX_OFFICE_LOADER` | `RAW`                                     | `scripts/load_dataset_to_snowflake.py` (RAW loads) |
 | `ACCOUNTADMIN`      | —                                         | administration only, never in the runtime path     |
 
-`DBT_RUNNER` owns the three transform/feature schemas (with schema-level future grants) so it can recreate every dbt model and pipeline table it produces, and reads `RAW` through `SELECT` (present + future). `BOX_OFFICE_LOADER` owns `RAW` so a dataset load never needs `ACCOUNTADMIN`.
+`DBT_RUNNER` owns `STAGING` (with schema-level future grants) so it can recreate every dbt model it produces, and reads `RAW` through `SELECT` (present + future). The pipeline writes no other table. The grants script still reconciles the old `ML_TRAINING` and `FEATURE_STORE` schemas, which no code reads. `BOX_OFFICE_LOADER` owns `RAW` so a dataset load never needs `ACCOUNTADMIN`.
 
 Ownership and grants are reconciled by an idempotent script — `scripts/snowflake_role_grants.sql`, applied via `scripts/apply_snowflake_grants.py` (the one path that runs as `ACCOUNTADMIN`). Re-run it if a table ever ends up owned by the wrong role again (the failure mode: an object created by an old `ACCOUNTADMIN` run that a runtime role then can't replace).
 
@@ -146,7 +146,7 @@ config.model.hyperparameters.n_estimators  # 1500
 
 ## Inference
 
-Lambda container (`[infrastructure/docker/inference/Dockerfile](../infrastructure/docker/inference/Dockerfile)`) loads the latest approved model from the registry, verifies SHA256 against the manifest, then serves predictions via FastAPI + Mangum at the Function URL.
+Lambda container (`[infrastructure/docker/inference/Dockerfile](../infrastructure/docker/inference/Dockerfile)`) installs only the locked `inference` extra, never `train`, and loads the latest approved model from the registry, verifies SHA256 against the manifest, then serves predictions via FastAPI + Mangum at the Function URL.
 
 Cold-start budget includes one `describe_model_package`, one S3 download, one SHA256 verify, one tar extract (with the `data` filter), and joblib loads of model + preprocessor + scaler. Warm invocations skip everything via the process-local `_extracted_artifacts_cache` dict.
 
@@ -170,11 +170,13 @@ The FastAPI `/predict` handler runs CPU-bound `PredictionEngine.predict` in **`a
 - **Action pinning**: third-party GitHub Actions are pinned to commit SHAs where practical.
 - **No public AI triggers**: Claude review automation is not wired into public issue or PR comments.
 
-A `tests/infrastructure/` suite asserts the posture offline by parsing `iam.tf` and `profiles.yml` — runs without `terraform init` or AWS access.
+A `tests/infrastructure/` suite and the pinned checkov policies in `infrastructure/checkov/` assert the posture offline, without `terraform init` or AWS access.
 
 ## Where to look next
 
 - For day-to-day commands: [README.md](../README.md)
 - For AI-agent entry rules: [AGENTS.md](../AGENTS.md)
-- For tests, style, and git workflow: [development.md](development.md)
+- For tests and commands: [development.md](development.md)
+- For the terms the code uses: [GLOSSARY.md](../GLOSSARY.md)
+- For decisions that are hard to reverse: [adr/](adr/)
 - For the actual code, the table above maps every layer to its module.

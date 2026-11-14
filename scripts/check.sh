@@ -22,10 +22,10 @@ start_lane() {
   lane_pids+=("$!")
 }
 
-start_lane ruff-check uv run --no-sync ruff check box_office tests scripts
-start_lane ruff-format uv run --no-sync ruff format --check box_office tests scripts
+start_lane ruff-check uv run --no-sync ruff check box_office tests scripts .agents/skills/verify-box-office-oracle .agents/skills/verify-box-office-oracle/verify
+start_lane ruff-format uv run --no-sync ruff format --check box_office tests scripts .agents/skills/verify-box-office-oracle .agents/skills/verify-box-office-oracle/verify
 start_lane boundaries scripts/check_boundaries.sh
-start_lane types uv run --no-sync basedpyright
+start_lane types bash -c 'uv run --no-sync basedpyright && uv run --no-sync basedpyright --project .agents/skills/verify-box-office-oracle'
 start_lane fast-tests uv run --no-sync pytest tests/ -m "not integration and not slow"
 
 web_lane() {

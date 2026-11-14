@@ -1,4 +1,10 @@
-"""The serving engine scores a frame exactly as the training path does."""
+"""The serving engine scores a frame like the training sequence, as this test rebuilds it.
+
+The test fits the preprocessor, scaler, and model with the same library calls that
+`scripts/train_local.py` uses, round-trips them through joblib, and compares the engine to
+`model.predict` on the scaled frame. It does not run `scripts/train_local.py`, which exposes no
+function that scores a frame, so a change to that script's own transform order is not caught here.
+"""
 
 import joblib
 import numpy as np

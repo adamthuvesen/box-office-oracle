@@ -527,68 +527,10 @@ jobs:
       - name: Validate Inference API
         if: ${{ needs.deploy-inference.result == 'success' }}
         env:
+          API_ENDPOINT: ${{ needs.deploy-inference.outputs.api_endpoint }}
           # Optional: set in repo secrets so /model/info works when Lambda has API_KEY
           INFERENCE_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
-        run: |
-          uv run python -c "
-          import os
-          import sys
-          import time
-
-          import requests
-
-          # Get API endpoint from deployment output
-          api_endpoint = '${{ needs.deploy-inference.outputs.api_endpoint }}'
-          if not api_endpoint or api_endpoint == 'null':
-              print('No API endpoint found')
-              sys.exit(1)
-
-          print(f'Testing API endpoint: {api_endpoint}')
-
-          api_key = (os.environ.get('INFERENCE_API_KEY') or '').strip()
-          authed_headers = {}
-          if api_key:
-              authed_headers['X-API-Key'] = api_key
-
-          try:
-              # Test health endpoint with retries to absorb Lambda cold-start latency
-              health_url = f'{api_endpoint.rstrip(\"/\")}/health'
-              print(f'Testing health endpoint (with retries for cold start): {health_url}')
-              health_response = None
-              last_error = None
-              for attempt in range(1, 4):
-                  try:
-                      health_response = requests.get(health_url, timeout=60.0)
-                      break
-                  except requests.RequestException as e:
-                      last_error = e
-                      print(f'  attempt {attempt}/3 failed: {e}')
-                      if attempt < 3:
-                          time.sleep(5)
-
-              if health_response is None:
-                  print(f'Health check failed after 3 attempts: {last_error}')
-                  sys.exit(1)
-
-              if health_response.status_code == 200:
-                  print(f'Health check passed: {health_response.json()}')
-              else:
-                  print(f'Health check failed: {health_response.status_code} - {health_response.text}')
-                  sys.exit(1)
-
-              # Test model info endpoint
-              print('Testing model info endpoint...')
-              info_url = f'{api_endpoint.rstrip(\"/\")}/model/info'
-              response = requests.get(info_url, headers=authed_headers, timeout=30.0)
-              if response.status_code == 200:
-                  print(f'Model info endpoint working: {response.json()}')
-              else:
-                  print(f'Model info endpoint returned: {response.status_code} (may be expected if no model deployed yet)')
-
-          except Exception as e:
-              print(f'API validation failed: {str(e)}')
-              sys.exit(1)
-          "
+        run: uv run python scripts/validate_inference_api.py
 
   notify:
     if: ${{ always() && !contains(github.event.head_commit.message, '[skip cd]') }}

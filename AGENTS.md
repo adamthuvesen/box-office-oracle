@@ -1,55 +1,55 @@
 # AGENTS.md
 
-box-office-oracle predicts movie box-office revenue: XGBoost (v9 feature contract), Snowflake + dbt data, SageMaker Model Registry, Lambda serving, Terraform infra. Human overview: [README.md](README.md).
+**box-office-oracle** predicts movie box-office revenue: Snowflake and dbt data, an XGBoost model on the v9 feature contract, SageMaker Model Registry, Lambda serving, Terraform infra, and a Next.js app. Python 3.14 via **uv**; Node 24 for `web/`. Human overview: [README.md](README.md). Terms: [GLOSSARY.md](GLOSSARY.md). Decisions: [docs/adr/](docs/adr/).
 
-This file holds project facts only. User-level guidance (tone, git etiquette) lives in the user's own agent config.
+## Commands
+
+```bash
+make install-dev           # setup: dev, inference, and train extras
+make web-install           # setup: web dependencies
+make check                 # lint, format, types, import contracts, fast tests, web lanes; CI runs the same
+make fix                   # apply safe fixes and regenerate the web contract
+make verify ARGS=all       # drive the app on synthetic fixtures (ARGS=list shows the drives)
+make slow                  # full suite, infra linters (actionlint, checkov), dbt parse, web build
+```
+
+Prove user-facing changes with the `verify-box-office-oracle` skill in `.agents/skills/verify-box-office-oracle`.
 
 ## Layout
 
-```
-box_office/        Python package: ingestion, training frame, ML, inference
-transformations/   dbt (Snowflake staging)
-infrastructure/    Terraform (SageMaker, Lambda, IAM, S3)
-scripts/           Loaders, training, scoring, registry, grants — see scripts/README.md
-tests/             Pytest, hermetic (no cloud access); subdirs mirror box_office/
-web/               Next.js frontend — has its own AGENTS.md
-docs/              Public docs; docs/internal/ is gitignored, local-only
-```
+- `box_office/`: Python package (`ingestion/`, `ml/`, `orchestration/`, `sagemaker/`, `inference/`, `utils/`)
+- `transformations/`: dbt staging models
+- `infrastructure/`: Terraform, Docker images, checkov policies
+- `scripts/`: loaders, local training, scoring, registry ([scripts/README.md](scripts/README.md))
+- `tests/`: hermetic; subdirectories mirror `box_office/`
+- `web/`: Next.js app ([web/AGENTS.md](web/AGENTS.md))
+- `docs/`: [architecture](docs/architecture.md), [development](docs/development.md), [training image](docs/training-image.md). `docs/internal/` is git-ignored and local only.
 
-## Quickstart
+## Enforced Rules
 
-```bash
-make check     # locked sync, ruff, basedpyright, import contracts, fast tests (what CI runs first; under 15 s)
-make fix       # ruff --fix and ruff format
-make slow      # full test suite and offline dbt parse
-make verify    # verify skill: not built yet, exits 1
-```
+| Rule | Enforced by |
+| --- | --- |
+| Spending money or writing to production refuses without approval | `box_office/utils/approval.py::require_approval`, `tests/orchestration/test_spend_gates.py::test_training_job_refuses_without_approval` |
+| No module starts a process | `pyproject.toml::Process modules are banned everywhere` |
+| Only the ingestion owners use network clients | `pyproject.toml::Network clients only in the ingestion owners` |
+| Only the owner modules import cloud and warehouse SDKs | `pyproject.toml::Cloud and warehouse SDKs only in their owner modules` |
+| Module layers import in one direction | `pyproject.toml::Layers: config, utils, ml, then sagemaker and inference, then orchestration` |
+| The Lambda path does not import the registry writer | `pyproject.toml::The Lambda path does not import the model registry writer` |
+| Only `box_office/ml/target.py` converts the log target | `pyproject.toml::numpy.expm1` |
+| Tuning and CV never score the confirmation years | `box_office/eval_windows.py::refuse_confirmation_years`, `tests/ml/test_eval_windows.py::test_cv_refuses_a_window_that_reaches_the_confirmation_set` |
+| Serving scores match training scores | `tests/inference/test_train_serve_parity.py::test_engine_frame_scores_match_the_training_path` |
+| Features never correlate with the target or carry post-release names | `tests/ml/test_feature_leakage_guard.py::test_no_feature_correlates_perfectly_with_target` |
+| The runtime refuses a model with a different feature contract version | `box_office/ml/feature_schema.py::CURRENT_FEATURE_SCHEMA_VERSION`, `tests/inference/test_schema_version_rejection.py::test_rejects_artifact_with_old_schema_version` |
+| A model records which training data it saw | `box_office/ml/data_fingerprint.py::DataFingerprint`, `tests/ml/test_data_fingerprint.py::test_any_change_to_the_rows_changes_the_hash` |
+| The web predict contract is generated from the Pydantic models | `tests/scripts/test_generate_web_contract.py::test_committed_web_contract_is_current` |
+| Snowflake identifiers are validated before use in SQL | `box_office/utils/snowflake_loader.py::validate_sql_identifier`, `tests/utils/test_snowflake_loader.py::test_validate_sql_identifier_rejects_unsafe_names` |
+| Terraform IAM stays scoped (no SageMaker full access, no IAM mutation, scoped PassRole) | `infrastructure/checkov/box_office_iam_checks.py::NoSageMakerFullAccess`, `infrastructure/checkov/box_office_iam_checks.py::NoIamMutationActions`, `infrastructure/checkov/box_office_iam_checks.py::PassRoleIsScoped` |
+| Env files, keys, and certificates stay out of git | `.gitignore::.env`, `.gitignore::*.pem` |
 
-Python 3.14 (`.python-version`); `uv sync --extra dev --extra inference --extra train` sets up the environment. The Lambda image installs only `.[inference]`; `train` holds Prefect, dbt, SageMaker, and Snowflake.
+## Limits code cannot enforce
 
-Web app: `pnpm --dir web dev` (regenerate data first with `make web-data` after a retrain). Live /predict needs `INFERENCE_API_URL` + `INFERENCE_API_KEY` in `web/.env.local`; without them it runs in mock mode.
-
-## Rules
-
-- **Snowflake CLI is read-only `SELECT`** (with `LIMIT` on unknown tables). Data changes go through the committed scripts (`scripts/load_dataset_to_snowflake.py`, `scripts/apply_snowflake_grants.py`) or the UI — never ad-hoc write SQL.
-- **Roles**: `DBT_RUNNER` for pipeline/dbt, `BOX_OFFICE_LOADER` for RAW loads, `ACCOUNTADMIN` for admin only. Role table: [docs/architecture.md](docs/architecture.md).
-- **Spend and production writes refuse without approval** inside the function that spends (`box_office/utils/approval.py`). Never pass the approval flag or `approved=True` on your own; ask the user.
-- **Boundaries**: import contracts and module bans live in `pyproject.toml` (`[tool.importlinter]`, ruff `banned-api`); `make check` runs them. Add an owner to the contract, not a bypass.
-- **Eval discipline**: iterate against years ≤2023 only. 2024–2025 is a spent confirmation set — never tune against it.
-- **No secrets in git** — `.env`, `keys/`, `*.pem`, `*.p8`. CI secrets go to `${RUNNER_TEMP}` only.
-- **No push / PR / force-push / `--no-verify`** without explicit user permission.
-- **No IAM mutation from CI** — `github_actions_role` is restricted; IAM changes need a manual elevated `terraform apply`.
-- **No historical narration** in code, comments, or docs — describe what is, not what was.
-
-## Read next
-
-Load these only when the task needs them:
-
-| Task touches…                        | Read                                                        |
-| ------------------------------------ | ----------------------------------------------------------- |
-| Snowflake / dbt / pipeline / serving | [docs/architecture.md](docs/architecture.md)                 |
-| Tests, commands, style, git          | [docs/development.md](docs/development.md)                   |
-| Model detail, experiments, runbooks  | `docs/internal/` (local-only: model.md, operations.md)       |
-| Frontend                             | [web/AGENTS.md](web/AGENTS.md)                               |
-
-If a doc disagrees with code, fix the doc in the same change.
+- The Snowflake CLI runs read-only `SELECT`, with `LIMIT` on unknown tables. Data changes go through the committed scripts.
+- Use `DBT_RUNNER` for the pipeline and dbt, `BOX_OFFICE_LOADER` for RAW loads, and `ACCOUNTADMIN` for administration only ([docs/architecture.md](docs/architecture.md)).
+- Never pass the approval flag or `approved=True` on your own. The user approves.
+- Put model metrics and run notes in `docs/internal/`, never in public docs.
+- If a doc disagrees with the code, fix the doc in the same change.

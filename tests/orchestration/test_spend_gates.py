@@ -304,3 +304,26 @@ def test_pipeline_cli_passes_approved_only_from_the_flag(monkeypatch, flag, expe
     with patch.object(ml_pipeline, "ml_pipeline") as flow:
         ml_pipeline.main()
     assert flow.call_args.kwargs["approved"] is expected
+
+
+def test_pipeline_refuses_a_missing_training_image_before_any_phase(monkeypatch):
+    from box_office.orchestration.flows import ml_pipeline
+
+    sagemaker_view = sagemaker_train_job.config.sagemaker
+    monkeypatch.setattr(
+        sagemaker_train_job.config,
+        "_sagemaker",
+        type(sagemaker_view)(training_image_uri=None),
+    )
+    with (
+        patch.object(ml_pipeline, "run_data_phase") as data_phase,
+        patch.object(ml_pipeline, "run_train_phase") as train_phase,
+        patch.object(ml_pipeline, "run_registry_phase") as registry_phase,
+        patch.object(data_tasks, "run_raw_to_staging_dbt_transformations") as dbt,
+        patch.object(data_tasks, "load_staging_box_office_from_snowflake") as snowflake,
+        patch.object(sagemaker_train_job.boto3, "Session") as boto_session,
+        pytest.raises(ValueError, match="SAGEMAKER_TRAINING_IMAGE_URI"),
+    ):
+        ml_pipeline.run_ml_pipeline_logic(logger=MagicMock(), approved=True)
+    for call in (data_phase, train_phase, registry_phase, dbt, snowflake, boto_session):
+        call.assert_not_called()

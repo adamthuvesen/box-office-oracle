@@ -152,3 +152,6 @@ artifacts/local/
 
 # Internal docs (evaluation reports, experiment logs, real infra values)
 docs/internal/
+
+# Verify skill run evidence
+.verify/

@@ -7,6 +7,8 @@ from box_office.orchestration.phases.data_phase import run_data_phase
 from box_office.orchestration.phases.registry_phase import run_registry_phase
 from box_office.orchestration.phases.train_phase import run_train_phase
 from box_office.orchestration.run_logger import RunLogger
+from box_office.sagemaker.sagemaker_train_job import require_training_image
+from box_office.utils.approval import require_approval
 from box_office.utils.env_setup import configure_environment
 
 
@@ -35,6 +37,9 @@ def run_ml_pipeline_logic(
     """
     if logger is None:
         logger = get_logger()
+
+    require_approval("running the ML pipeline", approved)
+    require_training_image()
 
     logger.info("Running ML Pipeline with environment=%r", environment)
 

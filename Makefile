@@ -1,3 +1,5 @@
+VERIFY_SKILL := .agents/skills/verify-box-office-oracle
+
 .PHONY: help check fix verify slow install install-dev test test-unit test-integration test-inference-lean training-image lint format clean docker-build docker-test setup datasets web-data web-install web-build
 
 help: ## Show this help message
@@ -8,14 +10,14 @@ check: setup ## Fast gate: locked sync, ruff, basedpyright, import contracts, fa
 	@scripts/check.sh
 
 fix: install-dev ## Auto-fix lint and format with ruff and oxfmt; regenerate the web contract
-	uv run ruff check --fix box_office tests scripts
-	uv run ruff format box_office tests scripts
+	uv run ruff check --fix box_office tests scripts $(VERIFY_SKILL) $(VERIFY_SKILL)/verify
+	uv run ruff format box_office tests scripts $(VERIFY_SKILL) $(VERIFY_SKILL)/verify
 	uv run python scripts/generate_web_contract.py
 	pnpm --dir web format
 
-verify: ## Drive the real app (verify skill, Phase 7); pass subcommands as ARGS=...
-	@echo "verify skill not built yet (Phase 7)" >&2
-	@exit 1
+verify: setup ## Drive the app on synthetic fixtures (verify-box-office-oracle); ARGS=all|list|control|<drive>
+	@uv sync --locked --extra dev --extra inference --extra train --quiet
+	@uv run --no-sync python $(VERIFY_SKILL)/verify $(ARGS)
 
 slow: setup ## Full test suite, pinned infra linters (actionlint, checkov), offline dbt parse, web build
 	@scripts/slow.sh
@@ -56,13 +58,13 @@ test-inference-lean: setup ## Inference tests with only the serving dependencies
 	UV_PROJECT_ENVIRONMENT=.venv-inference uv run --no-sync pytest tests/inference
 
 lint: install-dev ## Run linting checks
-	uv run ruff check box_office tests scripts
+	uv run ruff check box_office tests scripts $(VERIFY_SKILL) $(VERIFY_SKILL)/verify
 
 format: install-dev ## Format code with ruff
-	uv run ruff format box_office tests scripts
+	uv run ruff format box_office tests scripts $(VERIFY_SKILL) $(VERIFY_SKILL)/verify
 
 format-check: install-dev ## Check formatting without making changes
-	uv run ruff format --check box_office tests scripts
+	uv run ruff format --check box_office tests scripts $(VERIFY_SKILL) $(VERIFY_SKILL)/verify
 
 clean: ## Clean build artifacts and caches
 	rm -rf .pytest_cache

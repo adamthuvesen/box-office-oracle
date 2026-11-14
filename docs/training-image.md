@@ -4,7 +4,7 @@ SageMaker training runs `box_office/ml/model_training.py` in the image that
 [`infrastructure/docker/training/Dockerfile`](../infrastructure/docker/training/Dockerfile)
 builds. The image uses the same Python 3.14 base as the Lambda image and installs
 the locked `train` extra from `uv.lock`. The stock SageMaker XGBoost container is
-not used, because its Python cannot run this code.
+not used, because its Python cannot run this code ([ADR 0003](adr/0003-custom-python-3-14-training-image.md)).
 
 The estimator reads the image URI from `SAGEMAKER_TRAINING_IMAGE_URI`. When the
 variable is not set, `box-office-pipeline` stops before it launches a training job.

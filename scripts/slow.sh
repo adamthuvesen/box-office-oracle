@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The slow gate: the full test suite, the pinned infra linters, an offline
+# The slow gate: the full test suite, the lean inference tests, the pinned infra linters, an offline
 # dbt parse, and the web build (which type-checks). Needs network access to fetch
 # dbt packages and the linters once, and no Snowflake credentials.
 set -euo pipefail
@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 
 uv sync --locked --extra dev --extra inference --extra train --quiet
 uv run --no-sync pytest tests/
+make test-inference-lean
 scripts/lint_infra.sh
 
 export SNOWFLAKE_ACCOUNT="${SNOWFLAKE_ACCOUNT:-offline}"

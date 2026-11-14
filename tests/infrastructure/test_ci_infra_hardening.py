@@ -281,14 +281,13 @@ def test_check_script_runs_lint_format_and_fast_tests() -> None:
     assert 'pytest tests/ -m "not integration and not slow"' in script
 
 
-def test_ci_enforces_web_lint_and_build() -> None:
+def test_ci_builds_web_app_through_recipes() -> None:
     data = yaml.safe_load(CI_YML.read_text())
-    steps = data["jobs"]["web-quality"]["steps"]
+    steps = data["jobs"]["web-build"]["steps"]
     commands = "\n".join(step.get("run", "") for step in steps)
 
-    assert "pnpm --dir web install --frozen-lockfile" in commands
-    assert "pnpm --dir web lint" in commands
-    assert "pnpm --dir web build" in commands
+    assert "make web-install" in commands
+    assert "make web-build" in commands
 
 
 def test_dbt_ci_parses_without_snowflake_credentials() -> None:

@@ -1,6 +1,6 @@
 # Development playbook
 
-Non-negotiable rules and architecture context: [AGENTS.md](../AGENTS.md) and [architecture.md](architecture.md).
+Rules, commands, and layout: [AGENTS.md](../AGENTS.md). Architecture: [architecture.md](architecture.md). Terms: [GLOSSARY.md](../GLOSSARY.md).
 
 ## Snowflake auth
 
@@ -22,7 +22,7 @@ SNOWFLAKE_ROLE=DBT_RUNNER
 | RAW dataset load (`load_dataset_to_snowflake.py`) | `BOX_OFFICE_LOADER` |
 | Role/permission administration             | `ACCOUNTADMIN`      |
 
-`DBT_RUNNER` owns `STAGING`, `ML_TRAINING`, `FEATURE_STORE` (read-only on `RAW`); `BOX_OFFICE_LOADER` owns `RAW`. Keep `.env` set to `SNOWFLAKE_ROLE=DBT_RUNNER` for normal work; only override it inline when loading RAW:
+`DBT_RUNNER` owns `STAGING` (read-only on `RAW`); `BOX_OFFICE_LOADER` owns `RAW`. Keep `.env` set to `SNOWFLAKE_ROLE=DBT_RUNNER` for normal work; only override it inline when loading RAW:
 
 ```bash
 SNOWFLAKE_ROLE=BOX_OFFICE_LOADER uv run python scripts/load_dataset_to_snowflake.py
@@ -34,7 +34,7 @@ If a schema/table ever ends up owned by the wrong role (symptom: a runtime role 
 uv run python scripts/apply_snowflake_grants.py   # connects as ACCOUNTADMIN
 ```
 
-Every command that spends money or writes to production refuses until it gets the approval flag: `box-office-pipeline`, `load_dataset_to_snowflake.py`, `apply_snowflake_grants.py`, and `register_local_model.py`. The refusal message names the flag. `--dry-run` prints the plan and needs no approval. In code, the same gate is the `approved` argument of the function that spends (`box_office/utils/approval.py`).
+Every command that spends money or writes to production refuses until the caller passes the approval flag: `box-office-pipeline`, `load_dataset_to_snowflake.py`, `apply_snowflake_grants.py`, `register_local_model.py`, and `make training-image`. The refusal message names the flag. Agents never pass it. CI passes it only in the manual `ml-pipeline.yml` run. `--dry-run` prints the plan and needs no approval. In code, the same gate is the `approved` argument of the function that spends (`box_office/utils/approval.py`).
 
 ## Test discipline
 
@@ -44,63 +44,32 @@ Every command that spends money or writes to production refuses until it gets th
 - Random fixtures must be seeded (`np.random.default_rng(42)`).
 - Use `monkeypatch` for env-var changes; `tests/conftest.py` already restores host env at session end.
 
-Run the full suite:
+Pull requests run `make check` first. Then separate CI jobs run the infra linters (actionlint, checkov), the lean inference tests, the suite with coverage, the dbt tests, and the web build. `make slow` runs the same lanes locally.
 
-```bash
-uv run pytest tests/
-```
-
-Run only one file:
+Run one test file:
 
 ```bash
 uv run pytest tests/orchestration/test_pipeline_failure_semantics.py -v
 ```
 
-Pull requests run the Python suite with coverage, Ruff lint and formatting
-checks, web lint and build, and dbt parse. dbt compile also runs when Snowflake
-credentials are available.
+## Commands
 
-## Commands you'll actually use
+Python 3.14 (`.python-version`) and Node 24 (`.nvmrc`). Install uv and pnpm first.
 
 ```bash
-make clean                          # remove build/, caches (local setuptools artifacts)
-make install-dev                    # uv sync --extra dev --extra inference --extra train
-make test                           # same extras; pytest tests/
-make lint                           # ruff check box_office tests scripts
-make format                         # ruff format box_office tests scripts
+make install-dev      # dev, inference, and train extras (locked)
+make web-install      # web dependencies from the lockfile
+make check            # the fast gate: ruff, basedpyright, import contracts, fast tests, web lint/format/types/tests
+make fix              # ruff --fix, ruff format, regenerate the web contract, oxfmt
+make verify ARGS=all  # drive the app on synthetic fixtures; ARGS=list shows the drives
+make slow             # full suite, actionlint, checkov, dbt parse, web build
+make test-inference-lean  # inference tests with only the serving dependencies
 
-box-office-pipeline                 # three-phase Prefect flow
-box-office-api                      # inference service CLI (uvicorn)
-box-office-rich-backfill            # refresh rich local TMDB data
+box-office-pipeline   # three-phase Prefect flow (refuses without the approval flag)
+
+uv run uvicorn box_office.inference.app.main:app --reload   # the inference API locally
 
 cd transformations && uv run dbt build --select staging --profiles-dir=.
 ```
 
-## Coding style
-
-- Python 3.14, type hints everywhere.
-- Format: `ruff format` at line length 88 (`make format`).
-- Lint: `ruff check` (`make lint`).
-- Naming: `snake_case` for modules / functions, `CapWords` for classes, `UPPER_CASE` for env vars and constants.
-- Prefer `pathlib.Path` over `os.path`. Pydantic for any external boundary (request bodies, config). Logging via `logging.getLogger(__name__)`, never `print` in library code.
-
-## Don't
-
-- Add backward-compat shims, dual code paths, or feature flags unless explicitly asked. Just change the code.
-- Add error handling for impossible cases. Trust internal call sites; validate at boundaries only.
-- Add comments that restate what the code does. Comments explain _why_, not _what_.
-- Refactor unrelated code while fixing a bug. Atomic commits, one concern per PR.
-- Use `git add -A`. Always stage selectively.
-- Add AI attribution to commits or PR bodies (`Co-Authored-By: Claude`, "Generated by...", etc.).
-
-## Commit & PR conventions
-
-Conventional one-line messages: `type(scope): description` in imperative mood, lowercase, under 72 chars. Type vocabulary: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`, `perf`. Match the existing `git log` style.
-
-Branch names: `adam/<kebab-case-slug>`. Never commit directly to `main`.
-
-PR descriptions: a `**What**` bullet list and a `**Why**` line. Link related issues. No AI attribution.
-
-## Subagents
-
-Use them liberally for parallel work — exploring the codebase, running independent tests, reviewing a specific file. Each gets a fresh context, so brief them with file paths and what specifically to check; don't push synthesis onto them with prompts like "based on your findings, fix the bug." Hand them the question; do the synthesis yourself.
+The `train` extra holds Prefect, dbt, SageMaker, and Snowflake. The Lambda image installs only `.[inference]`, and `test-inference-lean` checks that closure.
