@@ -238,8 +238,11 @@ forbidden_modules = [
     "box_office.orchestration",
     "sagemaker",
     "prefect",
+    "prefect_dbt",
     "dbt",
     "snowflake",
+    "requests",
+    "box_office.utils.snowflake_connection",
     "tests.fakes",
 ]
 allow_indirect_imports = true
