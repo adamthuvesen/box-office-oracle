@@ -8,6 +8,7 @@ import pandas as pd
 
 from box_office.config import config
 from box_office.ml.data_fingerprint import DataFingerprint, fingerprint_training_frame
+from box_office.orchestration.run_logger import RunLogger
 from box_office.orchestration.tasks.data_tasks import (
     apply_feature_engineering,
     load_staging_box_office_from_snowflake,
@@ -40,7 +41,7 @@ class DataPhaseResult:
     data_fingerprint: DataFingerprint
 
 
-def run_data_phase(logger, approved: bool = False) -> DataPhaseResult:
+def run_data_phase(logger: RunLogger, approved: bool = False) -> DataPhaseResult:
     """Run dbt, build the v9 training frame, and return in-memory frames for training."""
     run_raw_to_staging_dbt_transformations(approved=approved)
 

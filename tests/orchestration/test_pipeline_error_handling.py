@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from botocore.exceptions import ClientError
 
+from tests.fakes import FakeModelRegistry
+
 # --------------------------------------------------------------------------- #
 # 1.8 — _parse_s3_uri
 # --------------------------------------------------------------------------- #
@@ -66,21 +68,15 @@ def _client_error(code: str, message: str = "") -> ClientError:
 
 
 class TestModelRegistryErrorClassification:
-    def _make_registry(self):
-        from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
-
-        registry = AWSModelRegistry.__new__(AWSModelRegistry)
-        registry.region_name = "eu-north-1"
-        registry.sagemaker_client = MagicMock()
-        registry.s3_client = MagicMock()
-        return registry
+    def _make_registry(self) -> FakeModelRegistry:
+        return FakeModelRegistry()
 
     def test_create_group_treats_validation_does_not_exist_as_create_path(self):
         registry = self._make_registry()
-        registry.sagemaker_client.describe_model_package_group.side_effect = _client_error(
+        registry.sagemaker_mock.describe_model_package_group.side_effect = _client_error(
             "ValidationException", "ModelPackageGroup foo does not exist."
         )
-        registry.sagemaker_client.create_model_package_group.return_value = {
+        registry.sagemaker_mock.create_model_package_group.return_value = {
             "ModelPackageGroupArn": "arn:aws:sagemaker:eu-north-1:123:model-package-group/foo"
         }
 
@@ -89,7 +85,7 @@ class TestModelRegistryErrorClassification:
 
     def test_create_group_propagates_access_denied(self):
         registry = self._make_registry()
-        registry.sagemaker_client.describe_model_package_group.side_effect = _client_error(
+        registry.sagemaker_mock.describe_model_package_group.side_effect = _client_error(
             "AccessDeniedException", "Not authorized."
         )
         with pytest.raises(ClientError):
@@ -102,7 +98,7 @@ class TestModelRegistryErrorClassification:
             "box_office.ml.model_registry.aws_model_registry._compute_sha256_of_s3_object",
             return_value=("a" * 64, 1024),
         ):
-            registry.sagemaker_client.create_model_package.side_effect = _client_error(
+            registry.sagemaker_mock.create_model_package.side_effect = _client_error(
                 "ThrottlingException", "Rate exceeded"
             )
             with pytest.raises(ClientError) as excinfo:
@@ -112,7 +108,7 @@ class TestModelRegistryErrorClassification:
                     approved=True,
                 )
             # Cause chain preserved (the `raise` re-raises the same exception).
-            assert excinfo.value.response["Error"]["Code"] == "ThrottlingException"
+            assert excinfo.value.response.get("Error", {}).get("Code") == "ThrottlingException"
 
     def test_get_account_id_propagates_sts_failure(self):
         registry = self._make_registry()
@@ -206,7 +202,7 @@ class TestTrainingTaskErrorClassification:
 
         with pytest.raises(ClientError) as excinfo:
             training_tasks.download_and_analyze_results.fn(fake_estimator, fake_sagemaker_client)
-        assert excinfo.value.response["Error"]["Code"] == "AccessDenied"
+        assert excinfo.value.response.get("Error", {}).get("Code") == "AccessDenied"
 
     def test_throttled_describe_propagates(
         self, monkeypatch, fake_sagemaker_client, fake_estimator, tmp_path
@@ -257,4 +253,4 @@ class TestTrainingTaskErrorClassification:
 
         with pytest.raises(ClientError) as excinfo:
             training_tasks.download_and_analyze_results.fn(fake_estimator, fake_sagemaker_client)
-        assert excinfo.value.response["Error"]["Code"] == "ThrottlingException"
+        assert excinfo.value.response.get("Error", {}).get("Code") == "ThrottlingException"

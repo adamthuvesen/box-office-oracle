@@ -8,10 +8,7 @@ export async function GET() {
   const key = process.env.INFERENCE_API_KEY;
 
   if (!url) {
-    return Response.json(
-      { error: "INFERENCE_API_URL is not configured" },
-      { status: 503 },
-    );
+    return Response.json({ error: "INFERENCE_API_URL is not configured" }, { status: 503 });
   }
 
   const base = url.endsWith("/") ? url : `${url}/`;

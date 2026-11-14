@@ -175,10 +175,6 @@ def _optional_str(value: Any) -> str | None:
     return text or None
 
 
-def _is_missing(value: Any) -> bool:
-    return value is None or pd.isna(value)
-
-
 def _clean_financials(row: dict[str, Any], no_gross_ids: set[int]) -> tuple[Any, Any]:
     tmdb_id = int(row["tmdb_id"])
     budget = _json_scalar(row["production_budget"])
@@ -190,9 +186,9 @@ def _clean_financials(row: dict[str, Any], no_gross_ids: set[int]) -> tuple[Any,
     if budget is not None and budget < MIN_ROI_BUDGET:
         budget = None
 
-    vote_count = row.get("vote_count")
+    vote_count = _json_scalar(row.get("vote_count"))
     imdb_id = _optional_str(row.get("imdb_id"))
-    has_no_votes = "vote_count" in row and (_is_missing(vote_count) or int(vote_count) == 0)
+    has_no_votes = "vote_count" in row and (vote_count is None or int(vote_count) == 0)
     if gross is not None and gross >= 1_000_000 and imdb_id is None and has_no_votes:
         gross = None
 
@@ -204,7 +200,8 @@ def build_movie_records(df: pd.DataFrame, no_gross_ids: set[int]) -> list[dict[s
     ordered = df.sort_values("worldwide_gross", ascending=False, na_position="last")
 
     records = []
-    for row in ordered.to_dict(orient="records"):
+    for raw_row in ordered.to_dict(orient="records"):
+        row = {str(column): value for column, value in raw_row.items()}
         tmdb_id = int(row["tmdb_id"])
         budget, gross = _clean_financials(row, no_gross_ids)
         runtime = _json_scalar(row["runtime"])

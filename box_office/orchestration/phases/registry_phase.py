@@ -8,6 +8,7 @@ from typing import Any
 from box_office.config import config
 from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.orchestration.run_logger import RunLogger
 from box_office.orchestration.tasks.training_tasks import (
     promote_model_in_aws_registry,
     register_model_in_registry,
@@ -25,7 +26,7 @@ class RegistryPhaseResult:
 def run_registry_phase(
     training_metrics: dict[str, Any],
     environment: str,
-    logger,
+    logger: RunLogger,
     data_fingerprint: DataFingerprint,
     approved: bool = False,
 ) -> RegistryPhaseResult:

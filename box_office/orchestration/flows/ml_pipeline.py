@@ -1,14 +1,16 @@
 import logging
+from typing import Any
 
 from prefect import flow, get_run_logger
 
 from box_office.orchestration.phases.data_phase import run_data_phase
 from box_office.orchestration.phases.registry_phase import run_registry_phase
 from box_office.orchestration.phases.train_phase import run_train_phase
+from box_office.orchestration.run_logger import RunLogger
 from box_office.utils.env_setup import configure_environment
 
 
-def get_logger():
+def get_logger() -> RunLogger:
     """Get appropriate logger - always use Prefect logger when available."""
     try:
         return get_run_logger()
@@ -25,9 +27,9 @@ def get_logger():
 
 def run_ml_pipeline_logic(
     environment: str = "dev",
-    logger=None,
+    logger: RunLogger | None = None,
     approved: bool = False,
-):
+) -> dict[str, Any]:
     """
     Core ML pipeline: data phase, SageMaker training (in-memory handoff), registry.
     """
@@ -46,7 +48,7 @@ def run_ml_pipeline_logic(
         approved=approved,
     )
 
-    estimator = train.estimator
+    training_job = train.estimator.latest_training_job
     return {
         "pipeline_status": "completed",
         "target_column": data.target_column,
@@ -61,11 +63,7 @@ def run_ml_pipeline_logic(
             "promotion_result": registry.promotion_result,
             "aws_promotion_result": registry.aws_promotion_result,
         },
-        "estimator": (
-            estimator.latest_training_job.name
-            if hasattr(estimator, "latest_training_job")
-            else None
-        ),
+        "estimator": training_job.name if training_job is not None else None,
     }
 
 
@@ -73,7 +71,7 @@ def run_ml_pipeline_logic(
     name="Box Office ML Pipeline",
     description="End-to-end ML pipeline for box office prediction using dbt, Snowflake, and SageMaker",
 )
-def ml_pipeline(environment: str = "dev", approved: bool = False):
+def ml_pipeline(environment: str = "dev", approved: bool = False) -> dict[str, Any]:
     """Complete ML pipeline from data loading to preprocessing, training and saving model artifacts."""
     configure_environment()
     logger = get_logger()
@@ -81,20 +79,18 @@ def ml_pipeline(environment: str = "dev", approved: bool = False):
     result = run_ml_pipeline_logic(environment, logger, approved=approved)
 
     logger.info("ML Pipeline completed!")
-    if result and isinstance(result, dict):
-        model_registry_result = result.get("model_registry")
-        if model_registry_result and isinstance(model_registry_result, dict):
-            promotion_result = model_registry_result.get("promotion_result")
-            if promotion_result:
-                logger.info(
-                    "- Model evaluation: %s",
-                    "Approved" if promotion_result.get("promote") else "Not approved",
-                )
-            registration_result = model_registry_result.get("registration_result", {})
-            logger.info(
-                "- Model registration: %s",
-                ("Success" if registration_result.get("status") == "success" else "Failed"),
-            )
+    model_registry_result = result["model_registry"]
+    promotion_result = model_registry_result["promotion_result"]
+    if promotion_result:
+        logger.info(
+            "- Model evaluation: %s",
+            "Approved" if promotion_result.get("promote") else "Not approved",
+        )
+    registration_result = model_registry_result["registration_result"]
+    logger.info(
+        "- Model registration: %s",
+        ("Success" if registration_result.get("status") == "success" else "Failed"),
+    )
 
     return result
 

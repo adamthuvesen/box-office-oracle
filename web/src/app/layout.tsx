@@ -54,8 +54,8 @@ export default function RootLayout({
           <div className="mx-auto flex max-w-6xl items-baseline justify-between gap-4">
             <span className="title-caps text-xs">Box Office Oracle</span>
             <span>
-              Predictions from pre-release features only. Data: TMDB. Not
-              financial advice for studio executives.
+              Predictions from pre-release features only. Data: TMDB. Not financial advice for
+              studio executives.
             </span>
           </div>
         </footer>

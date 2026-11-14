@@ -41,11 +41,7 @@ export function roi(m: {
 }
 
 /** Same lead genre, closest budget — the "if you liked this bet" strip. */
-export function similarMovies(
-  movie: Movie,
-  all: Movie[],
-  count = 6,
-): Movie[] {
+export function similarMovies(movie: Movie, all: Movie[], count = 6): Movie[] {
   const lead = movie.genres[0];
   const budget = movie.production_budget ?? 0;
   return all

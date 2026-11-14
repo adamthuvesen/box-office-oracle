@@ -1,13 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import {
-  animate,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-  useTransform,
-} from "motion/react";
+import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { dollarsCompact } from "@/lib/format";
 
 const EASE_ENTER = [0.22, 1, 0.36, 1] as const;
@@ -36,9 +30,7 @@ export function ProjectorBeam({ prediction, lower, upper }: ProjectorBeamProps) 
   const domainMax = Math.max(1e9, upper * 1.3);
   const logSpan = Math.log10(domainMax) - Math.log10(domainMin);
   const x = (v: number) =>
-    PAD_L +
-    ((Math.log10(Math.max(v, 1)) - Math.log10(domainMin)) / logSpan) *
-      (W - PAD_L - PAD_R);
+    PAD_L + ((Math.log10(Math.max(v, 1)) - Math.log10(domainMin)) / logSpan) * (W - PAD_L - PAD_R);
 
   const lowerX = x(lower);
   const upperX = x(upper);
@@ -117,15 +109,7 @@ export function ProjectorBeam({ prediction, lower, upper }: ProjectorBeamProps) 
 }
 
 /** The cone opens outward from the prediction ray to the interval bounds. */
-function BeamCone({
-  lowerX,
-  upperX,
-  predX,
-}: {
-  lowerX: number;
-  upperX: number;
-  predX: number;
-}) {
+function BeamCone({ lowerX, upperX, predX }: { lowerX: number; upperX: number; predX: number }) {
   const reduced = useReducedMotion();
   const progress = useMotionValue(reduced ? 1 : 0);
 
@@ -151,11 +135,7 @@ function BeamCone({
 
   return (
     <>
-      <motion.polygon
-        points={points}
-        fill="var(--color-predicted)"
-        opacity={0.08}
-      />
+      <motion.polygon points={points} fill="var(--color-predicted)" opacity={0.08} />
       <motion.line
         x1={SRC.x}
         y1={SRC.y}

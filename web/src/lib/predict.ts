@@ -36,9 +36,7 @@ export const predictRequestSchema = z.strictObject({
     .number()
     .min(request.prior_franchise_gross.minimum)
     .default(request.prior_franchise_gross.default),
-  is_franchise_followup: z
-    .boolean()
-    .default(request.is_franchise_followup.default),
+  is_franchise_followup: z.boolean().default(request.is_franchise_followup.default),
   return_confidence: z.boolean().default(request.return_confidence.default),
 });
 
@@ -50,17 +48,9 @@ export type PredictRequestInput = z.input<typeof predictRequestSchema>;
 export const GENRES: readonly string[] = contract.genres;
 
 /** Ordinal IP tiers (1 = strongest, 5 = none). */
-export const IP_TIERS: readonly { value: number; label: string }[] =
-  contract.ip_tiers;
+export const IP_TIERS: readonly { value: number; label: string }[] = contract.ip_tiers;
 
-export const MPAA_RATINGS = [
-  "G",
-  "PG",
-  "PG-13",
-  "R",
-  "NC-17",
-  "Not Rated",
-] as const;
+export const MPAA_RATINGS = ["G", "PG", "PG-13", "R", "NC-17", "Not Rated"] as const;
 
 export const MONTHS = [
   "January",

@@ -1,5 +1,6 @@
 """Pipeline must not reload training data from Snowflake after the data phase."""
 
+import logging
 from unittest.mock import patch
 
 import pandas as pd
@@ -49,9 +50,7 @@ def test_train_phase_does_not_call_snowflake_reload():
             return_value=object(),
         ),
     ):
-        train_phase.run_train_phase(
-            fake_data, logger=type("L", (), {"info": lambda *a, **k: None})()
-        )
+        train_phase.run_train_phase(fake_data, logger=logging.getLogger("test"))
 
     # The train phase consumes the in-memory frames it is handed; it must not
     # reload the dataset from Snowflake (there is no reload task to call).

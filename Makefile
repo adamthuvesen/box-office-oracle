@@ -1,22 +1,23 @@
-.PHONY: help check fix verify slow install install-dev test test-unit test-integration test-inference-lean training-image lint format clean docker-build docker-test setup datasets web-data
+.PHONY: help check fix verify slow install install-dev test test-unit test-integration test-inference-lean training-image lint format clean docker-build docker-test setup datasets web-data web-install web-build
 
 help: ## Show this help message
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-check: setup ## Fast gate: locked sync, ruff check, ruff format check, fast tests (CI runs this)
+check: setup ## Fast gate: locked sync, ruff, basedpyright, import contracts, fast tests, web lint/format/typecheck/tests (CI runs this)
 	@scripts/check.sh
 
-fix: install-dev ## Auto-fix lint and format with ruff; regenerate the web contract
+fix: install-dev ## Auto-fix lint and format with ruff and oxfmt; regenerate the web contract
 	uv run ruff check --fix box_office tests scripts
 	uv run ruff format box_office tests scripts
 	uv run python scripts/generate_web_contract.py
+	pnpm --dir web format
 
 verify: ## Drive the real app (verify skill, Phase 7); pass subcommands as ARGS=...
 	@echo "verify skill not built yet (Phase 7)" >&2
 	@exit 1
 
-slow: setup ## Full test suite, pinned infra linters (actionlint, checkov), offline dbt parse
+slow: setup ## Full test suite, pinned infra linters (actionlint, checkov), offline dbt parse, web build
 	@scripts/slow.sh
 
 setup: ## Verify uv is installed (no curl | sh)
@@ -93,6 +94,12 @@ training-image: setup ## Build and push the SageMaker training image (spends: re
 
 pipeline-run: install-dev ## Run ML pipeline (spends: refuses until ARGS carries the approval flag)
 	uv run box-office-pipeline --environment dev $(ARGS)
+
+web-install: ## Install the web app from its lockfile (required before check and slow)
+	pnpm --dir web install --frozen-lockfile
+
+web-build: ## Next.js production build (CI web-build job)
+	pnpm --dir web build
 
 web-data: install-dev ## Export web/data JSON snapshots for the Next.js app (local dataset, no Snowflake)
 	uv run python scripts/score_all_movies.py

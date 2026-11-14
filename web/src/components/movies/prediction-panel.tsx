@@ -18,8 +18,8 @@ export function PredictionPanel({ oracle }: PredictionPanelProps) {
       <h2 className="title-caps text-sm text-dim">The model&apos;s view</h2>
       <p className="mt-3 max-w-prose text-sm leading-relaxed text-dim">
         No Oracle prediction for this movie — run{" "}
-        <code className="font-mono text-ink">scripts/score_all_movies.py</code>{" "}
-        to regenerate the predictions snapshot.
+        <code className="font-mono text-ink">scripts/score_all_movies.py</code> to regenerate the
+        predictions snapshot.
       </p>
     </section>
   );
@@ -31,13 +31,11 @@ const ORACLE_KIND_BADGE: Record<
 > = {
   out_of_sample: {
     label: "out-of-sample",
-    title:
-      "Honest prediction: made by a model trained only on earlier release years.",
+    title: "Honest prediction: made by a model trained only on earlier release years.",
   },
   in_sample: {
     label: "in-sample",
-    title:
-      "The model trained on this movie, so treat this prediction as a fun replay, not a test.",
+    title: "The model trained on this movie, so treat this prediction as a fun replay, not a test.",
   },
   no_actuals: {
     label: "no actuals",
@@ -92,15 +90,10 @@ function OraclePredictionPanel({ oracle }: { oracle: OraclePrediction }) {
             {percent(ape)}
           </span>{" "}
           vs actual — {delta > 0 ? "over" : "under"} by{" "}
-          <span className="font-mono tabular text-ink">
-            {dollarsCompact(Math.abs(delta))}
-          </span>
-          .
+          <span className="font-mono tabular text-ink">{dollarsCompact(Math.abs(delta))}</span>.
         </p>
       ) : (
-        <p className="mt-5 text-sm text-dim">
-          No final gross to grade this one against yet.
-        </p>
+        <p className="mt-5 text-sm text-dim">No final gross to grade this one against yet.</p>
       )}
     </section>
   );
@@ -123,9 +116,7 @@ function Bar({
     <div>
       <div className="flex items-baseline justify-between gap-4">
         <dt className="text-xs uppercase tracking-wider text-dim">{label}</dt>
-        <dd className={`font-mono tabular text-sm ${valueClass}`}>
-          {dollarsCompact(value)}
-        </dd>
+        <dd className={`font-mono tabular text-sm ${valueClass}`}>{dollarsCompact(value)}</dd>
       </div>
       <div className="mt-1.5 h-2 rounded-full bg-surface-2">
         <div

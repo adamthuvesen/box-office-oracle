@@ -48,9 +48,13 @@ def add_collection_columns(
         raise ValueError("frame has no tmdb_id column to key collections on")
 
     out = frame.copy()
-    ids = out["tmdb_id"].astype(int)
-    out["collection_id"] = ids.map(lambda t: memberships.get(t, (None, None))[0]).astype("Int64")
-    out["collection_name"] = ids.map(lambda t: memberships.get(t, (None, None))[1])
+    ids = out["tmdb_id"].astype(int).tolist()
+    out["collection_id"] = pd.Series(
+        [memberships.get(t, (None, None))[0] for t in ids], index=out.index
+    ).astype("Int64")
+    out["collection_name"] = pd.Series(
+        [memberships.get(t, (None, None))[1] for t in ids], index=out.index, dtype=object
+    )
     return out
 
 

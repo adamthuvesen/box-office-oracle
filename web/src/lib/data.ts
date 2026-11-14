@@ -12,10 +12,7 @@ import {
 
 const DATA_DIR = path.join(process.cwd(), "data");
 
-async function readJson<T>(
-  file: string,
-  schema: z.ZodType<T>,
-): Promise<T | null> {
+async function readJson<T>(file: string, schema: z.ZodType<T>): Promise<T | null> {
   let raw: string;
   try {
     raw = await fs.readFile(path.join(DATA_DIR, file), "utf-8");

@@ -7,20 +7,14 @@ and the SageMaker container must run CV with a per-fold preprocessor factory.
 
 from __future__ import annotations
 
+import argparse
+import logging
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
-
-
-class _Logger:
-    def info(self, *a, **k):
-        pass
-
-    def warning(self, *a, **k):
-        pass
 
 
 def _staging_frame() -> pd.DataFrame:
@@ -82,7 +76,7 @@ def test_run_data_phase_x_train_has_13_v9_features():
         patch.object(data_phase, "transform_targets", data_phase.transform_targets.fn),
         patch.object(data_phase, "save_artifacts", return_value=("/tmp/p", "/tmp/s")),
     ):
-        result = data_phase.run_data_phase(_Logger())
+        result = data_phase.run_data_phase(logging.getLogger("test"))
 
     assert list(result.X_train_processed.columns) == list(SELECTED_FEATURES)
     assert result.X_train_processed.shape[1] == 13
@@ -117,11 +111,7 @@ def test_container_train_passes_preprocessor_factory():
         seen["X_columns"] = list(X_train.columns)
         return CrossValidationResults.model_construct(mean_best_iteration=10)
 
-    args = type("Args", (), {})()
-    args.train = "/unused"
-    args.cv_folds = 3
-    args.start_eval_year = 2021
-    args.end_year = 2023
+    args = argparse.Namespace(train="/unused", cv_folds=3, start_eval_year=2021, end_year=2023)
     for k, v in {
         "n_estimators": 10,
         "learning_rate": 0.04,

@@ -43,10 +43,7 @@ function PointDot({
   return <circle cx={cx} cy={cy} r={3} fill={fill} fillOpacity={opacity} />;
 }
 
-function ScatterTooltip({
-  active,
-  payload,
-}: TooltipContentProps) {
+function ScatterTooltip({ active, payload }: TooltipContentProps) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload as BudgetGrossPoint;
   const movieReturn = roi({

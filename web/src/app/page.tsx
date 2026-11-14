@@ -13,24 +13,18 @@ export default function Home() {
 }
 
 async function HomeLive() {
-  const [movies, predictions] = await Promise.all([
-    loadMovies(),
-    loadOraclePredictions(),
-  ]);
+  const [movies, predictions] = await Promise.all([loadMovies(), loadOraclePredictions()]);
 
   if (!movies) {
     return (
       <div className="mx-auto max-w-6xl px-6 py-24">
-        <p className="font-mono text-sm text-predicted">
-          XGBoost · Snowflake · SageMaker · Lambda
-        </p>
+        <p className="font-mono text-sm text-predicted">XGBoost · Snowflake · SageMaker · Lambda</p>
         <h1 className="title-caps mt-4 max-w-3xl text-4xl leading-tight text-ink sm:text-5xl">
           The projector is dark
         </h1>
         <p className="mt-6 max-w-xl text-lg text-dim">
-          Run <code className="font-mono text-actual">make web-data</code>{" "}
-          from the repo root to export the catalog, then refresh. The house
-          lights will do the rest.
+          Run <code className="font-mono text-actual">make web-data</code> from the repo root to
+          export the catalog, then refresh. The house lights will do the rest.
         </p>
         <div className="mt-10">
           <Link

@@ -33,8 +33,8 @@ export default function ModelPage() {
       <section className="mt-20">
         <h2 className="title-caps text-sm text-dim">In the projector now</h2>
         <p className="mt-2 max-w-prose text-sm text-dim">
-          The model currently loaded in the inference API — fetched live, not
-          from the data snapshot.
+          The model currently loaded in the inference API — fetched live, not from the data
+          snapshot.
         </p>
         <LiveModelCard />
       </section>
@@ -48,10 +48,9 @@ async function Intro() {
   const firstYear = Math.min(...meta.per_year.map((y) => y.year));
   return (
     <p className="mt-2 max-w-prose text-dim">
-      Graded by an expanding-window backtest: for each year, the model trains
-      only on earlier releases, then guesses that year&apos;s slate cold.
-      Blind, out-of-fold predictions since {firstYear} — the model is never
-      graded on a movie it had seen.
+      Graded by an expanding-window backtest: for each year, the model trains only on earlier
+      releases, then guesses that year&apos;s slate cold. Blind, out-of-fold predictions since{" "}
+      {firstYear} — the model is never graded on a movie it had seen.
     </p>
   );
 }
@@ -69,12 +68,7 @@ async function ReportLive() {
   // Honest guesses only: out-of-sample predictions with a real gross to grade.
   const guesses = movies.flatMap((m) => {
     const p = oraclePredictions[String(m.tmdb_id)];
-    if (
-      !p ||
-      p.prediction_kind !== "out_of_sample" ||
-      p.actual_gross == null ||
-      p.ape == null
-    ) {
+    if (!p || p.prediction_kind !== "out_of_sample" || p.actual_gross == null || p.ape == null) {
       return [];
     }
     return [
@@ -97,8 +91,7 @@ async function ReportLive() {
   const medianApe = weighted((y) => y.model_median_ape);
   const avgSpearman = weighted((y) => y.model_spearman);
   const pooledR2Log = weighted((y) => y.model_r2_log);
-  const avgGain =
-    years.reduce((sum, y) => sum + y.gain_r2_log, 0) / years.length;
+  const avgGain = years.reduce((sum, y) => sum + y.gain_r2_log, 0) / years.length;
 
   const lostYears = years.filter((y) => y.gain_r2_log < 0).map((y) => y.year);
   const covidYear = lostYears.includes(2020);
@@ -106,26 +99,20 @@ async function ReportLive() {
   return (
     <div className="flex flex-col gap-20">
       <section>
-        <h2 className="title-caps text-sm text-dim">
-          Model vs baseline, year by year
-        </h2>
+        <h2 className="title-caps text-sm text-dim">Model vs baseline, year by year</h2>
         <p className="mt-2 max-w-prose text-sm text-dim">
-          R² on log dollars, one pair of bars per backtest year. The ghost
-          outline is the baseline; the solid bar is the model.
+          R² on log dollars, one pair of bars per backtest year. The ghost outline is the baseline;
+          the solid bar is the model.
         </p>
         <BacktestBars years={years} />
         <p className="mt-4 max-w-prose text-sm text-dim">
-          The model beats the baseline in {years.length - lostYears.length} of{" "}
-          {years.length} years, gaining{" "}
-          <span className="font-mono tabular text-ink">
-            +{ratio(avgGain)}
-          </span>{" "}
-          R² (log) on average.
+          The model beats the baseline in {years.length - lostYears.length} of {years.length} years,
+          gaining <span className="font-mono tabular text-ink">+{ratio(avgGain)}</span> R² (log) on
+          average.
           {covidYear && (
             <>
               {" "}
-              The exception —{" "}
-              <span className="font-mono text-under">2020</span>: COVID broke
+              The exception — <span className="font-mono text-under">2020</span>: COVID broke
               everyone&apos;s model.
             </>
           )}
@@ -141,13 +128,10 @@ async function ReportLive() {
       </section>
 
       <section>
-        <h2 className="title-caps text-sm text-dim">
-          Blind guesses vs reality
-        </h2>
+        <h2 className="title-caps text-sm text-dim">Blind guesses vs reality</h2>
         <p className="mt-2 max-w-prose text-sm text-dim">
-          Every out-of-fold prediction the model has made —{" "}
-          {guesses.length.toLocaleString("en-US")} guesses, log scale on
-          both axes, so misses read as multiples rather than millions.
+          Every out-of-fold prediction the model has made — {guesses.length.toLocaleString("en-US")}{" "}
+          guesses, log scale on both axes, so misses read as multiples rather than millions.
         </p>
         <PredictionScatter guesses={guesses} />
       </section>
@@ -189,9 +173,7 @@ function BacktestTable({ years }: { years: BacktestYear[] }) {
         <tr>
           <th className="px-3 py-2 font-normal">Year</th>
           <th className="px-3 py-2 text-right font-normal">Movies</th>
-          <th className="px-3 py-2 text-right font-normal">
-            Baseline R² (log)
-          </th>
+          <th className="px-3 py-2 text-right font-normal">Baseline R² (log)</th>
           <th className="px-3 py-2 text-right font-normal">Model R² (log)</th>
           <th className="px-3 py-2 text-right font-normal">Gain</th>
           <th className="px-3 py-2 text-right font-normal">Model ρ</th>
@@ -201,12 +183,8 @@ function BacktestTable({ years }: { years: BacktestYear[] }) {
       <tbody>
         {years.map((y) => (
           <tr key={y.year} className="border-t border-hairline">
-            <td className="px-3 py-1.5 font-mono tabular text-ink">
-              {y.year}
-            </td>
-            <td className="px-3 py-1.5 text-right font-mono tabular text-dim">
-              {y.n_movies}
-            </td>
+            <td className="px-3 py-1.5 font-mono tabular text-ink">{y.year}</td>
+            <td className="px-3 py-1.5 text-right font-mono tabular text-dim">{y.n_movies}</td>
             <td className="px-3 py-1.5 text-right font-mono tabular text-actual">
               {ratio(y.baseline_r2_log)}
             </td>

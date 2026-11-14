@@ -46,6 +46,11 @@ dev = [
     "pre-commit>=3.0.0",
     "httpx==0.28.1",
     "import-linter==2.16",
+    "basedpyright==1.40.2",
+    "pandas-stubs==2.3.3.260113",
+    "types-requests==2.33.0.20261030",
+    "types-PyYAML==6.0.12.20261111",
+    "boto3-stubs[cloudwatch,s3,sagemaker,sagemaker-runtime,sts]==1.42.90",
 ]
 
 inference = [
@@ -223,3 +228,23 @@ type = "forbidden"
 source_modules = ["box_office.inference"]
 forbidden_modules = ["box_office.ml.model_registry"]
 allow_indirect_imports = true
+
+[tool.basedpyright]
+include = ["box_office", "scripts", "tests"]
+pythonVersion = "3.14"
+typeCheckingMode = "strict"
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
+reportIgnoreCommentWithoutRule = "error"
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+reportMissingTypeStubs = false
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+reportMissingParameterType = false
+reportPrivateUsage = false

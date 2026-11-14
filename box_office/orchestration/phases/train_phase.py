@@ -10,6 +10,7 @@ from box_office.orchestration.phases.data_phase import (
     DataPhaseResult,
     sagemaker_training_frames,
 )
+from box_office.orchestration.run_logger import RunLogger
 from box_office.orchestration.tasks.training_tasks import (
     download_and_analyze_results,
     train_model,
@@ -17,15 +18,18 @@ from box_office.orchestration.tasks.training_tasks import (
     upload_processed_data_to_s3,
 )
 from box_office.sagemaker import sagemaker_train_job
+from box_office.sagemaker.sagemaker_train_job import Estimator
 
 
 @dataclass
 class TrainPhaseResult:
     training_metrics: dict[str, Any]
-    estimator: Any
+    estimator: Estimator
 
 
-def run_train_phase(data: DataPhaseResult, logger, approved: bool = False) -> TrainPhaseResult:
+def run_train_phase(
+    data: DataPhaseResult, logger: RunLogger, approved: bool = False
+) -> TrainPhaseResult:
     """Upload in-memory training data to S3, train, and extract metrics."""
     X_train, y_train = sagemaker_training_frames(data)
 

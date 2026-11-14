@@ -53,13 +53,10 @@ from box_office.movie_data_quality import clean_movie_source_data
 
 # The staging shape, quality gate, franchise features, and preprocessor check
 # are shared with the production data phase (box_office/training_frame.py) so
-# the two paths cannot drift. Re-exported names keep this script's public
-# surface (and tests/test_prepare_training_frame.py) unchanged.
-from box_office.training_frame import (  # noqa: F401
-    COLUMN_MAPPING,
+# the two paths cannot drift. Names imported here are re-exported to
+# tests/scripts/test_prepare_training_frame.py.
+from box_office.training_frame import (
     NO_IP_TIER,
-    PREPROCESSOR_INPUT_COLUMNS,
-    actors_to_list_literal,
     add_franchise_features,
     apply_quality_gate,
     check_frame_against_preprocessor,

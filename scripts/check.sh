@@ -25,7 +25,19 @@ start_lane() {
 start_lane ruff-check uv run --no-sync ruff check box_office tests scripts
 start_lane ruff-format uv run --no-sync ruff format --check box_office tests scripts
 start_lane boundaries scripts/check_boundaries.sh
+start_lane types uv run --no-sync basedpyright
 start_lane fast-tests uv run --no-sync pytest tests/ -m "not integration and not slow"
+
+web_lane() {
+  local name="$1"
+  local script="$2"
+  start_lane "$name" bash -c '[ -d web/node_modules ] || { echo "web/node_modules is missing. Run: pnpm --dir web install --frozen-lockfile" >&2; exit 1; }; pnpm --dir web "$0"' "$script"
+}
+
+web_lane web-lint lint
+web_lane web-format format:check
+web_lane web-typecheck typecheck
+web_lane web-tests test
 
 failed=0
 for i in "${!lane_names[@]}"; do

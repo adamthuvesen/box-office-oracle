@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The slow gate: the full test suite, the pinned infra linters, and an offline
-# dbt parse. Needs network access to fetch dbt packages and the linters once,
-# and no Snowflake credentials.
+# The slow gate: the full test suite, the pinned infra linters, an offline
+# dbt parse, and the web build (which type-checks). Needs network access to fetch
+# dbt packages and the linters once, and no Snowflake credentials.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -21,3 +21,7 @@ export SNOWFLAKE_PRIVATE_KEY_PATH="${SNOWFLAKE_PRIVATE_KEY_PATH:-/nonexistent/of
 cd transformations
 uv run --no-sync dbt deps --profiles-dir=.
 uv run --no-sync dbt parse --profiles-dir=.
+
+cd ..
+[ -d web/node_modules ] || { echo "web/node_modules is missing. Run: pnpm --dir web install --frozen-lockfile" >&2; exit 1; }
+pnpm --dir web build

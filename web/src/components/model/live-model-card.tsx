@@ -1,11 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { modelInfoSchema } from "@/lib/types";
 
@@ -16,9 +12,7 @@ async function fetchModelInfo() {
   const body: unknown = await res.json();
   if (!res.ok) {
     const parsed = errorBodySchema.safeParse(body);
-    throw new Error(
-      parsed.success ? parsed.data.error : `Request failed (${res.status})`,
-    );
+    throw new Error(parsed.success ? parsed.data.error : `Request failed (${res.status})`);
   }
   return modelInfoSchema.parse(body);
 }
@@ -60,9 +54,7 @@ function ModelInfo() {
           <code className="font-mono">INFERENCE_API_URL</code> in{" "}
           <code className="font-mono">web/.env.local</code>.
         </p>
-        {error && (
-          <p className="mt-2 font-mono text-xs">{error.message}</p>
-        )}
+        {error && <p className="mt-2 font-mono text-xs">{error.message}</p>}
       </div>
     );
   }
@@ -78,8 +70,7 @@ function ModelInfo() {
   if (rows.length === 0) {
     return (
       <div className="mt-4 max-w-md rounded border border-dashed border-hairline p-5 text-sm text-dim">
-        The inference API answered, but reported nothing about the loaded
-        model.
+        The inference API answered, but reported nothing about the loaded model.
       </div>
     );
   }
@@ -87,10 +78,7 @@ function ModelInfo() {
   return (
     <dl className="mt-4 flex max-w-md flex-col gap-2 rounded border border-hairline bg-surface p-5">
       {rows.map(([key, value]) => (
-        <div
-          key={key}
-          className="flex items-baseline justify-between gap-6 text-sm"
-        >
+        <div key={key} className="flex items-baseline justify-between gap-6 text-sm">
           <dt className="font-mono text-dim">{key}</dt>
           <dd className="text-right font-mono tabular text-ink">{value}</dd>
         </div>

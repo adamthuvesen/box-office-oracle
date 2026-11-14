@@ -5,35 +5,21 @@ cloud client records zero calls, then the approved call reaches the fake.
 """
 
 import os
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from sagemaker.inputs import TrainingInput
 
-from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.orchestration.tasks import data_tasks, training_tasks
 from box_office.sagemaker import sagemaker_train_job
 from box_office.utils.approval import ApprovalRequired
+from tests.fakes import FakeModelRegistry, FakeSageMakerClient
 
 PACKAGE_ARN = "arn:aws:sagemaker:eu-north-1:123456789012:model-package/foo/1"
 
 
-def _fake_sagemaker_client() -> SimpleNamespace:
-    return SimpleNamespace(
-        role="arn:aws:iam::123456789012:role/test",
-        s3_bucket="bucket",
-        s3_prefix="prefix",
-        sagemaker_session=MagicMock(),
-    )
-
-
-def _registry() -> AWSModelRegistry:
-    registry = AWSModelRegistry.__new__(AWSModelRegistry)
-    registry.region_name = "eu-north-1"
-    registry.sagemaker_client = MagicMock()
-    registry.s3_client = MagicMock()
-    return registry
+TRAIN_INPUT = TrainingInput("s3://train")
 
 
 @pytest.fixture
@@ -55,22 +41,22 @@ HYPERPARAMETERS = {
 
 
 def test_training_job_refuses_without_approval():
-    client = _fake_sagemaker_client()
+    client = FakeSageMakerClient()
     with patch.object(sagemaker_train_job, "Estimator") as estimator_class:
         with pytest.raises(ApprovalRequired):
             sagemaker_train_job.train_xgboost_model_with_timeseries_cv_framework(
-                client, "s3://train", (10, 3), HYPERPARAMETERS
+                client, TRAIN_INPUT, (10, 3), HYPERPARAMETERS
             )
         estimator_class.assert_not_called()
 
 
 def test_training_job_fits_when_approved():
-    client = _fake_sagemaker_client()
+    client = FakeSageMakerClient()
     with patch.object(sagemaker_train_job, "Estimator") as estimator_class:
         sagemaker_train_job.train_xgboost_model_with_timeseries_cv_framework(
-            client, "s3://train", (10, 3), HYPERPARAMETERS, approved=True
+            client, TRAIN_INPUT, (10, 3), HYPERPARAMETERS, approved=True
         )
-        estimator_class.return_value.fit.assert_called_once_with({"train": "s3://train"})
+        estimator_class.return_value.fit.assert_called_once_with({"train": TRAIN_INPUT})
     assert estimator_class.call_args.kwargs["image_uri"] == (
         sagemaker_train_job.config.sagemaker.training_image_uri
     )
@@ -88,32 +74,32 @@ def test_training_job_refuses_without_a_training_image(monkeypatch):
         pytest.raises(ValueError, match="SAGEMAKER_TRAINING_IMAGE_URI"),
     ):
         sagemaker_train_job.train_xgboost_model_with_timeseries_cv_framework(
-            _fake_sagemaker_client(), "s3://train", (10, 3), HYPERPARAMETERS, approved=True
+            FakeSageMakerClient(), TRAIN_INPUT, (10, 3), HYPERPARAMETERS, approved=True
         )
     estimator_class.assert_not_called()
 
 
 def test_training_upload_refuses_without_approval():
-    client = _fake_sagemaker_client()
+    client = FakeSageMakerClient()
     frame = pd.DataFrame({"a": [1, 2]})
     with pytest.raises(ApprovalRequired):
         sagemaker_train_job.upload_processed_data_to_s3(client, frame, frame)
-    client.sagemaker_session.upload_data.assert_not_called()
+    client.session_mock.upload_data.assert_not_called()
 
 
 def test_training_upload_writes_when_approved():
-    client = _fake_sagemaker_client()
-    client.sagemaker_session.upload_data.return_value = "s3://bucket/prefix/train/x.parquet"
+    client = FakeSageMakerClient()
+    client.session_mock.upload_data.return_value = "s3://bucket/prefix/train/x.parquet"
     X_train = pd.DataFrame({"a": [1, 2]})
     y_train = pd.DataFrame({"GROSS_LOG": [1.0, 2.0]})
     sagemaker_train_job.upload_processed_data_to_s3(client, X_train, y_train, approved=True)
-    client.sagemaker_session.upload_data.assert_called_once()
+    client.session_mock.upload_data.assert_called_once()
 
 
 def test_sagemaker_client_opens_no_session_without_approval():
     with (
         patch.object(sagemaker_train_job.boto3, "Session") as boto_session,
-        patch.object(sagemaker_train_job.sagemaker, "Session") as sagemaker_session,
+        patch.object(sagemaker_train_job, "Session") as sagemaker_session,
     ):
         with pytest.raises(ApprovalRequired):
             sagemaker_train_job.SageMakerClient("eu-north-1", "arn:role")
@@ -125,45 +111,45 @@ def test_sagemaker_client_opens_no_session_without_approval():
 
 
 def test_training_tasks_refuse_without_approval(task_logger):
-    client = _fake_sagemaker_client()
+    client = FakeSageMakerClient()
     with patch.object(
         training_tasks.sagemaker_train_job, "train_xgboost_model_with_timeseries_cv_framework"
     ) as launch:
         with pytest.raises(ApprovalRequired):
-            training_tasks.train_model.fn(client, "s3://train", (10, 3))
+            training_tasks.train_model.fn(client, TRAIN_INPUT, (10, 3))
         launch.assert_not_called()
 
     with pytest.raises(ApprovalRequired):
         training_tasks.upload_preprocessing_artifacts_to_s3.fn(client, "p.pkl", "s.pkl")
-    client.sagemaker_session.upload_data.assert_not_called()
+    client.session_mock.upload_data.assert_not_called()
 
     with patch.object(training_tasks.sagemaker_train_job, "upload_processed_data_to_s3") as upload:
         with pytest.raises(ApprovalRequired):
-            training_tasks.upload_processed_data_to_s3.fn(client, None, None)
+            training_tasks.upload_processed_data_to_s3.fn(client, pd.DataFrame(), pd.DataFrame())
         upload.assert_not_called()
 
 
 def test_preprocessing_artifacts_upload_when_approved(task_logger):
-    client = _fake_sagemaker_client()
-    client.sagemaker_session.upload_data.return_value = "s3://bucket/artifacts/x"
+    client = FakeSageMakerClient()
+    client.session_mock.upload_data.return_value = "s3://bucket/artifacts/x"
     training_tasks.upload_preprocessing_artifacts_to_s3.fn(client, "p.pkl", "s.pkl", approved=True)
-    assert client.sagemaker_session.upload_data.call_count == 2
+    assert client.session_mock.upload_data.call_count == 2
 
 
 # --- Model registry ----------------------------------------------------------
 
 
 def test_register_model_package_refuses_without_approval():
-    registry = _registry()
+    registry = FakeModelRegistry()
     with pytest.raises(ApprovalRequired):
         registry.register_model_package("foo", "s3://bucket/key.tar.gz")
-    assert registry.sagemaker_client.mock_calls == []
-    assert registry.s3_client.mock_calls == []
+    assert registry.sagemaker_mock.mock_calls == []
+    assert registry.s3_mock.mock_calls == []
 
 
 def test_register_model_package_creates_when_approved():
-    registry = _registry()
-    registry.sagemaker_client.create_model_package.return_value = {"ModelPackageArn": PACKAGE_ARN}
+    registry = FakeModelRegistry()
+    registry.sagemaker_mock.create_model_package.return_value = {"ModelPackageArn": PACKAGE_ARN}
     with patch(
         "box_office.ml.model_registry.aws_model_registry._compute_sha256_of_s3_object",
         return_value=("a" * 64, 1024),
@@ -171,28 +157,28 @@ def test_register_model_package_creates_when_approved():
         result = registry.register_model_package(
             "foo", "s3://bucket/key.tar.gz", inference_specification={}, approved=True
         )
-    registry.sagemaker_client.create_model_package.assert_called_once()
+    registry.sagemaker_mock.create_model_package.assert_called_once()
     assert result["model_package_arn"] == PACKAGE_ARN
 
 
 def test_update_approval_status_refuses_without_approval():
-    registry = _registry()
+    registry = FakeModelRegistry()
     with pytest.raises(ApprovalRequired):
         registry.update_model_approval_status(PACKAGE_ARN, "Approved")
-    assert registry.sagemaker_client.mock_calls == []
+    assert registry.sagemaker_mock.mock_calls == []
 
 
 def test_update_approval_status_updates_when_approved():
-    registry = _registry()
+    registry = FakeModelRegistry()
     registry.update_model_approval_status(PACKAGE_ARN, "Approved", approved=True)
-    registry.sagemaker_client.update_model_package.assert_called_once()
+    registry.sagemaker_mock.update_model_package.assert_called_once()
 
 
 def test_create_model_package_group_refuses_without_approval():
-    registry = _registry()
+    registry = FakeModelRegistry()
     with pytest.raises(ApprovalRequired):
         registry.create_model_package_group("foo")
-    assert registry.sagemaker_client.mock_calls == []
+    assert registry.sagemaker_mock.mock_calls == []
 
 
 def test_register_task_refuses_without_approval(task_logger):

@@ -3,13 +3,7 @@
 import { useEffect, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import {
-  animate,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-  useTransform,
-} from "motion/react";
+import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import type { ComparableMovie } from "@/lib/predict";
 import { posterUrl, type PredictionResult } from "@/lib/types";
 import { dollarsCompact } from "@/lib/format";
@@ -65,28 +59,18 @@ export function RevealStage({
   );
 }
 
-function OracleFault({
-  error,
-  onRetry,
-}: {
-  error: Error | null;
-  onRetry: () => void;
-}) {
+function OracleFault({ error, onRetry }: { error: Error | null; onRetry: () => void }) {
   const fault = error instanceof OracleError ? error : null;
   const warming = fault?.status === 503 || fault?.code === "NO_MODEL_AVAILABLE";
   return (
     <div className="flex min-h-72 flex-col items-start justify-center gap-3 rounded border border-hairline bg-surface p-8">
-      <h2 className="title-caps text-sm text-ink">
-        The oracle didn&apos;t answer.
-      </h2>
+      <h2 className="title-caps text-sm text-ink">The oracle didn&apos;t answer.</h2>
       <p className="text-sm text-dim">
         {warming
           ? "The projector is warming up — try again in a moment."
           : (error?.message ?? "Something went wrong.")}
       </p>
-      {warming && error?.message && (
-        <p className="font-mono text-xs text-dim">{error.message}</p>
-      )}
+      {warming && error?.message && <p className="font-mono text-xs text-dim">{error.message}</p>}
       <button
         type="button"
         onClick={onRetry}
@@ -113,34 +97,20 @@ const metaItem = {
 };
 
 /** The signature moment — mounts fresh per result (keyed), animates once. */
-function Reveal({
-  result,
-  catalog,
-}: {
-  result: PredictionResult;
-  catalog: ComparableMovie[];
-}) {
+function Reveal({ result, catalog }: { result: PredictionResult; catalog: ComparableMovie[] }) {
   const interval = result.prediction_interval_heuristic;
 
   return (
     <div className="flex flex-col gap-6 rounded border border-hairline bg-surface p-6">
       <div>
-        <p className="text-xs uppercase tracking-wider text-dim">
-          The oracle says
-        </p>
+        <p className="text-xs uppercase tracking-wider text-dim">The oracle says</p>
         <Odometer value={result.prediction} />
-        <p className="sr-only">
-          Predicted worldwide gross {dollarsCompact(result.prediction)}
-        </p>
+        <p className="sr-only">Predicted worldwide gross {dollarsCompact(result.prediction)}</p>
       </div>
 
       {interval && (
         <div>
-          <ProjectorBeam
-            prediction={result.prediction}
-            lower={interval[0]}
-            upper={interval[1]}
-          />
+          <ProjectorBeam prediction={result.prediction} lower={interval[0]} upper={interval[1]} />
           <p className="mt-1 text-xs text-dim">
             The interval is a heuristic, not a calibrated confidence bound.
           </p>
@@ -156,14 +126,10 @@ function Reveal({
         {interval && (
           <motion.li variants={metaItem} className="text-sm text-dim">
             Between{" "}
-            <span className="font-mono tabular text-predicted">
-              {dollarsCompact(interval[0])}
-            </span>{" "}
+            <span className="font-mono tabular text-predicted">{dollarsCompact(interval[0])}</span>{" "}
             and{" "}
-            <span className="font-mono tabular text-predicted">
-              {dollarsCompact(interval[1])}
-            </span>
-            , probably.
+            <span className="font-mono tabular text-predicted">{dollarsCompact(interval[1])}</span>,
+            probably.
           </motion.li>
         )}
         <motion.li variants={metaItem} className="font-mono text-xs text-dim">
@@ -229,24 +195,13 @@ const stripItem = {
   },
 };
 
-function Comparables({
-  catalog,
-  prediction,
-}: {
-  catalog: ComparableMovie[];
-  prediction: number;
-}) {
-  const picks = useMemo(
-    () => nearestByGross(catalog, prediction, 5),
-    [catalog, prediction],
-  );
+function Comparables({ catalog, prediction }: { catalog: ComparableMovie[]; prediction: number }) {
+  const picks = useMemo(() => nearestByGross(catalog, prediction, 5), [catalog, prediction]);
   if (picks.length === 0) return null;
 
   return (
     <div className="border-t border-hairline pt-4">
-      <h3 className="title-caps text-xs text-dim">
-        Movies that made about this much
-      </h3>
+      <h3 className="title-caps text-xs text-dim">Movies that made about this much</h3>
       <motion.ul
         variants={stripList}
         initial="hidden"

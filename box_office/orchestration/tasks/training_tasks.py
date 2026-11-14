@@ -2,6 +2,8 @@ import json
 import numbers
 import time
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
 
 import boto3
 import pandas as pd
@@ -17,6 +19,7 @@ from box_office.ml.model_registry.aws_model_registry import (
     ModelRegistryRegistrationError,
 )
 from box_office.sagemaker import sagemaker_train_job
+from box_office.sagemaker.sagemaker_train_job import Estimator, SageMakerClient, TrainingInput
 from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import BOTO3_CONFIG
 
@@ -26,7 +29,12 @@ from box_office.utils.aws_helpers import BOTO3_CONFIG
     retries=3,
     retry_delay_seconds=exponential_backoff(backoff_factor=5),
 )
-def upload_processed_data_to_s3(sagemaker_client, X_train, y_train, approved=False):
+def upload_processed_data_to_s3(
+    sagemaker_client: SageMakerClient,
+    X_train: pd.DataFrame,
+    y_train: pd.DataFrame,
+    approved: bool = False,
+) -> TrainingInput:
     require_approval("uploading training data to S3", approved)
     logger = get_run_logger()
     logger.info("Uploading processed data to S3...")
@@ -53,12 +61,12 @@ def upload_processed_data_to_s3(sagemaker_client, X_train, y_train, approved=Fal
 
 @task(cache_policy=NO_CACHE)
 def train_model(
-    sagemaker_client,
-    train_input,
-    X_train_shape,
-    artifacts_s3_uris=None,
-    approved=False,
-):
+    sagemaker_client: SageMakerClient,
+    train_input: TrainingInput,
+    X_train_shape: tuple[int, int],
+    artifacts_s3_uris: dict[str, str] | None = None,
+    approved: bool = False,
+) -> Estimator:
     require_approval("launching a SageMaker training job", approved)
     logger = get_run_logger()
     logger.info("Training XGBoost model with comprehensive metrics logging...")
@@ -76,7 +84,7 @@ def train_model(
     xgboost_hyperparameters = config.model.hyperparameters.model_dump()
 
     # Custom script parameters for the training script
-    script_parameters = {
+    script_parameters: dict[str, int | str] = {
         "cv_folds": config.model.cross_validation.cv_folds,
         "start_eval_year": config.model.cross_validation.start_eval_year,
         "end_year": config.model.cross_validation.end_year,
@@ -123,7 +131,10 @@ def train_model(
     logger.info(
         f"Total training time: {training_duration:.2f} seconds ({training_duration / 60:.2f} minutes)"
     )
-    logger.info(f"Job name: {estimator.latest_training_job.name}")
+    training_job = estimator.latest_training_job
+    if training_job is None:
+        raise RuntimeError("SageMaker estimator has no training job")
+    logger.info(f"Job name: {training_job.name}")
     logger.info(f"Model artifacts: {estimator.model_data}")
     logger.info(
         f"Estimated cost: ~${(training_duration / 3600) * 0.269:.4f} ({config.sagemaker.instance_type})"
@@ -137,14 +148,19 @@ def train_model(
     retries=3,
     retry_delay_seconds=exponential_backoff(backoff_factor=5),
 )
-def download_and_analyze_results(estimator, sagemaker_client):
+def download_and_analyze_results(
+    estimator: Estimator, sagemaker_client: SageMakerClient
+) -> dict[str, Any]:
     """Download and analyze training results with comprehensive metrics logging."""
     from box_office.sagemaker.training_output import build_training_metrics
 
     logger = get_run_logger()
     logger.info("Downloading and analyzing training results with detailed metrics...")
 
-    job_name = estimator.latest_training_job.name
+    training_job = estimator.latest_training_job
+    if training_job is None:
+        raise RuntimeError("SageMaker estimator has no training job")
+    job_name = training_job.name
     bucket = sagemaker_client.s3_bucket
     output_prefix = f"{sagemaker_client.s3_prefix}/output"
 
@@ -152,7 +168,8 @@ def download_and_analyze_results(estimator, sagemaker_client):
     logger.info(f"Job name: {job_name}")
     logger.info(f"Output path: s3://{bucket}/{output_prefix}")
 
-    model_data_url = estimator.model_data if hasattr(estimator, "model_data") else None
+    model_data = estimator.model_data
+    model_data_url = model_data if isinstance(model_data, str) else None
     performance_metrics = build_training_metrics(
         job_name=job_name,
         region=sagemaker_client.region,
@@ -188,15 +205,15 @@ def download_and_analyze_results(estimator, sagemaker_client):
 
 @task(cache_policy=NO_CACHE)
 def register_model_in_registry(
-    job_name,
-    duration,
-    model_data_url,
-    aws_registry,
-    performance_metrics=None,
-    environment="dev",
+    job_name: str,
+    duration: float,
+    model_data_url: str,
+    aws_registry: AWSModelRegistry,
+    performance_metrics: dict[str, Any] | None = None,
+    environment: str = "dev",
     data_fingerprint: DataFingerprint | None = None,
-    approved=False,
-):
+    approved: bool = False,
+) -> dict[str, Any]:
     """Register the trained model in AWS Model Registry with comprehensive metrics."""
     require_approval("registering a model package", approved)
     logger = get_run_logger()
@@ -265,8 +282,11 @@ def register_model_in_registry(
 
 @task(cache_policy=NO_CACHE)
 def upload_preprocessing_artifacts_to_s3(
-    sagemaker_client, processor_path, scaler_path, approved=False
-):
+    sagemaker_client: SageMakerClient,
+    processor_path: str | Path,
+    scaler_path: str | Path,
+    approved: bool = False,
+) -> dict[str, str]:
     """Upload fitted preprocessing artifacts to S3 for SageMaker training job."""
     require_approval("uploading preprocessing artifacts to S3", approved)
     logger = get_run_logger()
@@ -294,7 +314,9 @@ def upload_preprocessing_artifacts_to_s3(
 
 
 @task
-def validate_model_for_promotion(model_package_arn, min_r2_score=None):
+def validate_model_for_promotion(
+    model_package_arn: str, min_r2_score: float | None = None
+) -> dict[str, Any]:
     """
     Validate if a model meets the criteria for production promotion using AWS Model Registry.
     """
@@ -316,8 +338,9 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         sagemaker_client = boto3.client("sagemaker", region_name=aws_region, config=BOTO3_CONFIG)
 
         try:
-            model_package = sagemaker_client.describe_model_package(
-                ModelPackageName=model_package_arn
+            model_package = cast(
+                "dict[str, Any]",
+                sagemaker_client.describe_model_package(ModelPackageName=model_package_arn),
             )
         except ClientError as e:
             return {
@@ -401,7 +424,9 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
 
 
 @task
-def promote_model_in_aws_registry(model_package_arn, approval_description=None, approved=False):
+def promote_model_in_aws_registry(
+    model_package_arn: str, approval_description: str | None = None, approved: bool = False
+) -> dict[str, Any]:
     """
     Promote a model package to Approved status in AWS SageMaker Model Registry.
     """

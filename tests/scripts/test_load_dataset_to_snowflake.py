@@ -1,5 +1,7 @@
 """Tests for the RAW dataset replacement loader (pure logic, no live Snowflake)."""
 
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -26,7 +28,7 @@ def source_frame() -> pd.DataFrame:
     # passes read_source_frame's column check; only the columns the tests read
     # carry meaningful values, the rest are null placeholders.
     columns = staging_columns_from_sources()
-    data: dict[str, list] = {col: [None, None, None] for col in columns}
+    data: dict[str, list[Any]] = {col: [None, None, None] for col in columns}
     data["tmdb_id"] = [597, 19995, 999]
     data["imdb_id"] = ["tt0120338", "tt0499549", "tt0000000"]
     data["title"] = ["Titanic", "Avatar", "No Budget"]
@@ -38,7 +40,7 @@ def source_frame() -> pd.DataFrame:
     return pd.DataFrame(data, columns=columns)
 
 
-def _write_parquet(df: pd.DataFrame, tmp_path) -> object:
+def _write_parquet(df: pd.DataFrame, tmp_path: Path) -> Path:
     path = tmp_path / "source.parquet"
     df.to_parquet(path)
     return path
@@ -232,11 +234,11 @@ def test_spot_check_mismatches_null_vs_value():
 # --- verification against a mocked cursor ------------------------------------
 
 
-def _cursor_for(rows: int, nulls: int, spot_rows: dict[int, tuple]) -> MagicMock:
+def _cursor_for(rows: int, nulls: int, spot_rows: dict[int, tuple[Any, ...]]) -> MagicMock:
     cursor = MagicMock()
-    calls: list[object] = []
+    calls: list[str] = []
 
-    def execute(sql, *_args):
+    def execute(sql: str, *_args: object) -> None:
         calls.append(sql)
 
     def fetchone():

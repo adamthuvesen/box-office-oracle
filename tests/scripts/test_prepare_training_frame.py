@@ -1,20 +1,21 @@
 """Unit tests for the pure transformations in scripts/prepare_training_frame.py."""
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from box_office.ml.text_utils import process_text_list
+from box_office.training_frame import COLUMN_MAPPING, actors_to_list_literal
 from scripts.prepare_training_frame import (
-    COLUMN_MAPPING,
-    actors_to_list_literal,
     apply_quality_gate,
     flag_extreme_gross_multiplier,
     map_to_staging_columns,
 )
 
 
-def _source_row(**overrides) -> dict:
+def _source_row(**overrides) -> dict[str, Any]:
     row = {
         "tmdb_id": 1,
         "imdb_id": "tt0000001",
@@ -72,7 +73,7 @@ class TestMapToStagingColumns:
     def test_null_budget_stays_nan(self):
         source = pd.DataFrame([_source_row(production_budget=np.nan)])
         frame = map_to_staging_columns(source)
-        assert np.isnan(frame.loc[0, "PRODUCTION_BUDGET"])
+        assert pd.isna(frame.loc[0, "PRODUCTION_BUDGET"])
 
 
 class TestQualityGate:
@@ -102,7 +103,7 @@ class TestQualityGate:
         )
         kept, dropped = apply_quality_gate(frame)
         assert len(kept) == 1
-        assert np.isnan(kept.loc[0, "PRODUCTION_BUDGET"])
+        assert pd.isna(kept.loc[0, "PRODUCTION_BUDGET"])
         assert dropped.empty
 
     def test_drops_rows_without_reliable_gross(self):

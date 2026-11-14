@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -122,18 +123,18 @@ def build_records(
     oof_dollars: dict[int, float],
     engine: PredictionEngine,
 ) -> pd.DataFrame:
-    records: list[dict] = []
+    records: list[dict[str, Any]] = []
 
     frame_pred_final = final_model_predictions(frame, engine)
-    for position, row in enumerate(frame.itertuples(index=False)):
+    for position, row in enumerate(frame.to_dict(orient="records")):
         oof = oof_dollars.get(position)
         predicted = oof if oof is not None else float(frame_pred_final[position])
-        actual = float(row.WORLDWIDE_GROSS)
+        actual = float(row["WORLDWIDE_GROSS"])
         records.append(
             {
-                "tmdb_id": int(row.TMDB_ID),
-                "title": row.TITLE,
-                "release_year": int(row.RELEASE_YEAR),
+                "tmdb_id": int(row["TMDB_ID"]),
+                "title": row["TITLE"],
+                "release_year": int(row["RELEASE_YEAR"]),
                 "predicted_gross": predicted,
                 "prediction_kind": OUT_OF_SAMPLE if oof is not None else IN_SAMPLE,
                 "actual_gross": actual,
@@ -142,15 +143,15 @@ def build_records(
         )
 
     dropped_pred = final_model_predictions(dropped, engine)
-    for position, row in enumerate(dropped.itertuples(index=False)):
-        gross_unreliable = any(reason in row.DROP_REASON for reason in UNRELIABLE_GROSS_REASONS)
-        actual = None if gross_unreliable else float(row.WORLDWIDE_GROSS)
+    for position, row in enumerate(dropped.to_dict(orient="records")):
+        gross_unreliable = any(reason in row["DROP_REASON"] for reason in UNRELIABLE_GROSS_REASONS)
+        actual = None if gross_unreliable else float(row["WORLDWIDE_GROSS"])
         predicted = float(dropped_pred[position])
         records.append(
             {
-                "tmdb_id": int(row.TMDB_ID),
-                "title": row.TITLE,
-                "release_year": int(row.RELEASE_YEAR),
+                "tmdb_id": int(row["TMDB_ID"]),
+                "title": row["TITLE"],
+                "release_year": int(row["RELEASE_YEAR"]),
                 "predicted_gross": predicted,
                 "prediction_kind": NO_ACTUALS if actual is None else IN_SAMPLE,
                 "actual_gross": actual,
@@ -170,13 +171,13 @@ def build_records(
 
 def write_web_json(result: pd.DataFrame) -> None:
     payload = {
-        str(int(row.tmdb_id)): {
-            "predicted_gross": float(row.predicted_gross),
-            "prediction_kind": row.prediction_kind,
-            "actual_gross": (None if pd.isna(row.actual_gross) else float(row.actual_gross)),
-            "ape": None if pd.isna(row.ape) else float(row.ape),
+        str(int(row["tmdb_id"])): {
+            "predicted_gross": float(row["predicted_gross"]),
+            "prediction_kind": row["prediction_kind"],
+            "actual_gross": (None if pd.isna(row["actual_gross"]) else float(row["actual_gross"])),
+            "ape": None if pd.isna(row["ape"]) else float(row["ape"]),
         }
-        for row in result.itertuples(index=False)
+        for row in result.to_dict(orient="records")
     }
     WEB_JSON_OUT.parent.mkdir(parents=True, exist_ok=True)
     # allow_nan=False: bare NaN would silently break JSON.parse in the web app.

@@ -19,7 +19,7 @@ docs/              Public docs; docs/internal/ is gitignored, local-only
 ## Quickstart
 
 ```bash
-make check     # locked sync, ruff, fast tests (what CI runs first; under 15 s)
+make check     # locked sync, ruff, basedpyright, import contracts, fast tests (what CI runs first; under 15 s)
 make fix       # ruff --fix and ruff format
 make slow      # full test suite and offline dbt parse
 make verify    # verify skill: not built yet, exits 1

@@ -33,10 +33,7 @@ export const oraclePredictionSchema = z.object({
   ape: z.number().nullable(),
 });
 
-export const oraclePredictionsSchema = z.record(
-  z.string(),
-  oraclePredictionSchema,
-);
+export const oraclePredictionsSchema = z.record(z.string(), oraclePredictionSchema);
 
 export const backtestYearSchema = z.object({
   year: z.number(),

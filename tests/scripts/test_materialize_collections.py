@@ -13,7 +13,10 @@ def _frame() -> pd.DataFrame:
 
 
 def test_adds_collection_columns_keyed_on_tmdb_id():
-    memberships = {1: (10, "Alpha Collection"), 3: (30, "Gamma Collection")}
+    memberships: dict[int, tuple[int, str | None]] = {
+        1: (10, "Alpha Collection"),
+        3: (30, "Gamma Collection"),
+    }
 
     out = add_collection_columns(_frame(), memberships)
 

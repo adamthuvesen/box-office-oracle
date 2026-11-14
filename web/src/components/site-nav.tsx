@@ -24,27 +24,21 @@ export function NavShell({ activePath }: { activePath: string | null }) {
         aria-label="Main"
         className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6"
       >
-        <Link
-          href="/"
-          className="title-caps whitespace-nowrap text-[11px] text-ink sm:text-sm"
-        >
+        <Link href="/" className="title-caps whitespace-nowrap text-[11px] text-ink sm:text-sm">
           <span className="max-sm:hidden">Box Office </span>
           <span className="sm:hidden">B.O. </span>
           <span className="text-actual">Oracle</span>
         </Link>
         <ul className="flex items-center gap-0 sm:gap-1">
           {LINKS.map(({ href, label }) => {
-            const active =
-              activePath === href || activePath?.startsWith(`${href}/`);
+            const active = activePath === href || activePath?.startsWith(`${href}/`);
             return (
               <li key={href}>
                 <Link
                   href={href}
                   aria-current={active ? "page" : undefined}
                   className={`rounded px-2 py-1.5 text-xs transition-colors duration-150 sm:px-3 sm:text-sm ${
-                    active
-                      ? "text-actual"
-                      : "text-dim hover:bg-surface hover:text-ink"
+                    active ? "text-actual" : "text-dim hover:bg-surface hover:text-ink"
                   }`}
                 >
                   {label}

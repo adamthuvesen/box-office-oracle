@@ -1,14 +1,16 @@
 import logging
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 import boto3
 import pandas as pd
-import sagemaker
 from pydantic import ValidationError
 from sagemaker.estimator import Estimator
 from sagemaker.inputs import TrainingInput
+from sagemaker.session import Session
+from sagemaker.workflow.entities import PipelineVariable
 
 from box_office.config import CrossValidationWindow, ModelHyperparameters, config
 from box_office.utils.approval import require_approval
@@ -20,7 +22,9 @@ XGBOOST_PARAM_KEYS = frozenset(ModelHyperparameters.model_fields)
 
 
 class SageMakerClient:
-    def __init__(self, region=None, role=None, approved=False):
+    def __init__(
+        self, region: str | None = None, role: str | None = None, approved: bool = False
+    ) -> None:
         require_approval("opening a SageMaker session", approved)
         logger.info("Initializing SageMaker client...")
         # Use configuration system with fallback to parameters
@@ -30,7 +34,7 @@ class SageMakerClient:
         # Initialize AWS clients with explicit timeout configuration
         self.sagemaker_client = self.boto_session.client("sagemaker", config=BOTO3_CONFIG)
         self.s3_client = self.boto_session.client("s3", config=BOTO3_CONFIG)
-        self.sagemaker_session = sagemaker.Session(
+        self.sagemaker_session = Session(
             boto_session=self.boto_session,
             sagemaker_client=self.sagemaker_client,
             default_bucket=config.aws.s3_bucket,
@@ -44,7 +48,12 @@ class SageMakerClient:
         logger.info(f"S3 Prefix: {self.s3_prefix}")
 
 
-def upload_processed_data_to_s3(sagemaker_client, X_train, y_train, approved=False):
+def upload_processed_data_to_s3(
+    sagemaker_client: SageMakerClient,
+    X_train: pd.DataFrame,
+    y_train: pd.DataFrame,
+    approved: bool = False,
+) -> TrainingInput:
     require_approval("uploading training data to S3", approved)
     logger.info(
         f"Using S3 bucket: {sagemaker_client.s3_bucket} with prefix: {sagemaker_client.s3_prefix}"
@@ -94,7 +103,9 @@ def upload_processed_data_to_s3(sagemaker_client, X_train, y_train, approved=Fal
     return train_input
 
 
-def _validate_hyperparameters(hyperparameters, logger):
+def _validate_hyperparameters(
+    hyperparameters: Mapping[str, object], logger: logging.Logger
+) -> None:
     """Validate hyperparameters and log any validation errors clearly."""
     validation_errors = []
 
@@ -128,14 +139,16 @@ def _validate_hyperparameters(hyperparameters, logger):
         logger.info("Hyperparameter validation passed")
 
 
-def _log_hyperparameters_block(hyperparameters, logger):
+def _log_hyperparameters_block(
+    hyperparameters: Mapping[str, object], logger: logging.Logger
+) -> None:
     """Log hyperparameters as structured block instead of individual messages."""
     logger.info("Model and CV hyperparameters:")
 
     # Group related parameters logically
-    model_params = {}
-    cv_params = {}
-    other_params = {}
+    model_params: dict[str, object] = {}
+    cv_params: dict[str, object] = {}
+    other_params: dict[str, object] = {}
 
     for param, value in hyperparameters.items():
         if param in XGBOOST_PARAM_KEYS:
@@ -165,13 +178,13 @@ def _log_hyperparameters_block(hyperparameters, logger):
 
 
 def train_xgboost_model_with_timeseries_cv_framework(
-    sagemaker_client,
-    train_input,
-    X_train_shape,
-    hyperparameters,
-    experiment_config=None,
-    approved=False,
-):
+    sagemaker_client: SageMakerClient,
+    train_input: TrainingInput,
+    X_train_shape: tuple[int, int],
+    hyperparameters: Mapping[str, object],
+    experiment_config: dict[str, str] | None = None,
+    approved: bool = False,
+) -> Estimator:
     """Launch a SageMaker training job on the repository's training image.
 
     The image (infrastructure/docker/training) runs
@@ -186,12 +199,12 @@ def train_xgboost_model_with_timeseries_cv_framework(
         )
 
     # Separate XGBoost hyperparameters from custom script parameters
-    xgboost_params = {
+    xgboost_params: dict[str, str | PipelineVariable] = {
         k: str(v) for k, v in hyperparameters.items() if k in XGBOOST_PARAM_KEYS and v is not None
     }
 
     # Only pass custom parameters as environment variables (not XGBoost hyperparameters)
-    custom_params = {
+    custom_params: dict[str, str | PipelineVariable] = {
         k: str(v) if v is not None else "None"
         for k, v in hyperparameters.items()
         if k not in XGBOOST_PARAM_KEYS
@@ -234,10 +247,13 @@ def train_xgboost_model_with_timeseries_cv_framework(
     else:
         xgb_estimator.fit({"train": train_input})
     training_time = time.time() - start_time
+    training_job = xgb_estimator.latest_training_job
+    if training_job is None:
+        raise RuntimeError("SageMaker fit returned no training job")
 
     logger.info(
         "XGBoost training job %s completed in %.1f s (%.2f min)",
-        xgb_estimator.latest_training_job.name,
+        training_job.name,
         training_time,
         training_time / 60,
     )

@@ -2,13 +2,7 @@
 
 import { useId, useState } from "react";
 import { dollarsCompact } from "@/lib/format";
-import {
-  GENRES,
-  IP_TIERS,
-  MONTHS,
-  MPAA_RATINGS,
-  type PredictRequestInput,
-} from "@/lib/predict";
+import { GENRES, IP_TIERS, MONTHS, MPAA_RATINGS, type PredictRequestInput } from "@/lib/predict";
 
 const YEARS = [2025, 2026, 2027, 2028, 2029, 2030];
 
@@ -37,9 +31,7 @@ export function OracleForm({ pending, onAsk }: OracleFormProps) {
 
   function toggleGenre(genre: string) {
     setGenres((prev) =>
-      prev.includes(genre)
-        ? prev.filter((g) => g !== genre)
-        : [...prev, genre],
+      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre],
     );
   }
 
@@ -90,9 +82,7 @@ export function OracleForm({ pending, onAsk }: OracleFormProps) {
           ))}
         </div>
         {genres.length === 0 && (
-          <p className="mt-2 text-xs text-dim">
-            Pick at least one genre — the oracle needs it.
-          </p>
+          <p className="mt-2 text-xs text-dim">Pick at least one genre — the oracle needs it.</p>
         )}
       </fieldset>
 
@@ -109,9 +99,7 @@ export function OracleForm({ pending, onAsk }: OracleFormProps) {
             value={Number.isFinite(runtime) ? runtime : ""}
             onChange={(e) => setRuntime(e.target.valueAsNumber)}
             onBlur={() =>
-              setRuntime((v) =>
-                Number.isFinite(v) ? clamp(Math.round(v), 60, 240) : 110,
-              )
+              setRuntime((v) => (Number.isFinite(v) ? clamp(Math.round(v), 60, 240) : 110))
             }
             className={`mt-1.5 font-mono tabular ${FIELD_CLASS}`}
           />
@@ -185,8 +173,7 @@ export function OracleForm({ pending, onAsk }: OracleFormProps) {
         </div>
         <div>
           <label htmlFor={`${uid}-actors`} className="text-sm text-ink">
-            Lead actors, comma-separated{" "}
-            <span className="text-dim">(optional)</span>
+            Lead actors, comma-separated <span className="text-dim">(optional)</span>
           </label>
           <input
             id={`${uid}-actors`}
@@ -241,10 +228,7 @@ export function OracleForm({ pending, onAsk }: OracleFormProps) {
           value={priorGross}
           onChange={setPriorGross}
         />
-        <label
-          htmlFor={`${uid}-followup`}
-          className="flex items-center gap-2 text-sm text-ink"
-        >
+        <label htmlFor={`${uid}-followup`} className="flex items-center gap-2 text-sm text-ink">
           <input
             id={`${uid}-followup`}
             type="checkbox"
@@ -287,8 +271,7 @@ function DollarSlider({ id, label, min, max, value, onChange }: DollarSliderProp
   const logMin = Math.log10(allowZero ? ZERO_FLOOR : min);
   const logMax = Math.log10(max);
   const sliderMin = allowZero ? logMin - 0.2 : logMin;
-  const sliderPos =
-    value <= 0 ? sliderMin : clamp(Math.log10(value), logMin, logMax);
+  const sliderPos = value <= 0 ? sliderMin : clamp(Math.log10(value), logMin, logMax);
   // While the user types, the text input holds a draft; null mirrors the value.
   const [draft, setDraft] = useState<string | null>(null);
 

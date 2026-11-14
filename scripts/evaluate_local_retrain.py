@@ -29,6 +29,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -91,7 +92,9 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def run_headline_cv(frame: pd.DataFrame, end_eval_year: int, *, burn_holdout: bool = False) -> dict:
+def run_headline_cv(
+    frame: pd.DataFrame, end_eval_year: int, *, burn_holdout: bool = False
+) -> dict[str, Any]:
     """One leakage-free CV run on the full frame (NaN budgets pass through)."""
     X_input = frame[list(PREPROCESSOR_INPUT_COLUMNS)].reset_index(drop=True)
     y_raw = frame["WORLDWIDE_GROSS"].astype(float).reset_index(drop=True)
@@ -119,7 +122,9 @@ def run_headline_cv(frame: pd.DataFrame, end_eval_year: int, *, burn_holdout: bo
     }
 
 
-def pooled_window_metrics(headline: dict, start_year: int, end_year: int) -> dict:
+def pooled_window_metrics(
+    headline: dict[str, Any], start_year: int, end_year: int
+) -> dict[str, Any]:
     """Pooled median APE + mean fold log-R² over an eval-year window."""
     cv_results = headline["cv_results"]
     y_raw = headline["y_raw"]
@@ -163,7 +168,7 @@ def build_per_year_table(frame: pd.DataFrame, cv_results: CrossValidationResults
     )
 
 
-def dropped_rows_summary() -> tuple[str, dict]:
+def dropped_rows_summary() -> tuple[str, dict[str, Any]]:
     dropped = pd.read_csv(DROPPED_PATH)
     counts = dropped["DROP_REASON"].str.split(";").explode().value_counts().to_dict()
     lines = [f"Dropped rows: {len(dropped)} (reasons overlap; counts are per rule)"]
@@ -181,7 +186,9 @@ def dropped_rows_summary() -> tuple[str, dict]:
     return "\n".join(lines), {"drop_counts": counts, "n_dropped": len(dropped)}
 
 
-def render_recent_window_markdown(recent_table: pd.DataFrame, recent_summary: dict) -> str:
+def render_recent_window_markdown(
+    recent_table: pd.DataFrame, recent_summary: dict[str, Any]
+) -> str:
     table_md = render_metrics_table_markdown(recent_table)
     summary = (
         f"Pooled over {recent_summary['years']} "

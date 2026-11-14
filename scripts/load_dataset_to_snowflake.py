@@ -163,8 +163,10 @@ def prepare_for_load(df: pd.DataFrame) -> pd.DataFrame:
     prepared = df.copy()
 
     if prepared[BUDGET_COLUMN].isna().any():
-        prepared[BUDGET_COLUMN] = (
-            prepared[BUDGET_COLUMN].astype(object).where(prepared[BUDGET_COLUMN].notna(), None)
+        prepared[BUDGET_COLUMN] = pd.Series(
+            [None if pd.isna(value) else value for value in prepared[BUDGET_COLUMN]],
+            index=prepared.index,
+            dtype=object,
         )
 
     prepared.columns = prepared.columns.str.upper()
@@ -193,7 +195,7 @@ def build_staging_ddl(fq_staging: str, df: pd.DataFrame) -> str:
     it later holds ``None`` for null budgets. The schema is never hardcoded.
     """
     columns = ", ".join(
-        f"{validate_sql_identifier(name.upper(), 'column')} {snowflake_column_type(dtype)}"
+        f"{validate_sql_identifier(str(name).upper(), 'column')} {snowflake_column_type(dtype)}"
         for name, dtype in df.dtypes.items()
     )
     return f"CREATE OR REPLACE TRANSIENT TABLE {fq_staging} ({columns})"
