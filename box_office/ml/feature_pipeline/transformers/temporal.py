@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 import pandas as pd
-from pandas.tseries.holiday import USMemorialDay, USThanksgivingDay
+from pandas.tseries.holiday import Holiday, USMemorialDay, USThanksgivingDay
 from sklearn.base import BaseEstimator, TransformerMixin
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class TemporalTransformer(BaseEstimator, TransformerMixin):
     """Time-based features: seasonality, market timing, era indicators."""
 
-    def fit(self, X: pd.DataFrame, y=None) -> TemporalTransformer:
+    def fit(self, X: pd.DataFrame, y: object = None) -> TemporalTransformer:
         self.is_fitted_ = True
         return self
 
@@ -28,7 +28,7 @@ class TemporalTransformer(BaseEstimator, TransformerMixin):
         new_cols = pd.DataFrame(feats.tolist(), index=X.index)
         return pd.concat([X, new_cols], axis=1)
 
-    def _extract_date_features(self, date_obj) -> dict[str, Any]:
+    def _extract_date_features(self, date_obj: pd.Timestamp) -> dict[str, Any]:
         if pd.isna(date_obj):
             return _DEFAULT_DATE_FEATURES.copy()
 
@@ -82,7 +82,7 @@ _DEFAULT_DATE_FEATURES: dict[str, int] = {
 
 
 @functools.lru_cache(maxsize=256)
-def _holiday_for_year(holiday_rule, year: int):
+def _holiday_for_year(holiday_rule: Holiday, year: int) -> pd.Timestamp | None:
     """Return the first holiday date in ``year`` per ``holiday_rule``, or None.
 
     Cached because every row in a training batch shares the same calendar; the
@@ -94,7 +94,7 @@ def _holiday_for_year(holiday_rule, year: int):
     return pd.Timestamp(holiday_dates[0])
 
 
-def _is_in_holiday_weekend(date_obj: pd.Timestamp, holiday_rule) -> bool:
+def _is_in_holiday_weekend(date_obj: pd.Timestamp, holiday_rule: Holiday) -> bool:
     """True if ``date_obj`` lies in the Fri-Sun window around the holiday."""
     holiday = _holiday_for_year(holiday_rule, date_obj.year)
     if holiday is None:

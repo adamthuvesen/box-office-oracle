@@ -10,6 +10,7 @@ from box_office.orchestration.phases.data_phase import (
     DataPhaseResult,
     sagemaker_training_frames,
 )
+from box_office.orchestration.run_logger import RunLogger
 from box_office.orchestration.tasks.training_tasks import (
     download_and_analyze_results,
     train_model,
@@ -17,15 +18,18 @@ from box_office.orchestration.tasks.training_tasks import (
     upload_processed_data_to_s3,
 )
 from box_office.sagemaker import sagemaker_train_job
+from box_office.sagemaker.sagemaker_train_job import Estimator
 
 
 @dataclass
 class TrainPhaseResult:
     training_metrics: dict[str, Any]
-    estimator: Any
+    estimator: Estimator
 
 
-def run_train_phase(data: DataPhaseResult, logger) -> TrainPhaseResult:
+def run_train_phase(
+    data: DataPhaseResult, logger: RunLogger, approved: bool = False
+) -> TrainPhaseResult:
     """Upload in-memory training data to S3, train, and extract metrics."""
     X_train, y_train = sagemaker_training_frames(data)
 
@@ -41,11 +45,11 @@ def run_train_phase(data: DataPhaseResult, logger) -> TrainPhaseResult:
     logger.info("Using AWS Region: %s", config.aws.region)
 
     sagemaker_client = sagemaker_train_job.SageMakerClient(
-        config.aws.region, config.aws.sagemaker_role_arn
+        config.aws.region, config.aws.sagemaker_role_arn, approved=approved
     )
-    train_input = upload_processed_data_to_s3(sagemaker_client, X_train, y_train)
+    train_input = upload_processed_data_to_s3(sagemaker_client, X_train, y_train, approved=approved)
     artifacts_s3_uris = upload_preprocessing_artifacts_to_s3(
-        sagemaker_client, data.processor_path, data.scaler_path
+        sagemaker_client, data.processor_path, data.scaler_path, approved=approved
     )
 
     estimator = train_model(
@@ -53,6 +57,7 @@ def run_train_phase(data: DataPhaseResult, logger) -> TrainPhaseResult:
         train_input,
         X_train.shape,
         artifacts_s3_uris,
+        approved=approved,
     )
 
     training_metrics = download_and_analyze_results(estimator, sagemaker_client)

@@ -17,7 +17,9 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
+from box_office.ml.metrics_models import FoldResult
 from box_office.ml.regression_metrics import spearman_rank_corr
+from box_office.ml.target import from_log_target, to_log_target
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,7 @@ class BaselineFoldResult:
 class LogBudgetBaseline:
     """`log1p(worldwide_gross) ~ log1p(production_budget)` linear regression.
 
-    Predictions are returned on the log scale; callers `expm1` to compare on
+    Predictions are returned on the log scale; callers `from_log_target` to compare on
     dollar scale. Rows with non-positive or NaN budget are dropped at fit
     time and predicted as the training-mean log-target at predict time —
     keeps the baseline well-defined without leaking the target.
@@ -84,7 +86,7 @@ def compute_baseline_per_year(
     score R² on dollar scale (matching how model R² is reported).
     """
     results: list[BaselineFoldResult] = []
-    target_log = np.log1p(df[target_col].astype(float))
+    target_log = to_log_target(df[target_col].astype(float))
 
     for year in sorted(eval_years):
         train_mask = df[year_col] < year
@@ -102,7 +104,7 @@ def compute_baseline_per_year(
         y_pred_log = baseline.predict_log(df.loc[val_mask, budget_col])
         y_true_log = target_log.loc[val_mask].to_numpy()
         y_true_dollars = df.loc[val_mask, target_col].to_numpy()
-        y_pred_dollars = np.expm1(y_pred_log)
+        y_pred_dollars = from_log_target(y_pred_log)
 
         # Score on the same three lenses as the model: log-space R² (matches
         # the model's objective), rank correlation (ordering quality), and
@@ -122,15 +124,12 @@ def compute_baseline_per_year(
 
 def assemble_per_year_metrics_table(
     *,
-    model_fold_results: Iterable[dict],
+    model_fold_results: Iterable[FoldResult],
     baseline_results: Iterable[BaselineFoldResult],
 ) -> pd.DataFrame:
     """Combine model + baseline per-year results into one report DataFrame.
 
-    Required columns on each model fold dict (added by the CV loop):
-    ``eval_year``, ``val_samples``, ``model_r2_log``, ``model_spearman``,
-    ``model_r2_dollars``, ``rmsle_score``, ``model_median_ape``. Folds with
-    errors are skipped. Returns columns: ``year``, ``n_movies``,
+    Returns columns: ``year``, ``n_movies``,
     ``baseline_r2_log``, ``model_r2_log``, ``gain_r2_log``, ``baseline_spearman``,
     ``model_spearman``, ``baseline_r2``, ``model_r2``, ``gain_r2``,
     ``model_rmsle``, ``model_median_ape`` (``_r2`` columns are dollar-space).
@@ -144,27 +143,25 @@ def assemble_per_year_metrics_table(
 
     rows = []
     for fold in model_fold_results:
-        if fold.get("error") is not None:
-            continue
-        year = int(fold["eval_year"])
+        year = fold.eval_year
         baseline_r2 = base_dollars.get(year, float("nan"))
         baseline_r2_log = base_log.get(year, float("nan"))
-        model_r2 = float(fold.get("model_r2_dollars", float("nan")))
-        model_r2_log = float(fold.get("model_r2_log", float("nan")))
+        model_r2 = fold.model_r2_dollars
+        model_r2_log = fold.model_r2_log
         rows.append(
             {
                 "year": year,
-                "n_movies": int(fold["val_samples"]),
+                "n_movies": fold.val_samples,
                 "baseline_r2_log": baseline_r2_log,
                 "model_r2_log": model_r2_log,
                 "gain_r2_log": _gain(model_r2_log, baseline_r2_log),
                 "baseline_spearman": base_spear.get(year, float("nan")),
-                "model_spearman": float(fold.get("model_spearman", float("nan"))),
+                "model_spearman": fold.model_spearman,
                 "baseline_r2": baseline_r2,
                 "model_r2": model_r2,
                 "gain_r2": _gain(model_r2, baseline_r2),
-                "model_rmsle": float(fold.get("rmsle_score", float("nan"))),
-                "model_median_ape": float(fold.get("model_median_ape", float("nan"))),
+                "model_rmsle": fold.rmsle_score,
+                "model_median_ape": fold.model_median_ape,
             }
         )
     return pd.DataFrame(rows).sort_values("year").reset_index(drop=True)
@@ -175,7 +172,7 @@ def render_metrics_table_markdown(table: pd.DataFrame) -> str:
 
     Log-space R² leads: it matches the model's training objective
     (``reg:squarederror`` on ``log1p`` revenue) and is robust to the heavy
-    revenue tail. Rank ρ (Spearman) shows ordering quality. Dollar-space R² and
+    revenue tail. Rank rho (Spearman) shows ordering quality. Dollar-space R² and
     median APE expose absolute calibration — where a market-wide shock such as
     the COVID-2020 theatrical shutdown surfaces — and are kept in view rather
     than dropped.
@@ -185,7 +182,7 @@ def render_metrics_table_markdown(table: pd.DataFrame) -> str:
 
     header = (
         "| Year | n | Model R² (log) | Baseline R² (log) | Gain (log) "
-        "| Model ρ | Baseline ρ | Model R² ($) | Median APE |\n"
+        "| Model \u03c1 | Baseline \u03c1 | Model R² ($) | Median APE |\n"
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|"
     )
     rows = []

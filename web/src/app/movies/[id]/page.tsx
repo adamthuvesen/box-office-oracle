@@ -6,11 +6,7 @@ import { notFound } from "next/navigation";
 import { loadMovie, loadMovies, loadOraclePredictions } from "@/lib/data";
 import { similarMovies } from "@/lib/catalog";
 import { backdropUrl, posterUrl } from "@/lib/types";
-import {
-  dollarsCompact,
-  releaseDateLabel,
-  runtimeLabel,
-} from "@/lib/format";
+import { dollarsCompact, releaseDateLabel, runtimeLabel } from "@/lib/format";
 import { PosterFallback } from "@/components/movies/poster-card";
 import { PredictionPanel } from "@/components/movies/prediction-panel";
 
@@ -24,11 +20,7 @@ export async function generateMetadata({
   return { title: movie?.title ?? "Movie" };
 }
 
-export default function MoviePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function MoviePage({ params }: { params: Promise<{ id: string }> }) {
   return (
     <Suspense fallback={<MovieSkeleton />}>
       <MovieContent params={params} />
@@ -72,10 +64,7 @@ async function MovieContent({ params }: { params: Promise<{ id: string }> }) {
     ["Released", releaseDateLabel(movie.release_date)],
     ["Runtime", runtimeLabel(movie.runtime)],
     ["Rating", movie.mpaa],
-    [
-      "Budget",
-      movie.production_budget ? dollarsCompact(movie.production_budget) : "unknown",
-    ],
+    ["Budget", movie.production_budget ? dollarsCompact(movie.production_budget) : "unknown"],
   ];
 
   return (
@@ -109,10 +98,7 @@ async function MovieContent({ params }: { params: Promise<{ id: string }> }) {
                   className="object-cover"
                 />
               ) : (
-                <PosterFallback
-                  title={movie.title}
-                  releaseYear={movie.release_year}
-                />
+                <PosterFallback title={movie.title} releaseYear={movie.release_year} />
               )}
             </div>
           </ViewTransition>
@@ -124,9 +110,7 @@ async function MovieContent({ params }: { params: Promise<{ id: string }> }) {
             <h1 className="title-caps mt-2 text-3xl leading-tight text-ink sm:text-4xl">
               {movie.title}
             </h1>
-            {movie.tagline && (
-              <p className="mt-3 max-w-xl italic text-dim">{movie.tagline}</p>
-            )}
+            {movie.tagline && <p className="mt-3 max-w-xl italic text-dim">{movie.tagline}</p>}
             <p className="mt-4 font-mono tabular text-lg text-actual">
               {movie.worldwide_gross != null ? (
                 <>
@@ -148,18 +132,14 @@ async function MovieContent({ params }: { params: Promise<{ id: string }> }) {
           {movie.overview && (
             <section>
               <h2 className="title-caps mb-3 text-sm text-dim">The pitch</h2>
-              <p className="max-w-prose leading-relaxed text-ink">
-                {movie.overview}
-              </p>
+              <p className="max-w-prose leading-relaxed text-ink">{movie.overview}</p>
             </section>
           )}
 
           {movie.actors.length > 0 && (
             <section>
               <h2 className="title-caps mb-3 text-sm text-dim">Billing</h2>
-              <p className="max-w-prose text-dim">
-                {movie.actors.slice(0, 8).join(" · ")}
-              </p>
+              <p className="max-w-prose text-dim">{movie.actors.slice(0, 8).join(" · ")}</p>
             </section>
           )}
         </div>
@@ -190,11 +170,7 @@ async function MovieContent({ params }: { params: Promise<{ id: string }> }) {
           </h2>
           <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
             {similar.map((m) => (
-              <Link
-                key={m.tmdb_id}
-                href={`/movies/${m.tmdb_id}`}
-                className="group block"
-              >
+              <Link key={m.tmdb_id} href={`/movies/${m.tmdb_id}`} className="group block">
                 <div className="relative aspect-2/3 overflow-hidden rounded border border-hairline bg-surface transition-transform duration-150 ease-enter group-hover:-translate-y-0.5">
                   {posterUrl(m.poster_path, "w185") ? (
                     <Image
@@ -205,15 +181,10 @@ async function MovieContent({ params }: { params: Promise<{ id: string }> }) {
                       className="object-cover"
                     />
                   ) : (
-                    <PosterFallback
-                      title={m.title}
-                      releaseYear={m.release_year}
-                    />
+                    <PosterFallback title={m.title} releaseYear={m.release_year} />
                   )}
                 </div>
-                <p className="mt-2 truncate text-xs text-dim group-hover:text-ink">
-                  {m.title}
-                </p>
+                <p className="mt-2 truncate text-xs text-dim group-hover:text-ink">{m.title}</p>
               </Link>
             ))}
           </div>

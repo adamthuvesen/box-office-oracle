@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pandas as pd
 
@@ -15,7 +16,7 @@ def _row(
     budget: float | None = 1_000_000,
     gross: float | None = 10_000_000,
     vote_count: int | None = 100,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "tmdb_id": tmdb_id,
         "imdb_id": imdb_id,
@@ -40,7 +41,7 @@ def _row(
     }
 
 
-def _records(*rows: dict) -> dict[int, dict]:
+def _records(*rows: dict[str, Any]) -> dict[int, dict[str, Any]]:
     return {
         record["tmdb_id"]: record
         for record in build_movie_records(pd.DataFrame(rows), no_gross_ids=set())
@@ -114,9 +115,7 @@ def test_prediction_no_gross_ids_still_win_over_export_values():
 
     assert record["production_budget"] == 10_000_000
     assert record["worldwide_gross"] is None
-    assert not any(
-        isinstance(value, float) and math.isnan(value) for value in record.values()
-    )
+    assert not any(isinstance(value, float) and math.isnan(value) for value in record.values())
 
 
 def test_non_movie_source_exclusions_do_not_reach_web_records():

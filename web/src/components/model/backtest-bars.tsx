@@ -13,10 +13,7 @@ import {
 } from "recharts";
 import type { BacktestYear } from "@/lib/types";
 import { ratio } from "@/lib/format";
-import {
-  ChartTooltip,
-  numericTick,
-} from "@/components/charts/chart-tooltip";
+import { ChartTooltip, numericTick } from "@/components/charts/chart-tooltip";
 
 /**
  * The signature chart: per-year R² (log dollars), model as solid cyan,
@@ -77,17 +74,11 @@ export function BacktestBars({ years }: { years: BacktestYear[] }) {
       <figcaption>
         <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-dim">
           <li className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 rounded-[2px] bg-predicted"
-            />
+            <span aria-hidden className="h-2.5 w-2.5 rounded-[2px] bg-predicted" />
             Model — R² on log dollars
           </li>
           <li className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 rounded-[2px] border border-actual-deep"
-            />
+            <span aria-hidden className="h-2.5 w-2.5 rounded-[2px] border border-actual-deep" />
             Baseline — the ghost to beat
           </li>
         </ul>
@@ -117,10 +108,7 @@ function YearTip({ active, payload }: TooltipContentProps) {
         {
           name: "Gain",
           value: `${row.gain_r2_log >= 0 ? "+" : ""}${ratio(row.gain_r2_log)}`,
-          color:
-            row.gain_r2_log >= 0
-              ? "var(--color-over)"
-              : "var(--color-under)",
+          color: row.gain_r2_log >= 0 ? "var(--color-over)" : "var(--color-under)",
         },
       ]}
     />

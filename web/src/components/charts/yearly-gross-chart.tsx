@@ -21,11 +21,7 @@ import {
   numericTick,
 } from "@/components/charts/chart-tooltip";
 
-function YearTooltip({
-  active,
-  payload,
-  label,
-}: TooltipContentProps) {
+function YearTooltip({ active, payload, label }: TooltipContentProps) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload as YearlyGross;
   return (
@@ -52,10 +48,7 @@ export function YearlyGrossChart({ data }: { data: YearlyGross[] }) {
     <div className="w-full">
       <div className="h-80 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={data}
-            margin={{ top: 16, right: 4, left: 4, bottom: 0 }}
-          >
+          <ComposedChart data={data} margin={{ top: 16, right: 4, left: 4, bottom: 0 }}>
             <CartesianGrid stroke={GRID_STROKE} vertical={false} />
             <XAxis
               dataKey="year"

@@ -50,8 +50,6 @@ def test_fully_qualified_name_joins_valid_components():
         ("BOX_OFFICE", "ML_TRAINING.PUBLIC", "X_TRAIN", "schema"),
     ],
 )
-def test_fully_qualified_name_rejects_unsafe_components(
-    database, schema, table, bad_part
-):
+def test_fully_qualified_name_rejects_unsafe_components(database, schema, table, bad_part):
     with pytest.raises(ValueError, match=f"Invalid {bad_part} name"):
         fully_qualified_name(database, schema, table)

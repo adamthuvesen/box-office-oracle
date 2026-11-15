@@ -26,8 +26,6 @@ class TestSnowflakeDataOperations:
         from box_office.orchestration.tasks import data_tasks
 
         assert data_tasks is not None
-        assert hasattr(data_tasks, "save_dataset_to_snowflake_impl")
-        assert hasattr(data_tasks, "validate_snowflake_tables")
         assert hasattr(data_tasks, "load_staging_box_office_from_snowflake")
 
 

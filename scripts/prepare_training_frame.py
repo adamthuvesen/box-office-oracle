@@ -53,13 +53,10 @@ from box_office.movie_data_quality import clean_movie_source_data
 
 # The staging shape, quality gate, franchise features, and preprocessor check
 # are shared with the production data phase (box_office/training_frame.py) so
-# the two paths cannot drift. Re-exported names keep this script's public
-# surface (and tests/test_prepare_training_frame.py) unchanged.
-from box_office.training_frame import (  # noqa: F401
-    COLUMN_MAPPING,
+# the two paths cannot drift. Names imported here are re-exported to
+# tests/scripts/test_prepare_training_frame.py.
+from box_office.training_frame import (
     NO_IP_TIER,
-    PREPROCESSOR_INPUT_COLUMNS,
-    actors_to_list_literal,
     add_franchise_features,
     apply_quality_gate,
     check_frame_against_preprocessor,
@@ -69,8 +66,7 @@ from box_office.training_frame import (  # noqa: F401
 )
 
 DATASET = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/"
-    "tmdb_budget_wikipedia_5m_1980_2026.parquet"
+    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet"
 )
 OUTPUT_DIR = Path("data/generated/training")
 FRAME_PATH = OUTPUT_DIR / "train_frame_1980_2026.parquet"
@@ -105,10 +101,7 @@ def add_ip_franchise_features(frame: pd.DataFrame) -> pd.DataFrame:
     ip = pd.read_parquet(IP_CLASSIFICATION_PATH).drop_duplicates("tmdb_id")
     out = frame.copy()
     out["IP_TIER"] = (
-        out["TMDB_ID"]
-        .map(ip.set_index("tmdb_id")["ip_tier"])
-        .fillna(NO_IP_TIER)
-        .astype(float)
+        out["TMDB_ID"].map(ip.set_index("tmdb_id")["ip_tier"]).fillna(NO_IP_TIER).astype(float)
     )
     gate_pass = quality_gate_reasons(out) == ""
     return add_franchise_features(
@@ -142,22 +135,16 @@ def main() -> None:
     print(f"kept rows:   {len(kept)} -> {FRAME_PATH}")
     print(f"dropped:     {len(dropped)} -> {DROPPED_PATH}")
     print(f"source quality fixes: {len(source_quality)} -> {SOURCE_QUALITY_PATH}")
-    for reason, count in (
-        dropped["DROP_REASON"].str.split(";").explode().value_counts().items()
-    ):
+    for reason, count in dropped["DROP_REASON"].str.split(";").explode().value_counts().items():
         print(f"  {reason}: {count}")
-    print(
-        f"flagged (50x rule, kept after hand check): {len(flagged)} -> {FLAGGED_PATH}"
-    )
+    print(f"flagged (50x rule, kept after hand check): {len(flagged)} -> {FLAGGED_PATH}")
     print(
         f"null budgets kept as NaN: {int(kept['PRODUCTION_BUDGET'].isna().sum())} rows",
         file=sys.stderr,
     )
     tier_counts = kept["IP_TIER"].astype(int).value_counts().sort_index().to_dict()
     print(f"IP_TIER counts (kept rows): {tier_counts}")
-    print(
-        f"franchise follow-ups (kept rows): {int(kept['IS_FRANCHISE_FOLLOWUP'].sum())}"
-    )
+    print(f"franchise follow-ups (kept rows): {int(kept['IS_FRANCHISE_FOLLOWUP'].sum())}")
 
 
 if __name__ == "__main__":

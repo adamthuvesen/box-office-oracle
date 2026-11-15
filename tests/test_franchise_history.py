@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -12,19 +13,19 @@ from box_office.franchise_history import (
 )
 
 
-def _write_jsonl(path: Path, rows: list[dict]) -> Path:
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
     return path
 
 
-def _jsonl_row(tmdb_id: int, collection: dict | None) -> dict:
+def _jsonl_row(tmdb_id: int, collection: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "tmdb_id": tmdb_id,
         "payload": {"id": tmdb_id, "belongs_to_collection": collection},
     }
 
 
-def _write_refetch(path: Path, rows: list[dict]) -> Path:
+def _write_refetch(path: Path, rows: list[dict[str, Any]]) -> Path:
     frame = pd.DataFrame(rows, columns=["tmdb_id", "collection_id", "collection_name"])
     frame["collection_id"] = frame["collection_id"].astype("Int64")
     frame.to_parquet(path, index=False)

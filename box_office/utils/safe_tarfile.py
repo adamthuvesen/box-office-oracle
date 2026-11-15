@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 import tarfile
 from pathlib import Path
 
@@ -15,7 +14,4 @@ def extractall_data_filter(tar: tarfile.TarFile, path: str | Path) -> None:
     run on 3.12+ in production: Lambda inference image, CI).
     """
     path = Path(path)
-    if sys.version_info >= (3, 12):
-        tar.extractall(path, filter="data")
-    else:
-        tar.extractall(path)
+    tar.extractall(path, filter="data")

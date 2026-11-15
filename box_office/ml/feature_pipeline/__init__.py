@@ -1,6 +1,6 @@
 """Box-office feature engineering as a composed sklearn Pipeline."""
 
-from box_office.ml.feature_pipeline._helpers import _column
+from box_office.ml.feature_pipeline._helpers import last_column
 from box_office.ml.feature_pipeline.constants import (
     CORE_NUMERICAL_FEATURES,
     GENRE_VOCABULARY,
@@ -13,34 +13,34 @@ from box_office.ml.feature_pipeline.transformers.core import CoreNumericalTransf
 from box_office.ml.feature_pipeline.transformers.financial import FinancialTransformer
 from box_office.ml.feature_pipeline.transformers.genre import (
     GenreTransformer,
-    _map_super_genre,
-    _split_genre_field,
+    map_super_genre,
+    split_genre_field,
 )
 from box_office.ml.feature_pipeline.transformers.industry import IndustryTransformer
 from box_office.ml.feature_pipeline.transformers.select import (
+    DropPreEngineered,
     FeatureSelector,
-    _DropPreEngineered,
-    _SelectEngineered,
+    SelectEngineered,
 )
 from box_office.ml.feature_pipeline.transformers.temporal import TemporalTransformer
 
 __all__ = [
-    "build_feature_pipeline",
-    "CPI_BY_YEAR",
-    "CPI_ANCHOR_YEAR",
-    "RAW_INPUT_COLUMNS_TO_DROP",
     "CORE_NUMERICAL_FEATURES",
+    "CPI_ANCHOR_YEAR",
+    "CPI_BY_YEAR",
     "GENRE_VOCABULARY",
+    "RAW_INPUT_COLUMNS_TO_DROP",
     "SELECTED_FEATURES",
     "CoreNumericalTransformer",
-    "TemporalTransformer",
+    "DropPreEngineered",
+    "FeatureSelector",
+    "FinancialTransformer",
     "GenreTransformer",
     "IndustryTransformer",
-    "FinancialTransformer",
-    "FeatureSelector",
-    "_DropPreEngineered",
-    "_SelectEngineered",
-    "_map_super_genre",
-    "_split_genre_field",
-    "_column",
+    "SelectEngineered",
+    "TemporalTransformer",
+    "build_feature_pipeline",
+    "last_column",
+    "map_super_genre",
+    "split_genre_field",
 ]

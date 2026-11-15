@@ -1,0 +1,5 @@
+#!/bin/sh
+# SageMaker training entry point. Hyperparameters arrive in
+# /opt/ml/input/config/hyperparameters.json; model_training reads that file.
+set -eu
+exec python -m box_office.ml.model_training

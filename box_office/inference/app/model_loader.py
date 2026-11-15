@@ -6,7 +6,6 @@ and validation optimized for AWS Lambda environment.
 """
 
 import logging
-import os
 import pickle
 import tarfile
 import tempfile
@@ -23,12 +22,12 @@ from box_office.ml.artifacts import (
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.feature_schema import (
     CURRENT_FEATURE_SCHEMA_VERSION,
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
-from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
 from box_office.utils.aws_helpers import BOTO3_CONFIG, parse_s3_uri
 from box_office.utils.safe_tarfile import extractall_data_filter
 
@@ -78,19 +77,15 @@ class ModelLoader:
         self.max_stale_seconds = max_stale_seconds
 
         try:
-            self.s3_client = boto3.client(
-                "s3", region_name=aws_region, config=BOTO3_CONFIG
-            )
+            self.s3_client = boto3.client("s3", region_name=aws_region, config=BOTO3_CONFIG)
             self.sagemaker_client = boto3.client(
                 "sagemaker", region_name=aws_region, config=BOTO3_CONFIG
             )
 
-            self.model_registry = AWSModelRegistry(region_name=aws_region)
-
         except NoCredentialsError as e:
             logger.error(f"AWS credentials not configured: {e}")
             raise ModelLoadError(f"AWS credentials not configured: {e}") from e
-        except Exception as e:
+        except BotoCoreError as e:
             logger.exception("Failed to initialize AWS clients")
             raise ModelLoadError(f"Failed to initialize AWS clients: {e}") from e
 
@@ -100,6 +95,7 @@ class ModelLoader:
         self._current_model_info = None
         self._last_load_time = None
         self._extracted_artifacts_cache = {}
+        self._data_fingerprints: dict[str, DataFingerprint | None] = {}
 
         logger.info(f"ModelLoader initialized for group: {model_package_group_name}")
 
@@ -133,11 +129,8 @@ class ModelLoader:
             FeatureSchemaVersionMismatch,
         ):
             raise
-        except (ClientError, BotoCoreError, OSError, pickle.UnpicklingError) as e:
+        except (ClientError, BotoCoreError, OSError, KeyError, pickle.UnpicklingError) as e:
             logger.error(f"Failed to load model: {e}", exc_info=True)
-            raise ModelLoadError(f"Unexpected error loading model: {e}") from e
-        except Exception as e:
-            logger.exception("Unexpected error loading model")
             raise ModelLoadError(f"Unexpected error loading model: {e}") from e
 
     def get_current_model(self) -> tuple[Any, dict[str, Any]] | None:
@@ -196,22 +189,24 @@ class ModelLoader:
             self._current_model = None
             self._current_model_info = None
             self._last_load_time = None
-        raise ModelLoadError(
-            f"Model refresh failed and no fallback available: {reason}"
-        )
+        raise ModelLoadError(f"Model refresh failed and no fallback available: {reason}")
 
     def _get_latest_approved_model_info(self) -> dict[str, Any] | None:
         try:
-            return self.model_registry.get_latest_approved_model(
-                self.model_package_group_name
+            response = self.sagemaker_client.list_model_packages(
+                ModelPackageGroupName=self.model_package_group_name,
+                ModelApprovalStatus="Approved",
+                SortBy="CreationTime",
+                SortOrder="Descending",
+                MaxResults=1,
             )
+            summaries = response.get("ModelPackageSummaryList", [])
+            return cast("dict[str, Any]", summaries[0]) if summaries else None
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
+            error_code = e.response.get("Error", {}).get("Code")
             if error_code == "ValidationException":
-                logger.error(
-                    f"Model package group not found: {self.model_package_group_name}"
-                )
+                logger.error(f"Model package group not found: {self.model_package_group_name}")
                 return None
             logger.error(f"AWS API error getting model info: {e}")
             return None
@@ -231,8 +226,9 @@ class ModelLoader:
             if cached_model is not None:
                 return cached_model
 
-            package_details = self.sagemaker_client.describe_model_package(
-                ModelPackageName=model_package_arn
+            package_details = cast(
+                "dict[str, Any]",
+                self.sagemaker_client.describe_model_package(ModelPackageName=model_package_arn),
             )
             model_data_url = self._model_data_url(package_details)
 
@@ -240,9 +236,19 @@ class ModelLoader:
             bucket, key = parse_s3_uri(model_data_url)
 
             customer_meta = package_details.get("CustomerMetadataProperties", {}) or {}
-            expected_sha256 = self._validated_manifest_sha256(
-                model_package_arn, customer_meta
-            )
+            expected_sha256 = self._validated_manifest_sha256(model_package_arn, customer_meta)
+            fingerprint = DataFingerprint.from_registry_metadata(customer_meta)
+            self._data_fingerprints[model_package_arn] = fingerprint
+            if fingerprint is None:
+                logger.warning("Model package %s records no data fingerprint", model_package_arn)
+            else:
+                logger.info(
+                    "Model %s trained on %d rows through %s (data sha256 %s)",
+                    model_package_arn,
+                    fingerprint.rows,
+                    fingerprint.max_release_date,
+                    fingerprint.content_sha256[:16],
+                )
 
             temp_path = self._download_model_archive(bucket, key)
             try:
@@ -255,17 +261,15 @@ class ModelLoader:
                 self._extracted_artifacts_cache[model_package_arn] = extracted_paths
                 return model_obj
             finally:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
+                if Path(temp_path).exists():
+                    Path(temp_path).unlink()
 
-        except (ArtifactIntegrityError, FeatureSchemaVersionMismatch):
+        except ArtifactIntegrityError, FeatureSchemaVersionMismatch:
             raise
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
+            error_code = e.response.get("Error", {}).get("Code")
             if error_code == "NoSuchKey":
-                raise ModelLoadError(
-                    f"Model file not found in S3: {model_data_url}"
-                ) from e
+                raise ModelLoadError(f"Model file not found in S3: {model_data_url}") from e
             elif error_code == "NoSuchBucket":
                 raise ModelLoadError(f"S3 bucket not found: {bucket}") from e
             else:
@@ -280,6 +284,7 @@ class ModelLoader:
             logger.error(f"Error downloading model: {e}", exc_info=True)
             raise ModelLoadError(f"Failed to download model: {e}") from e
         except Exception as e:
+            # Artifact boundary: unpickling a cached model can raise any type.
             logger.exception("Unexpected error downloading model")
             raise ModelLoadError(f"Failed to download model: {e}") from e
 
@@ -348,8 +353,9 @@ class ModelLoader:
             logger.info(f"Downloaded model to: {temp_path}")
             return temp_path
         except Exception:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            # Remove the partial download, then re-raise; nothing is swallowed.
+            if Path(temp_path).exists():
+                Path(temp_path).unlink()
             raise
 
     def _extract_and_load_model_with_cache(
@@ -423,9 +429,7 @@ class ModelLoader:
                         break
 
             if not model_file.exists():
-                raise ModelLoadError(
-                    f"{MODEL_PKL} not found in extracted archive at {extract_dir}"
-                )
+                raise ModelLoadError(f"{MODEL_PKL} not found in extracted archive at {extract_dir}")
 
             logger.info(f"Loading model from: {model_file}")
             model_sha256 = compute_sha256(model_file)
@@ -435,9 +439,7 @@ class ModelLoader:
             scaler_file = extract_dir / FEATURE_SCALER_PKL
 
             if not preprocessor_file.exists():
-                raise ModelLoadError(
-                    f"{FEATURE_PREPROCESSOR_PKL} not found at {preprocessor_file}"
-                )
+                raise ModelLoadError(f"{FEATURE_PREPROCESSOR_PKL} not found at {preprocessor_file}")
             if not scaler_file.exists():
                 raise ModelLoadError(f"{FEATURE_SCALER_PKL} not found at {scaler_file}")
 
@@ -470,9 +472,6 @@ class ModelLoader:
         ) as e:
             logger.error(f"Error extracting/loading model: {e}", exc_info=True)
             raise ModelLoadError(f"Failed to extract/load model: {e}") from e
-        except Exception as e:
-            logger.exception("Unexpected error extracting/loading model")
-            raise ModelLoadError(f"Failed to extract/load model: {e}") from e
 
     def _validate_model(self, model_obj: Any, model_info: dict[str, Any]) -> None:
         try:
@@ -495,9 +494,7 @@ class ModelLoader:
             required_fields = ["ModelPackageArn", "ModelPackageStatus"]
             for field in required_fields:
                 if field not in model_info:
-                    raise ModelValidationError(
-                        f"Missing required field in model info: {field}"
-                    )
+                    raise ModelValidationError(f"Missing required field in model info: {field}")
 
             if model_info.get("ModelPackageStatus") != "Completed":
                 raise ModelValidationError(
@@ -518,9 +515,6 @@ class ModelLoader:
             raise
         except (TypeError, AttributeError, ValueError, KeyError) as e:
             logger.error(f"Model validation failed: {e}")
-            raise ModelValidationError(f"Unexpected validation error: {e}") from e
-        except Exception as e:
-            logger.exception("Unexpected model validation failure")
             raise ModelValidationError(f"Unexpected validation error: {e}") from e
 
     def _validate_xgboost_model(self, model_obj: Any) -> None:
@@ -547,7 +541,7 @@ class ModelLoader:
             check_is_fitted(model_obj)
         except NotFittedError as e:
             raise ModelValidationError(f"Model is not fitted: {e}") from e
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             # check_is_fitted can't introspect every custom estimator; absence
             # of a verdict is not a failure, so don't reject on that alone.
             logger.debug("check_is_fitted could not introspect the model; skipping")
@@ -577,12 +571,16 @@ class ModelLoader:
     def get_latest_approved_model_info(self) -> dict[str, Any] | None:
         return self._get_latest_approved_model_info()
 
+    def get_data_fingerprint(self) -> DataFingerprint | None:
+        """The current model's training-data fingerprint, if its package records one."""
+        if self._current_model_info is None:
+            return None
+        return self._data_fingerprints.get(self._current_model_info["ModelPackageArn"])
+
     def get_model_artifacts_paths(self) -> dict[str, str]:
         """Get paths to model artifacts, reusing cached extracted artifacts."""
-        if self._current_model is None:
-            raise ModelLoadError(
-                "No model loaded. Call load_latest_approved_model first."
-            )
+        if self._current_model is None or self._current_model_info is None:
+            raise ModelLoadError("No model loaded. Call load_latest_approved_model first.")
 
         try:
             model_package_arn = self._current_model_info["ModelPackageArn"]
@@ -596,17 +594,8 @@ class ModelLoader:
                     "scaler": cached_paths["scaler"],
                 }
 
-            raise ModelLoadError(
-                f"Model artifacts not found in cache for {model_package_arn}"
-            )
+            raise ModelLoadError(f"Model artifacts not found in cache for {model_package_arn}")
 
         except KeyError as e:
             logger.error(f"Failed to get model artifacts paths: {e}")
-            raise ModelLoadError(
-                f"Failed to get model artifacts paths: missing {e}"
-            ) from e
-        except ModelLoadError:
-            raise
-        except Exception as e:
-            logger.exception("Unexpected error resolving model artifact paths")
-            raise ModelLoadError(f"Failed to get model artifacts paths: {e}") from e
+            raise ModelLoadError(f"Failed to get model artifacts paths: missing {e}") from e

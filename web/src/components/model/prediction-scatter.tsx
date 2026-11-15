@@ -14,10 +14,7 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import { dollarsCompact, percent } from "@/lib/format";
-import {
-  ChartTooltip,
-  numericTick,
-} from "@/components/charts/chart-tooltip";
+import { ChartTooltip, numericTick } from "@/components/charts/chart-tooltip";
 
 /** Trimmed prediction row — just what the scatter needs over the wire. */
 export interface BlindGuess {
@@ -61,10 +58,10 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
     const bottom = Math.min(...pts.map((p) => Math.min(p.x, p.y)), 6.5);
     return {
       points: pts,
-      domain: [
-        Math.min(6, Math.floor(bottom * 10) / 10),
-        Math.ceil((top + 0.1) * 10) / 10,
-      ] as [number, number],
+      domain: [Math.min(6, Math.floor(bottom * 10) / 10), Math.ceil((top + 0.1) * 10) / 10] as [
+        number,
+        number,
+      ],
     };
   }, [guesses]);
 
@@ -116,10 +113,7 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
                 fontSize: 11,
               }}
             />
-            <Tooltip
-              content={GuessTip}
-              cursor={{ stroke: "var(--color-hairline)" }}
-            />
+            <Tooltip content={GuessTip} cursor={{ stroke: "var(--color-hairline)" }} />
             <Scatter
               name="Called it"
               data={within}
@@ -147,31 +141,19 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
       <figcaption>
         <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-dim">
           <li className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="h-2 w-2 rounded-full bg-predicted opacity-70"
-            />
+            <span aria-hidden className="h-2 w-2 rounded-full bg-predicted opacity-70" />
             Called it — within ±50% of actual ({within.length})
           </li>
           <li className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="h-2 w-2 rounded-full bg-predicted-deep"
-            />
+            <span aria-hidden className="h-2 w-2 rounded-full bg-predicted-deep" />
             Overshot — more than 1.5× actual ({over.length})
           </li>
           <li className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="h-2 w-2 rounded-full bg-under opacity-60"
-            />
+            <span aria-hidden className="h-2 w-2 rounded-full bg-under opacity-60" />
             Undershot — less than half of actual ({under.length})
           </li>
           <li className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="inline-block w-4 border-t border-dashed border-dim"
-            />
+            <span aria-hidden className="inline-block w-4 border-t border-dashed border-dim" />
             Perfect prophecy: guess = reality
           </li>
         </ul>
@@ -183,9 +165,7 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
           setTableOpen(e.currentTarget.open)
         }
       >
-        <summary className="cursor-pointer text-xs text-dim hover:text-ink">
-          View as table
-        </summary>
+        <summary className="cursor-pointer text-xs text-dim hover:text-ink">View as table</summary>
         {tableOpen && (
           <div className="mt-3 max-h-96 overflow-auto rounded border border-hairline">
             <table className="w-full min-w-[36rem] text-left text-sm">
@@ -194,9 +174,7 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
                   <th className="px-3 py-2 font-normal">Title</th>
                   <th className="px-3 py-2 font-normal">Year</th>
                   <th className="px-3 py-2 text-right font-normal">Actual</th>
-                  <th className="px-3 py-2 text-right font-normal">
-                    Predicted
-                  </th>
+                  <th className="px-3 py-2 text-right font-normal">Predicted</th>
                   <th className="px-3 py-2 text-right font-normal">APE</th>
                 </tr>
               </thead>
@@ -204,9 +182,7 @@ export function PredictionScatter({ guesses }: { guesses: BlindGuess[] }) {
                 {points.map((p) => (
                   <tr key={p.tmdb_id} className="border-t border-hairline">
                     <td className="px-3 py-1.5 text-ink">{p.title}</td>
-                    <td className="px-3 py-1.5 font-mono tabular text-dim">
-                      {p.release_year}
-                    </td>
+                    <td className="px-3 py-1.5 font-mono tabular text-dim">{p.release_year}</td>
                     <td className="px-3 py-1.5 text-right font-mono tabular text-actual">
                       {dollarsCompact(p.y_true)}
                     </td>

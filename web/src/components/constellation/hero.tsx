@@ -13,12 +13,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useReducedMotion } from "motion/react";
-import {
-  StarGrid,
-  segment,
-  type Star,
-  type StarField,
-} from "@/lib/constellation";
+import { StarGrid, segment, type Star, type StarField } from "@/lib/constellation";
 import {
   ConstellationRenderer,
   webglSupported,
@@ -101,8 +96,7 @@ const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
  * that double-ease front-loads everything into the first fraction and leaves a
  * dead tail. A linear ramp keeps the movement smooth from rest point to rest point.
  */
-const ramp = (p: number, a: number, b: number) =>
-  Math.max(0, Math.min(1, (p - a) / (b - a)));
+const ramp = (p: number, a: number, b: number) => Math.max(0, Math.min(1, (p - a) / (b - a)));
 
 function ScrollNarrative({ field, totalGross }: HeroProps) {
   const router = useRouter();
@@ -133,8 +127,7 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
 
   // The gap between what the movie made and what the model guessed — the payload
   // of the beam scene.
-  const featuredMiss =
-    featured.predicted != null ? featured.gross - featured.predicted : 0;
+  const featuredMiss = featured.predicted != null ? featured.gross - featured.predicted : 0;
   const missLabel =
     featuredMiss >= 0
       ? `undershot by ${dollarsCompact(featuredMiss)}`
@@ -161,104 +154,97 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
     if (!r) return;
 
     const reveal = Math.max(animRef.current.intro, segment(p, 0.0, 0.16));
-      // Each band opens right at the rest point it departs and closes at the one
-      // it arrives — motion begins within a frame of the scroll and spans the
-      // whole transition (linear ramp, so no dead lead-in and no dead tail).
-      const zoomIn = ramp(p, 0.04, 0.32);
-      const zoomOut = ramp(p, 0.5, 0.68);
-      const morph = ramp(p, 0.52, 0.72) - ramp(p, 0.76, 0.96);
-      const dim = morph;
-      const zoom = zoomIn * (1 - zoomOut);
+    // Each band opens right at the rest point it departs and closes at the one
+    // it arrives — motion begins within a frame of the scroll and spans the
+    // whole transition (linear ramp, so no dead lead-in and no dead tail).
+    const zoomIn = ramp(p, 0.04, 0.32);
+    const zoomOut = ramp(p, 0.5, 0.68);
+    const morph = ramp(p, 0.52, 0.72) - ramp(p, 0.76, 0.96);
+    const dim = morph;
+    const zoom = zoomIn * (1 - zoomOut);
 
-      const scene: SceneState = {
-        reveal,
-        morph,
-        dimUnpredicted: dim,
-        scale: 1 + zoom * 2.2,
-        centerX: featured.fieldX * zoom * 0.92,
-        centerY: featured.fieldY * zoom * 0.92,
-        alpha: 1,
-      };
-      r.scene = scene;
+    const scene: SceneState = {
+      reveal,
+      morph,
+      dimUnpredicted: dim,
+      scale: 1 + zoom * 2.2,
+      centerX: featured.fieldX * zoom * 0.92,
+      centerY: featured.fieldY * zoom * 0.92,
+      alpha: 1,
+    };
+    r.scene = scene;
 
-      // Featured-star callout (scene 1 zoom) and prediction beam (scene 2):
-      // positioned imperatively from projected coords — no re-renders. The
-      // callout clears before the beam's labels draw in — both anchor to the
-      // same star, so they must not share the frame.
-      const callout = calloutRef.current;
-      const beam = beamRef.current;
-      const calloutAlpha =
-        segment(p, 0.22, 0.3) - segment(p, 0.35, 0.41);
-      if (callout) {
-        const pt = r.project(featured.fieldX, featured.fieldY);
-        callout.style.opacity = String(calloutAlpha);
-        callout.style.transform = `translate(${pt.x + 18}px, ${pt.y - 12}px)`;
-      }
-      if (beam && featured.predictedFieldY != null) {
-        const beamAlpha = segment(p, 0.35, 0.42) - segment(p, 0.5, 0.58);
-        const grow = ramp(p, 0.35, 0.48);
-        beam.style.opacity = String(beamAlpha);
-        const actualLabel = actualLabelRef.current;
-        const predLabel = predLabelRef.current;
-        if (beamAlpha > 0) {
-          const a = r.project(featured.fieldX, featured.fieldY);
-          const b = r.project(featured.fieldX, featured.predictedFieldY);
-          // Projector origin, off the left edge — the beam fans open from it.
-          const origin = r.project(-1.5, (featured.fieldY + featured.predictedFieldY) / 2);
-          const ax = origin.x + (a.x - origin.x) * grow;
-          const ay = origin.y + (a.y - origin.y) * grow;
-          const bx = origin.x + (b.x - origin.x) * grow;
-          const by = origin.y + (b.y - origin.y) * grow;
-          const poly = beam.querySelector("polygon");
-          const mouth = beam.querySelector<SVGLineElement>("line.beam-mouth");
-          const dotA = beam.querySelector<SVGCircleElement>("circle.beam-actual-dot");
-          const dotB = beam.querySelector<SVGCircleElement>("circle.beam-pred-dot");
-          poly?.setAttribute(
-            "points",
-            `${origin.x},${origin.y} ${ax},${ay} ${bx},${by}`,
-          );
-          // The interval mouth — the model's spread between the two outcomes.
-          if (mouth) {
-            mouth.setAttribute("x1", String(ax));
-            mouth.setAttribute("y1", String(ay));
-            mouth.setAttribute("x2", String(bx));
-            mouth.setAttribute("y2", String(by));
-            mouth.style.opacity = String(grow);
-          }
-          dotA?.setAttribute("cx", String(ax));
-          dotA?.setAttribute("cy", String(ay));
-          dotB?.setAttribute("cx", String(bx));
-          dotB?.setAttribute("cy", String(by));
-          if (actualLabel) {
-            actualLabel.style.opacity = String(grow);
-            actualLabel.style.transform = `translate(${a.x + 22}px, ${a.y - 34}px)`;
-          }
-          if (predLabel) {
-            predLabel.style.opacity = String(grow);
-            predLabel.style.transform = `translate(${b.x + 22}px, ${b.y - 14}px)`;
-          }
-        } else {
-          if (actualLabel) actualLabel.style.opacity = "0";
-          if (predLabel) predLabel.style.opacity = "0";
+    // Featured-star callout (scene 1 zoom) and prediction beam (scene 2):
+    // positioned imperatively from projected coords — no re-renders. The
+    // callout clears before the beam's labels draw in — both anchor to the
+    // same star, so they must not share the frame.
+    const callout = calloutRef.current;
+    const beam = beamRef.current;
+    const calloutAlpha = segment(p, 0.22, 0.3) - segment(p, 0.35, 0.41);
+    if (callout) {
+      const pt = r.project(featured.fieldX, featured.fieldY);
+      callout.style.opacity = String(calloutAlpha);
+      callout.style.transform = `translate(${pt.x + 18}px, ${pt.y - 12}px)`;
+    }
+    if (beam && featured.predictedFieldY != null) {
+      const beamAlpha = segment(p, 0.35, 0.42) - segment(p, 0.5, 0.58);
+      const grow = ramp(p, 0.35, 0.48);
+      beam.style.opacity = String(beamAlpha);
+      const actualLabel = actualLabelRef.current;
+      const predLabel = predLabelRef.current;
+      if (beamAlpha > 0) {
+        const a = r.project(featured.fieldX, featured.fieldY);
+        const b = r.project(featured.fieldX, featured.predictedFieldY);
+        // Projector origin, off the left edge — the beam fans open from it.
+        const origin = r.project(-1.5, (featured.fieldY + featured.predictedFieldY) / 2);
+        const ax = origin.x + (a.x - origin.x) * grow;
+        const ay = origin.y + (a.y - origin.y) * grow;
+        const bx = origin.x + (b.x - origin.x) * grow;
+        const by = origin.y + (b.y - origin.y) * grow;
+        const poly = beam.querySelector("polygon");
+        const mouth = beam.querySelector<SVGLineElement>("line.beam-mouth");
+        const dotA = beam.querySelector<SVGCircleElement>("circle.beam-actual-dot");
+        const dotB = beam.querySelector<SVGCircleElement>("circle.beam-pred-dot");
+        poly?.setAttribute("points", `${origin.x},${origin.y} ${ax},${ay} ${bx},${by}`);
+        // The interval mouth — the model's spread between the two outcomes.
+        if (mouth) {
+          mouth.setAttribute("x1", String(ax));
+          mouth.setAttribute("y1", String(ay));
+          mouth.setAttribute("x2", String(bx));
+          mouth.setAttribute("y2", String(by));
+          mouth.style.opacity = String(grow);
         }
+        dotA?.setAttribute("cx", String(ax));
+        dotA?.setAttribute("cy", String(ay));
+        dotB?.setAttribute("cx", String(bx));
+        dotB?.setAttribute("cy", String(by));
+        if (actualLabel) {
+          actualLabel.style.opacity = String(grow);
+          actualLabel.style.transform = `translate(${a.x + 22}px, ${a.y - 34}px)`;
+        }
+        if (predLabel) {
+          predLabel.style.opacity = String(grow);
+          predLabel.style.transform = `translate(${b.x + 22}px, ${b.y - 14}px)`;
+        }
+      } else {
+        if (actualLabel) actualLabel.style.opacity = "0";
+        if (predLabel) predLabel.style.opacity = "0";
       }
+    }
 
-      const setOpacity = (el: HTMLElement | null, v: number) => {
-        if (el) el.style.opacity = String(v);
-      };
-      setOpacity(cueRef.current, fade(p, [0, 0.04], [1, 0]));
-      setOpacity(capARef.current, fade(p, [0, 0.02, 0.12], [1, 1, 0]));
-      setOpacity(capBRef.current, fade(p, [0.22, 0.3, 0.5, 0.58], [0, 1, 1, 0]));
-      setOpacity(capCRef.current, fade(p, [0.6, 0.68, 0.78, 0.86], [0, 1, 1, 0]));
-      setOpacity(capDRef.current, fade(p, [0.88, 0.96], [0, 1]));
-      setOpacity(
-        axesRef.current,
-        fade(p, [0, 0.1, 0.48, 0.62, 0.76, 0.92], [0, 0.7, 0.7, 0, 0, 0.7]),
-      );
-      setOpacity(
-        yearAxisRef.current,
-        fade(p, [0.56, 0.66, 0.8, 0.9], [0, 0.8, 0.8, 0]),
-      );
+    const setOpacity = (el: HTMLElement | null, v: number) => {
+      if (el) el.style.opacity = String(v);
+    };
+    setOpacity(cueRef.current, fade(p, [0, 0.04], [1, 0]));
+    setOpacity(capARef.current, fade(p, [0, 0.02, 0.12], [1, 1, 0]));
+    setOpacity(capBRef.current, fade(p, [0.22, 0.3, 0.5, 0.58], [0, 1, 1, 0]));
+    setOpacity(capCRef.current, fade(p, [0.6, 0.68, 0.78, 0.86], [0, 1, 1, 0]));
+    setOpacity(capDRef.current, fade(p, [0.88, 0.96], [0, 1]));
+    setOpacity(
+      axesRef.current,
+      fade(p, [0, 0.1, 0.48, 0.62, 0.76, 0.92], [0, 0.7, 0.7, 0, 0, 0.7]),
+    );
+    setOpacity(yearAxisRef.current, fade(p, [0.56, 0.66, 0.8, 0.9], [0, 0.8, 0.8, 0]));
   });
 
   useEffect(() => {
@@ -401,9 +387,7 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
       const idx = grid.nearest(x, y);
       setHovered(idx >= 0 ? field.stars[idx] : null);
       if (idx >= 0) {
-        placeCard(
-          r.project(field.stars[idx].fieldX, field.stars[idx].fieldY),
-        );
+        placeCard(r.project(field.stars[idx].fieldX, field.stars[idx].fieldY));
       }
     },
     [free, grid, field.stars, placeCard],
@@ -441,17 +425,12 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
       const dir = dirs[e.key];
       if (!dir) return;
       e.preventDefault();
-      const next =
-        selected < 0
-          ? field.featuredIndex
-          : grid.neighbor(selected, dir[0], dir[1]);
+      const next = selected < 0 ? field.featuredIndex : grid.neighbor(selected, dir[0], dir[1]);
       if (next >= 0) {
         setSelected(next);
         const r = rendererRef.current;
         if (r) {
-          placeCard(
-            r.project(field.stars[next].fieldX, field.stars[next].fieldY),
-          );
+          placeCard(r.project(field.stars[next].fieldX, field.stars[next].fieldY));
           setHovered(field.stars[next]);
         }
       }
@@ -479,11 +458,7 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
         <div ref={canvasHostRef} className="absolute inset-0" />
 
         {/* Field axes */}
-        <div
-          ref={axesRef}
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-0"
-        >
+        <div ref={axesRef} aria-hidden className="pointer-events-none absolute inset-0 opacity-0">
           <span className="absolute bottom-6 right-8 font-mono text-[11px] tracking-widest text-dim">
             BUDGET →
           </span>
@@ -513,8 +488,7 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
             <p className="text-sm font-medium text-ink">{featured.title}</p>
             <p className="font-mono tabular text-xs text-dim">
               {featured.releaseYear} · budget{" "}
-              <span className="text-ink">{dollarsCompact(featured.budget)}</span>{" "}
-              · grossed{" "}
+              <span className="text-ink">{dollarsCompact(featured.budget)}</span> · grossed{" "}
               <span className="text-actual">{dollarsCompact(featured.gross)}</span>
             </p>
           </div>
@@ -560,7 +534,12 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
             fill="oklch(0.75 0.13 230)"
             filter="url(#beam-glow)"
           >
-            <animate attributeName="opacity" values="1;0.55;1" dur="2.4s" repeatCount="indefinite" />
+            <animate
+              attributeName="opacity"
+              values="1;0.55;1"
+              dur="2.4s"
+              repeatCount="indefinite"
+            />
           </circle>
         </svg>
 
@@ -570,9 +549,7 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
           aria-hidden
           className="pointer-events-none absolute left-0 top-0 opacity-0"
         >
-          <p className="title-caps text-[10px] tracking-[0.2em] text-actual/70">
-            It actually made
-          </p>
+          <p className="title-caps text-[10px] tracking-[0.2em] text-actual/70">It actually made</p>
           <p className="mt-0.5 font-mono tabular text-3xl leading-none font-medium text-actual">
             {dollarsCompact(featured.gross)}
           </p>
@@ -598,27 +575,28 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
           </div>
         </div>
 
-        <div ref={capBRef} className="pointer-events-none absolute inset-x-0 bottom-[14svh] px-6 opacity-0">
+        <div
+          ref={capBRef}
+          className="pointer-events-none absolute inset-x-0 bottom-[14svh] px-6 opacity-0"
+        >
           <div className="mx-auto max-w-6xl">
-          <p className="max-w-md text-lg leading-relaxed text-dim">
-            Every point of light is a movie. This one burned{" "}
-            <span className="font-mono tabular text-ink">
-              {dollarsCompact(featured.budget)}
-            </span>{" "}
-            of budget —{" "}
-            <span className="text-actual">warm light is what really happened.</span>
-          </p>
+            <p className="max-w-md text-lg leading-relaxed text-dim">
+              Every point of light is a movie. This one burned{" "}
+              <span className="font-mono tabular text-ink">{dollarsCompact(featured.budget)}</span>{" "}
+              of budget — <span className="text-actual">warm light is what really happened.</span>
+            </p>
           </div>
         </div>
 
-        <div ref={capCRef} className="pointer-events-none absolute inset-x-0 bottom-[16svh] px-6 opacity-0">
+        <div
+          ref={capCRef}
+          className="pointer-events-none absolute inset-x-0 bottom-[16svh] px-6 opacity-0"
+        >
           <div className="mx-auto max-w-6xl">
             <p className="max-w-md text-lg leading-relaxed text-dim">
-              Since {field.minYear}, the model has called every release blind —
-              trained only on the past.{" "}
-              <span className="text-predicted">Cool light is the machine.</span>{" "}
-              It beats the naive baseline every year but one: 2020, when COVID
-              broke everyone&apos;s model.
+              Since {field.minYear}, the model has called every release blind — trained only on the
+              past. <span className="text-predicted">Cool light is the machine.</span> It beats the
+              naive baseline every year but one: 2020, when COVID broke everyone&apos;s model.
             </p>
           </div>
         </div>
@@ -746,17 +724,12 @@ function ScrollNarrative({ field, totalGross }: HeroProps) {
 function Headline({ field, totalGross }: HeroProps) {
   return (
     <div>
-      <p className="font-mono text-sm text-predicted">
-        XGBoost · Snowflake · SageMaker · Lambda
-      </p>
+      <p className="font-mono text-sm text-predicted">XGBoost · Snowflake · SageMaker · Lambda</p>
       <h1 className="title-caps mt-4 max-w-3xl text-4xl leading-tight text-ink sm:text-6xl">
         {field.stars.length.toLocaleString("en-US")} movies.{" "}
-        <span className="text-actual">{dollarsCompact(totalGross)}</span> at
-        the box office.
+        <span className="text-actual">{dollarsCompact(totalGross)}</span> at the box office.
       </h1>
-      <p className="mt-4 max-w-xl text-lg text-dim">
-        One model with opinions about all of it.
-      </p>
+      <p className="mt-4 max-w-xl text-lg text-dim">One model with opinions about all of it.</p>
     </div>
   );
 }
@@ -784,7 +757,7 @@ function StaticConstellation({ field, totalGross }: HeroProps) {
           <circle
             key={s.tmdbId}
             cx={((s.fieldX + 1) / 2) * 1000}
-            cy={((1 - (s.fieldY + 1) / 2) * 640)}
+            cy={(1 - (s.fieldY + 1) / 2) * 640}
             r={s.size * 0.9}
             fill="oklch(0.78 0.14 75)"
             opacity={0.15 + s.intensity * 0.5}

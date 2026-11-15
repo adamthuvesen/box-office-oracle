@@ -5,7 +5,6 @@ Tests model loading, caching, validation, and registry integration
 functionality with comprehensive mocking for AWS services.
 """
 
-import os
 import pickle
 import tarfile
 import tempfile
@@ -14,7 +13,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError, NoCredentialsError, NoRegionError
 from sklearn.base import BaseEstimator
 
 # Import the module under test
@@ -71,16 +70,6 @@ class TestModelLoader:
 
             mock_client.side_effect = client_factory
             yield mock_s3, mock_sagemaker
-
-    @pytest.fixture
-    def mock_model_registry(self):
-        """Mock AWSModelRegistry for testing."""
-        with patch(
-            "box_office.inference.app.model_loader.AWSModelRegistry"
-        ) as mock_registry_class:
-            mock_registry = Mock()
-            mock_registry_class.return_value = mock_registry
-            yield mock_registry
 
     @pytest.fixture
     def temp_cache_dir(self):
@@ -158,45 +147,45 @@ class TestModelLoader:
 
     def test_init_no_credentials(self):
         """Test initialization failure with no AWS credentials."""
-        with patch("boto3.client", side_effect=NoCredentialsError()):
-            with pytest.raises(ModelLoadError, match="AWS credentials not configured"):
-                ModelLoader("test-group")
+        with (
+            patch("boto3.client", side_effect=NoCredentialsError()),
+            pytest.raises(ModelLoadError, match="AWS credentials not configured"),
+        ):
+            ModelLoader("test-group")
 
     def test_init_aws_error(self):
         """Test initialization failure with AWS error."""
-        with patch("boto3.client", side_effect=Exception("AWS connection failed")):
-            with pytest.raises(
-                ModelLoadError, match="Failed to initialize AWS clients"
-            ):
-                ModelLoader("test-group")
+        with (
+            patch("boto3.client", side_effect=NoRegionError()),
+            pytest.raises(ModelLoadError, match="Failed to initialize AWS clients"),
+        ):
+            ModelLoader("test-group")
 
-    def test_get_latest_approved_model_info_with_registry(
-        self, mock_aws_clients, mock_model_registry, temp_cache_dir, sample_model_info
+    def test_get_latest_approved_model_info_lists_approved_packages(
+        self, mock_aws_clients, temp_cache_dir, sample_model_info
     ):
-        """Test getting latest approved model info using model registry."""
-        mock_s3, mock_sagemaker = mock_aws_clients
-        mock_model_registry.get_latest_approved_model.return_value = sample_model_info
+        """The newest Approved package in the group is returned."""
+        _mock_s3, mock_sagemaker = mock_aws_clients
+        mock_sagemaker.list_model_packages.return_value = {
+            "ModelPackageSummaryList": [sample_model_info]
+        }
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         result = loader._get_latest_approved_model_info()
 
         assert result == sample_model_info
-        mock_model_registry.get_latest_approved_model.assert_called_once_with(
-            "test-group"
+        mock_sagemaker.list_model_packages.assert_called_once_with(
+            ModelPackageGroupName="test-group",
+            ModelApprovalStatus="Approved",
+            SortBy="CreationTime",
+            SortOrder="Descending",
+            MaxResults=1,
         )
 
-    def test_model_loader_requires_registry(self, mock_aws_clients, temp_cache_dir):
-        """ModelLoader always uses AWSModelRegistry (no list_model_packages fallback)."""
-        mock_s3, mock_sagemaker = mock_aws_clients
-        loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
-        assert loader.model_registry is not None
-
-    def test_get_latest_approved_model_info_not_found(
-        self, mock_aws_clients, mock_model_registry, temp_cache_dir
-    ):
+    def test_get_latest_approved_model_info_not_found(self, mock_aws_clients, temp_cache_dir):
         """Test getting model info when no approved model exists."""
-        mock_s3, mock_sagemaker = mock_aws_clients
-        mock_model_registry.get_latest_approved_model.return_value = None
+        _mock_s3, mock_sagemaker = mock_aws_clients
+        mock_sagemaker.list_model_packages.return_value = {"ModelPackageSummaryList": []}
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         result = loader._get_latest_approved_model_info()
@@ -204,13 +193,12 @@ class TestModelLoader:
         assert result is None
 
     def test_get_latest_approved_model_info_validation_error(
-        self, mock_aws_clients, mock_model_registry, temp_cache_dir
+        self, mock_aws_clients, temp_cache_dir
     ):
         """Test handling of validation error when model group doesn't exist."""
-        mock_s3, mock_sagemaker = mock_aws_clients
-        error_response = {"Error": {"Code": "ValidationException"}}
-        mock_model_registry.get_latest_approved_model.side_effect = ClientError(
-            error_response, "ListModelPackages"
+        _mock_s3, mock_sagemaker = mock_aws_clients
+        mock_sagemaker.list_model_packages.side_effect = ClientError(
+            {"Error": {"Code": "ValidationException"}}, "ListModelPackages"
         )
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
@@ -228,13 +216,11 @@ class TestModelLoader:
 
         with tarfile.open(tar_path, "w:gz") as tar:
             for name in ("model.pkl", "feature_preprocessor.pkl", "feature_scaler.pkl"):
-                with tempfile.NamedTemporaryFile(
-                    suffix=".pkl", delete=False
-                ) as temp_pkl:
+                with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as temp_pkl:
                     pickle.dump(sample_xgboost_model, temp_pkl)
                     temp_pkl_path = temp_pkl.name
                 tar.add(temp_pkl_path, arcname=name)
-                os.unlink(temp_pkl_path)
+                Path(temp_pkl_path).unlink()
 
         digest = hashlib.sha256(Path(tar_path).read_bytes()).hexdigest()
         return tar_path, digest
@@ -260,6 +246,9 @@ class TestModelLoader:
                 "sha256": digest,
                 "size_bytes": str(Path(tar_path).stat().st_size),
                 "feature_schema_version": "9",
+                "data_rows": "6077",
+                "data_max_release_date": "2025-12-31",
+                "data_sha256": "ab" * 32,
             }
             mock_sagemaker.describe_model_package.return_value = details
 
@@ -272,13 +261,17 @@ class TestModelLoader:
 
             loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
             result = loader._download_and_load_model(sample_model_info)
+            loader._current_model_info = sample_model_info
 
             assert result is not None
             assert hasattr(result, "predict")
+            fingerprint = loader.get_data_fingerprint()
+            assert fingerprint is not None
+            assert (fingerprint.rows, fingerprint.max_release_date) == (6077, "2025-12-31")
             mock_sagemaker.describe_model_package.assert_called_once()
             mock_s3.download_file.assert_called_once()
         finally:
-            os.unlink(tar_path)
+            Path(tar_path).unlink()
 
     def test_download_and_load_model_sha256_mismatch_blocks_load(
         self,
@@ -318,7 +311,7 @@ class TestModelLoader:
             with pytest.raises(ArtifactIntegrityError):
                 loader._download_and_load_model(sample_model_info)
         finally:
-            os.unlink(tar_path)
+            Path(tar_path).unlink()
 
     def test_download_and_load_model_missing_manifest_blocks_load(
         self,
@@ -345,7 +338,7 @@ class TestModelLoader:
         self, mock_aws_clients, temp_cache_dir, sample_model_info
     ):
         """Test model loading failure when no containers in specification."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, mock_sagemaker = mock_aws_clients
         mock_sagemaker.describe_model_package.return_value = {
             "ModelPackageArn": sample_model_info["ModelPackageArn"],
             "InferenceSpecification": {"Containers": []},
@@ -360,7 +353,7 @@ class TestModelLoader:
         self, mock_aws_clients, temp_cache_dir, sample_model_info
     ):
         """Test model loading failure when no model data URL."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, mock_sagemaker = mock_aws_clients
         mock_sagemaker.describe_model_package.return_value = {
             "ModelPackageArn": sample_model_info["ModelPackageArn"],
             "InferenceSpecification": {
@@ -377,7 +370,7 @@ class TestModelLoader:
         self, mock_aws_clients, temp_cache_dir, sample_model_info
     ):
         """Test model loading failure with invalid S3 URL."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, mock_sagemaker = mock_aws_clients
         mock_sagemaker.describe_model_package.return_value = {
             "ModelPackageArn": sample_model_info["ModelPackageArn"],
             "InferenceSpecification": {
@@ -404,12 +397,11 @@ class TestModelLoader:
     ):
         """Test model loading failure with S3 download error."""
         mock_s3, mock_sagemaker = mock_aws_clients
-        mock_sagemaker.describe_model_package.return_value = (
-            sample_model_package_details
-        )
+        mock_sagemaker.describe_model_package.return_value = sample_model_package_details
 
-        error_response = {"Error": {"Code": "NoSuchKey"}}
-        mock_s3.download_file.side_effect = ClientError(error_response, "GetObject")
+        mock_s3.download_file.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey"}}, "GetObject"
+        )
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 
@@ -420,16 +412,14 @@ class TestModelLoader:
         self, mock_aws_clients, temp_cache_dir, sample_model_info, sample_xgboost_model
     ):
         """Test successful model validation."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._validate_model(sample_xgboost_model, sample_model_info)
 
-    def test_validate_model_none_object(
-        self, mock_aws_clients, temp_cache_dir, sample_model_info
-    ):
+    def test_validate_model_none_object(self, mock_aws_clients, temp_cache_dir, sample_model_info):
         """Test model validation failure with None model object."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 
@@ -440,7 +430,7 @@ class TestModelLoader:
         self, mock_aws_clients, temp_cache_dir, sample_xgboost_model
     ):
         """Test model validation failure with missing required fields."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         invalid_info = {"ModelPackageArn": "test-arn"}
@@ -452,21 +442,17 @@ class TestModelLoader:
         self, mock_aws_clients, temp_cache_dir, sample_xgboost_model, sample_model_info
     ):
         """Test model validation failure with wrong package status."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         sample_model_info["ModelPackageStatus"] = "Failed"
 
-        with pytest.raises(
-            ModelValidationError, match="Model package status is not 'Completed'"
-        ):
+        with pytest.raises(ModelValidationError, match="Model package status is not 'Completed'"):
             loader._validate_model(sample_xgboost_model, sample_model_info)
 
-    def test_validate_xgboost_model(
-        self, mock_aws_clients, temp_cache_dir, sample_xgboost_model
-    ):
+    def test_validate_xgboost_model(self, mock_aws_clients, temp_cache_dir, sample_xgboost_model):
         """Test XGBoost-specific model validation."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._validate_xgboost_model(sample_xgboost_model)
@@ -475,16 +461,14 @@ class TestModelLoader:
 
     def test_validate_sklearn_model(self, mock_aws_clients, temp_cache_dir):
         """A fitted sklearn-compatible model passes validation."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         sklearn_model = MockSklearnModel()
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._validate_sklearn_model(sklearn_model)
 
-    def test_validate_sklearn_model_rejects_unfitted(
-        self, mock_aws_clients, temp_cache_dir
-    ):
+    def test_validate_sklearn_model_rejects_unfitted(self, mock_aws_clients, temp_cache_dir):
         """An unfitted estimator is rejected at load, not at first request."""
         from sklearn.linear_model import LinearRegression
 
@@ -492,18 +476,14 @@ class TestModelLoader:
         with pytest.raises(ModelValidationError, match="not fitted"):
             loader._validate_sklearn_model(LinearRegression())
 
-    def test_validate_model_rejects_object_without_predict(
-        self, mock_aws_clients, temp_cache_dir
-    ):
+    def test_validate_model_rejects_object_without_predict(self, mock_aws_clients, temp_cache_dir):
         """A model artifact with no predict method cannot serve inference."""
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         model_info = {"ModelPackageArn": "arn", "ModelPackageStatus": "Completed"}
         with pytest.raises(ModelValidationError, match="predict"):
             loader._validate_model({"not": "a model"}, model_info)
 
-    def test_validate_model_rejects_unfitted_wrapper(
-        self, mock_aws_clients, temp_cache_dir
-    ):
+    def test_validate_model_rejects_unfitted_wrapper(self, mock_aws_clients, temp_cache_dir):
         """A wrapper that reports is_fitted=False is rejected at load time."""
 
         class UnfittedWrapper:
@@ -517,11 +497,9 @@ class TestModelLoader:
         with pytest.raises(ModelValidationError, match="is_fitted"):
             loader._validate_model(UnfittedWrapper(), model_info)
 
-    def test_cache_surface_only_exposes_sha256_paths(
-        self, mock_aws_clients, temp_cache_dir
-    ):
+    def test_cache_surface_only_exposes_sha256_paths(self, mock_aws_clients, temp_cache_dir):
         """Only the SHA256-keyed cache surface exists on the loader."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 
         for attr in (
@@ -534,7 +512,7 @@ class TestModelLoader:
 
     def test_get_current_model_none(self, mock_aws_clients, temp_cache_dir):
         """Test getting current model when none is loaded."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 
@@ -542,7 +520,7 @@ class TestModelLoader:
 
     def test_is_model_cache_valid_no_model(self, mock_aws_clients, temp_cache_dir):
         """Test cache validity check when no model is loaded."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
 
@@ -550,29 +528,23 @@ class TestModelLoader:
 
     def test_is_model_cache_valid_expired(self, mock_aws_clients, temp_cache_dir):
         """Test cache validity check with expired cache."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
-        loader = ModelLoader(
-            "test-group", cache_dir=temp_cache_dir, cache_ttl_seconds=1
-        )
+        loader = ModelLoader("test-group", cache_dir=temp_cache_dir, cache_ttl_seconds=1)
         loader._last_load_time = datetime.now(UTC) - timedelta(seconds=2)
 
         assert loader.is_model_cache_valid() is False
 
     def test_is_model_cache_valid_fresh(self, mock_aws_clients, temp_cache_dir):
         """Test cache validity check with fresh cache."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
-        loader = ModelLoader(
-            "test-group", cache_dir=temp_cache_dir, cache_ttl_seconds=3600
-        )
+        loader = ModelLoader("test-group", cache_dir=temp_cache_dir, cache_ttl_seconds=3600)
         loader._last_load_time = datetime.now(UTC)
 
         assert loader.is_model_cache_valid() is True
 
-    @patch(
-        "box_office.inference.app.model_loader.ModelLoader._get_latest_approved_model_info"
-    )
+    @patch("box_office.inference.app.model_loader.ModelLoader._get_latest_approved_model_info")
     @patch("box_office.inference.app.model_loader.ModelLoader._download_and_load_model")
     @patch("box_office.inference.app.model_loader.ModelLoader._validate_model")
     def test_load_latest_approved_model_success(
@@ -586,7 +558,7 @@ class TestModelLoader:
         sample_xgboost_model,
     ):
         """End-to-end happy path through ``load_latest_approved_model``."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         mock_get_info.return_value = sample_model_info
         mock_download.return_value = sample_xgboost_model
@@ -603,15 +575,11 @@ class TestModelLoader:
         mock_download.assert_called_once_with(sample_model_info)
         mock_validate.assert_called_once_with(sample_xgboost_model, sample_model_info)
 
-    def test_load_latest_approved_model_no_approved(
-        self, mock_aws_clients, temp_cache_dir
-    ):
+    def test_load_latest_approved_model_no_approved(self, mock_aws_clients, temp_cache_dir):
         """When the registry returns no approved model, the loader returns None."""
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
-        with patch.object(
-            ModelLoader, "_get_latest_approved_model_info", return_value=None
-        ):
+        with patch.object(ModelLoader, "_get_latest_approved_model_info", return_value=None):
             loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
             result = loader.load_latest_approved_model()
             assert result is None
@@ -619,7 +587,7 @@ class TestModelLoader:
     def test_refresh_model_if_needed_cache_valid(
         self, mock_aws_clients, temp_cache_dir, sample_model_info
     ):
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._current_model_info = sample_model_info
@@ -632,7 +600,7 @@ class TestModelLoader:
     def test_refresh_model_if_needed_new_version(
         self, mock_aws_clients, temp_cache_dir, sample_model_info
     ):
-        mock_s3, mock_sagemaker = mock_aws_clients
+        _mock_s3, _mock_sagemaker = mock_aws_clients
 
         loader = ModelLoader("test-group", cache_dir=temp_cache_dir)
         loader._current_model_info = sample_model_info
@@ -643,17 +611,17 @@ class TestModelLoader:
             "arn:aws:sagemaker:eu-north-1:123456789012:model-package/test-group/2"
         )
 
-        with patch.object(
-            loader, "_get_latest_approved_model_info", return_value=new_model_info
-        ):
-            with patch.object(
+        with (
+            patch.object(loader, "_get_latest_approved_model_info", return_value=new_model_info),
+            patch.object(
                 loader,
                 "load_latest_approved_model",
                 return_value=new_model_info,
-            ) as mock_load:
-                result = loader.refresh_model_if_needed()
-                assert result is True
-                mock_load.assert_called_once()
+            ) as mock_load,
+        ):
+            result = loader.refresh_model_if_needed()
+            assert result is True
+            mock_load.assert_called_once()
 
 
 class TestModelLoaderIntegration:
@@ -678,7 +646,7 @@ class TestModelLoaderIntegration:
             "feature_scaler.pkl": artifact_data,
         }
         for name, obj in artifacts.items():
-            with open(tmp_path / name, "wb") as f:
+            with Path(tmp_path / name).open("wb") as f:
                 pickle.dump(obj, f)
 
         tar_file = tmp_path / "model.tar.gz"
@@ -727,17 +695,14 @@ class TestModelLoaderIntegration:
 
             mock_s3.download_file.side_effect = mock_download_file
 
-            with patch(
-                "box_office.inference.app.model_loader.AWSModelRegistry"
-            ) as mock_registry_class:
-                mock_registry = Mock()
-                mock_registry.get_latest_approved_model.return_value = sample_model_info
-                mock_registry_class.return_value = mock_registry
+            mock_sagemaker.list_model_packages.return_value = {
+                "ModelPackageSummaryList": [sample_model_info]
+            }
 
-                cache_dir = tmp_path / "cache"
-                loader = ModelLoader("test-group", cache_dir=str(cache_dir))
-                result = loader.load_latest_approved_model()
+            cache_dir = tmp_path / "cache"
+            loader = ModelLoader("test-group", cache_dir=str(cache_dir))
+            result = loader.load_latest_approved_model()
 
-                assert result is not None
-                assert loader.get_current_model() is not None
-                assert isinstance(loader._current_model, MockXGBModel)
+            assert result is not None
+            assert loader.get_current_model() is not None
+            assert isinstance(loader._current_model, MockXGBModel)

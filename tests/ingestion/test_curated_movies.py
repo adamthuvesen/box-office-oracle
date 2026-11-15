@@ -10,6 +10,16 @@ import pytest
 from box_office.ingestion import curated_movies as cm
 from box_office.ingestion.tmdb_rich_backfill import BackfillConfig, flat_columns
 
+# Columns the budget parquet adds on top of the 37-column flat schema.
+BUDGET_EXTRA_COLUMNS = (
+    "production_budget_original",
+    "production_budget_source",
+    "production_budget_was_missing",
+    "wikidata_budget_usd",
+    "wikidata_item",
+    "wikidata_label",
+)
+
 
 def _payload(
     tmdb_id: int,
@@ -21,9 +31,7 @@ def _payload(
     collection_id: int | None = 1000,
 ) -> dict[str, Any]:
     collection = (
-        {"id": collection_id, "name": "Test Collection"}
-        if collection_id is not None
-        else None
+        {"id": collection_id, "name": "Test Collection"} if collection_id is not None else None
     )
     return {
         "id": tmdb_id,
@@ -84,7 +92,7 @@ def _raw(tmdb_id: int, **kwargs: Any) -> dict[str, Any]:
 
 
 def _target_columns() -> list[str]:
-    return flat_columns() + list(cm.BUDGET_EXTRA_COLUMNS)
+    return flat_columns() + list(BUDGET_EXTRA_COLUMNS)
 
 
 def test_build_flat_row_uses_tmdb_budget() -> None:
@@ -102,9 +110,7 @@ def test_build_flat_row_uses_tmdb_budget() -> None:
 
 
 def test_build_flat_row_documented_budget_fallback() -> None:
-    row = cm.build_flat_row(
-        _raw(24428, budget=0), _target_columns(), documented_budget=220_000_000
-    )
+    row = cm.build_flat_row(_raw(24428, budget=0), _target_columns(), documented_budget=220_000_000)
     assert row["production_budget"] == 220_000_000.0
     assert row["production_budget_source"] == "documented"
     assert row["production_budget_was_missing"] is False
@@ -120,7 +126,7 @@ def test_build_flat_row_missing_budget() -> None:
 
 def test_build_flat_row_rejects_missing_target_column() -> None:
     with pytest.raises(ValueError, match="missing target columns"):
-        cm.build_flat_row(_raw(1), _target_columns() + ["does_not_exist"])
+        cm.build_flat_row(_raw(1), [*_target_columns(), "does_not_exist"])
 
 
 def _seed_frame(target_columns: list[str]) -> pd.DataFrame:
@@ -135,9 +141,7 @@ def _seed_frame(target_columns: list[str]) -> pd.DataFrame:
     ]:
         df[column] = df[column].astype("int64")
     df["adult"] = df["adult"].astype(bool)
-    df["production_budget_was_missing"] = df["production_budget_was_missing"].astype(
-        bool
-    )
+    df["production_budget_was_missing"] = df["production_budget_was_missing"].astype(bool)
     df["production_budget"] = df["production_budget"].astype("float64")
     df["wikidata_budget_usd"] = df["wikidata_budget_usd"].astype("float64")
     return df
@@ -185,9 +189,7 @@ def test_add_missing_movies_appends_and_writes_jsonl(monkeypatch, tmp_path) -> N
     df = _seed_frame(target_columns)
     config = BackfillConfig(output_dir=tmp_path)
 
-    monkeypatch.setattr(
-        cm, "request_json", lambda *a, **k: _payload(24428, title="The Avengers")
-    )
+    monkeypatch.setattr(cm, "request_json", lambda *a, **k: _payload(24428, title="The Avengers"))
     updated, added, rejected = cm.add_missing_movies(
         df, target_columns, [cm.CuratedMovie(24428, "The Avengers")], config
     )
@@ -209,13 +211,9 @@ def test_add_missing_movies_idempotent_on_jsonl(monkeypatch, tmp_path) -> None:
     config.raw_jsonl_path.write_text('{"tmdb_id": 24428, "payload": {"id": 24428}}\n')
 
     monkeypatch.setattr(cm, "request_json", lambda *a, **k: _payload(24428))
-    cm.add_missing_movies(
-        df, target_columns, [cm.CuratedMovie(24428, "The Avengers")], config
-    )
+    cm.add_missing_movies(df, target_columns, [cm.CuratedMovie(24428, "The Avengers")], config)
     # still exactly one JSONL line for 24428 (no duplicate append)
-    lines = [
-        line for line in config.raw_jsonl_path.read_text().splitlines() if line.strip()
-    ]
+    lines = [line for line in config.raw_jsonl_path.read_text().splitlines() if line.strip()]
     assert len(lines) == 1
 
 

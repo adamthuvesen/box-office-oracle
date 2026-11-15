@@ -7,10 +7,10 @@ Production ML system for box office prediction. Snowflake → dbt → feature en
 
 | Layer               | Tool                         | Notes                                                                                                               |
 | ------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Data warehouse      | Snowflake                    | RAW → STAGING → ML_TRAINING schemas                                                                                 |
+| Data warehouse      | Snowflake                    | RAW → STAGING schemas                                                                                               |
 | Transformations     | dbt-core + dbt-snowflake     | `[transformations/](../transformations/)`                                                                           |
 | Feature engineering | scikit-learn + pandas        | Single `Pipeline` built by [`box_office/ml/feature_pipeline/`](../box_office/ml/feature_pipeline/)                 |
-| Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV                                                                                       |
+| Training            | XGBoost on SageMaker         | `ml.m5.large`, time-series CV, custom image ([training-image.md](training-image.md))                               |
 | Model registry      | AWS SageMaker Model Registry | manual approval gate at R² ≥ 0.55                                                                                   |
 | Inference           | Lambda (container image)     | `[box_office/inference/](../box_office/inference)`                                                                  |
 | Orchestration       | Prefect                      | Three-phase flow in [`box_office/orchestration/flows/ml_pipeline.py`](../box_office/orchestration/flows/ml_pipeline.py) |
@@ -29,11 +29,11 @@ ingestion (TMDB/IMDb) → Snowflake RAW
                             ↓
                   Snowflake STAGING.stg_box_office
                             ↓
-              build_feature_pipeline() (13 pre-release features)
+            v9 training frame (years before 2024)
                             ↓
-                   Snowflake ML_TRAINING.{X,Y}_TRAIN
+                  upload the raw frame to S3
                             ↓
-                       upload to S3
+       SageMaker CV (eval 2015-2023, per-fold preprocessor)
                             ↓
                   SageMaker training (XGBoost)
                             ↓
@@ -50,11 +50,9 @@ ingestion (TMDB/IMDb) → Snowflake RAW
 
 | Phase | Module | Responsibility |
 | ----- | ------ | -------------- |
-| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt build → staging load → temporal split → features → scale → targets → artifacts → batch Snowflake save → `ML_TRAINING` validation |
-| Train | [`phases/train_phase.py`](../box_office/orchestration/phases/train_phase.py) | In-memory `(X_TRAIN_SCALED, Y_TRAIN_LOG)` upload to S3 → SageMaker training → parse output metrics |
+| Data | [`phases/data_phase.py`](../box_office/orchestration/phases/data_phase.py) | dbt build → staging load → v9 training frame → split at the 2024 confirmation set → fit the deployment preprocessor and scaler → artifacts |
+| Train | [`phases/train_phase.py`](../box_office/orchestration/phases/train_phase.py) | In-memory raw training frame and log target upload to S3 → SageMaker training → parse output metrics |
 | Registry | [`phases/registry_phase.py`](../box_office/orchestration/phases/registry_phase.py) | Register model package → R² gate → optional promotion |
-
-Snowflake `ML_TRAINING` tables remain the **audit/canonical store** after each data phase. SageMaker upload uses **in-memory frames** after successful saves.
 
 Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/data_tasks.py) and [`training_tasks`](../box_office/orchestration/tasks/training_tasks.py) retain retries and logging.
 
@@ -70,9 +68,9 @@ Prefect `@task` wrappers in [`data_tasks`](../box_office/orchestration/tasks/dat
 | Industry              | 6    | Frequency encoding of director / studio / actor / MPAA                                        |
 | Financial             | 13   | Production budget logs, CPI adjustment, and safe budget interactions                          |
 
-`TransformerMixin`-style augmenting steps: each one returns the input frame plus its new columns, so the pipeline is debuggable via `set_output(transform="pandas")`. The final `_SelectEngineered` step drops the raw input columns the transformers consumed.
+`TransformerMixin`-style augmenting steps: each one returns the input frame plus its new columns, so the pipeline is debuggable via `set_output(transform="pandas")`. The final `SelectEngineered` step drops the raw input columns the transformers consumed.
 
-Outcome-derived and post-release signals are not feature inputs. `tests/test_feature_leakage_guard.py` rejects any column whose absolute Pearson correlation with the log-target exceeds 0.99 on a synthetic year and blocks forbidden leakage names from the feature contract.
+Outcome-derived and post-release signals are not feature inputs. `tests/ml/test_feature_leakage_guard.py` rejects any column whose absolute Pearson correlation with the log-target exceeds 0.99 on a synthetic year and blocks forbidden leakage names from the feature contract.
 
 ## Training
 
@@ -85,11 +83,11 @@ Fold 2: Train on <2016, evaluate on 2016
 Fold 9: Train on <2023, evaluate on 2023
 ```
 
-Hyperparameters: `n_estimators=1500`, `learning_rate=0.04`, `max_depth=4`, `min_child_weight=2`, `reg_lambda=0.2`, early stopping at 50 rounds. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
+The year windows live in [`box_office/eval_windows.py`](../box_office/eval_windows.py): eval years 2015-2023 for iteration on both the local and the cloud path, and 2024-2025 as the spent confirmation set. A CV window that reaches 2024 refuses to run unless the caller burns the holdout on purpose. Hyperparameters live in `ModelHyperparameters` ([`box_office/config.py`](../box_office/config.py)): `n_estimators=1500`, `learning_rate=0.04`, `max_depth=4`, `min_child_weight=2`, `reg_lambda=0.2`, early stopping at 50 rounds. Both paths fit the final model with `fit_final_model` ([`box_office/ml/model.py`](../box_office/ml/model.py)) and record a data fingerprint (rows, latest release date, content hash) in the model metadata; the Lambda loader logs it and `/model/info` returns it. Targets are log-transformed for stability — model.py exposes the loss as `rmse_on_log_scale`, deliberately not as `root_mean_squared_log_error` (it's the RMSE of `log(y)`, not `RMSLE`).
 
 Each fold reports both **dollar-space R²** and **median APE** alongside the log-space loss. The per-fold output is merged with a `LogBudgetBaseline` (revenue ≈ a · budget^b, fit on the same training window) by `box_office.ml.backtest_report` to produce the final per-year table the README quotes.
 
-Per-fold failures are caught and logged; the loop raises `CrossValidationFailed` only if every fold fails (with `__cause__` chained to the last exception).
+A failed fold fails the run: the loop raises `CrossValidationFailed` with `__cause__` chained to the fold's exception, because a partial CV scores a different window.
 
 ## Model registry
 
@@ -102,20 +100,14 @@ Production model lifecycle:
 
 Each registration writes a SHA256 manifest of the artifact tarball into `CustomerMetadataProperties`. The inference loader verifies the SHA256 against the manifest **before** any `pickle.load` / `joblib.load` — closing the bucket-write → RCE surface. The same metadata carries `feature_schema_version`; the loader rejects artifacts whose version doesn't match the runtime (currently `v9`) with a `FeatureSchemaVersionMismatch` exception.
 
-CLI: `[box_office/ml/model_registry/aws_model_registry_cli.py](../box_office/ml/model_registry/aws_model_registry_cli.py)`.
-
 ## Snowflake schema
 
 ```
 BOX_OFFICE database
 ├── RAW              (source data ingested via box_office.ingestion)
 │   └── BOX_OFFICE_V4
-├── STAGING          (dbt-transformed)
-│   └── STG_BOX_OFFICE
-├── ML_TRAINING      (processed datasets)
-│   ├── X_TRAIN / X_TRAIN_SCALED
-│   └── Y_TRAIN / Y_TRAIN_LOG
-└── FEATURE_STORE    (feature metadata + lineage)
+└── STAGING          (dbt-transformed)
+    └── STG_BOX_OFFICE
 ```
 
 ### Which role runs what
@@ -124,11 +116,11 @@ Three roles, no `ACCOUNTADMIN` at runtime:
 
 | Role                | Owns                                      | Used by                                            |
 | ------------------- | ----------------------------------------- | -------------------------------------------------- |
-| `DBT_RUNNER`        | `STAGING`, `ML_TRAINING`, `FEATURE_STORE` | `box-office-pipeline` + dbt; read-only on `RAW`    |
+| `DBT_RUNNER`        | `STAGING`                                 | `box-office-pipeline` + dbt; read-only on `RAW`    |
 | `BOX_OFFICE_LOADER` | `RAW`                                     | `scripts/load_dataset_to_snowflake.py` (RAW loads) |
 | `ACCOUNTADMIN`      | —                                         | administration only, never in the runtime path     |
 
-`DBT_RUNNER` owns the three transform/feature schemas (with schema-level future grants) so it can recreate every dbt model and pipeline table it produces, and reads `RAW` through `SELECT` (present + future). `BOX_OFFICE_LOADER` owns `RAW` so a dataset load never needs `ACCOUNTADMIN`.
+`DBT_RUNNER` owns `STAGING` (with schema-level future grants) so it can recreate every dbt model it produces, and reads `RAW` through `SELECT` (present + future). The pipeline writes no other table. The grants script still reconciles the old `ML_TRAINING` and `FEATURE_STORE` schemas, which no code reads. `BOX_OFFICE_LOADER` owns `RAW` so a dataset load never needs `ACCOUNTADMIN`.
 
 Ownership and grants are reconciled by an idempotent script — `scripts/snowflake_role_grants.sql`, applied via `scripts/apply_snowflake_grants.py` (the one path that runs as `ACCOUNTADMIN`). Re-run it if a table ever ends up owned by the wrong role again (the failure mode: an object created by an old `ACCOUNTADMIN` run that a runtime role then can't replace).
 
@@ -154,7 +146,7 @@ config.model.hyperparameters.n_estimators  # 1500
 
 ## Inference
 
-Lambda container (`[infrastructure/docker/inference/Dockerfile](../infrastructure/docker/inference/Dockerfile)`) loads the latest approved model from the registry, verifies SHA256 against the manifest, then serves predictions via FastAPI + Mangum at the Function URL.
+Lambda container (`[infrastructure/docker/inference/Dockerfile](../infrastructure/docker/inference/Dockerfile)`) installs only the locked `inference` extra, never `train`, and loads the latest approved model from the registry, verifies SHA256 against the manifest, then serves predictions via FastAPI + Mangum at the Function URL.
 
 Cold-start budget includes one `describe_model_package`, one S3 download, one SHA256 verify, one tar extract (with the `data` filter), and joblib loads of model + preprocessor + scaler. Warm invocations skip everything via the process-local `_extracted_artifacts_cache` dict.
 
@@ -178,11 +170,13 @@ The FastAPI `/predict` handler runs CPU-bound `PredictionEngine.predict` in **`a
 - **Action pinning**: third-party GitHub Actions are pinned to commit SHAs where practical.
 - **No public AI triggers**: Claude review automation is not wired into public issue or PR comments.
 
-A `tests/infrastructure/` suite asserts the posture offline by parsing `iam.tf` and `profiles.yml` — runs without `terraform init` or AWS access.
+A `tests/infrastructure/` suite and the pinned checkov policies in `infrastructure/checkov/` assert the posture offline, without `terraform init` or AWS access.
 
 ## Where to look next
 
 - For day-to-day commands: [README.md](../README.md)
 - For AI-agent entry rules: [AGENTS.md](../AGENTS.md)
-- For tests, style, and git workflow: [development.md](development.md)
+- For tests and commands: [development.md](development.md)
+- For the terms the code uses: [GLOSSARY.md](../GLOSSARY.md)
+- For decisions that are hard to reverse: [adr/](adr/)
 - For the actual code, the table above maps every layer to its module.

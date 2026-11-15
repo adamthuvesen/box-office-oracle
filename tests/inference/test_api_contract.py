@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 # Disable API key auth for the contract tests so we can exercise the
 # /predict handler directly without juggling headers.
@@ -85,8 +86,6 @@ def patched_engine_and_loader():
         runtime.ensure_ready.return_value = False
         runtime.validate_input = engine.validate_input
         runtime.predict = engine.predict
-        runtime._loader = loader
-        runtime._engine = engine
         get_runtime_mock.return_value = runtime
 
         yield engine, loader
@@ -147,9 +146,7 @@ class TestRequestBodyContract:
         body = resp.json()
         assert body["detail"]["error"] == "INVALID_JSON"
 
-    def test_oversize_body_via_content_length_returns_413(
-        self, client, patched_engine_and_loader
-    ):
+    def test_oversize_body_via_content_length_returns_413(self, client, patched_engine_and_loader):
         # Content-Length larger than the cap is rejected before we even read
         # the body, even if the actual body is small.
         resp = client.post(
@@ -164,9 +161,7 @@ class TestRequestBodyContract:
         # 413 fast-path or the post-read 413 path. Both are spec-compliant.
         assert resp.status_code in (400, 413)
 
-    def test_oversize_body_actual_length_returns_413(
-        self, client, patched_engine_and_loader
-    ):
+    def test_oversize_body_actual_length_returns_413(self, client, patched_engine_and_loader):
         # Force-read path: actual body bytes exceed the cap.
         big_body = b'{"x": "' + b"a" * (MAX_REQUEST_BODY_BYTES + 16) + b'"}'
         resp = client.post(
@@ -187,9 +182,7 @@ class TestPayloadShapeContract:
     """M49: a JSON array / scalar / null is a 400, not a 500."""
 
     @pytest.mark.parametrize("payload", [b"[]", b"42", b'"hi"', b"null", b"true"])
-    def test_non_object_payload_returns_400(
-        self, client, patched_engine_and_loader, payload
-    ):
+    def test_non_object_payload_returns_400(self, client, patched_engine_and_loader, payload):
         resp = client.post(
             "/predict",
             content=payload,
@@ -207,9 +200,7 @@ class TestPayloadShapeContract:
 class TestPredictionErrorMessageContract:
     """M50: the response body must NOT echo the raw exception text."""
 
-    def test_runtime_error_returns_generic_message(
-        self, client, patched_engine_and_loader
-    ):
+    def test_runtime_error_returns_generic_message(self, client, patched_engine_and_loader):
         engine, _loader = patched_engine_and_loader
         secret = "INTERNAL_LEAK_/var/secrets/foo: AccessDenied"
         engine.predict.side_effect = RuntimeError(secret)
@@ -286,9 +277,7 @@ class TestMaxStaleTTL:
 
     def test_within_ttl_serves_cached_model_on_refresh_failure(self, tmp_path):
         loader = self._make_loader(tmp_path, max_stale_seconds=3600)
-        with patch.object(
-            loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(loader, "_get_latest_approved_model_info", side_effect=BotoCoreError()):
             # Bypass cache-valid fast path
             loader._last_load_time = datetime.now(UTC) - timedelta(seconds=120)
             assert loader.refresh_model_if_needed() is False
@@ -299,11 +288,11 @@ class TestMaxStaleTTL:
         loader = self._make_loader(tmp_path, max_stale_seconds=10)
         # Force the cached model to look ancient.
         loader._last_load_time = datetime.now(UTC) - timedelta(seconds=999)
-        with patch.object(
-            loader, "_get_latest_approved_model_info", side_effect=RuntimeError("boom")
+        with (
+            patch.object(loader, "_get_latest_approved_model_info", side_effect=BotoCoreError()),
+            pytest.raises(ModelLoadError),
         ):
-            with pytest.raises(ModelLoadError):
-                loader.refresh_model_if_needed()
+            loader.refresh_model_if_needed()
         # Cache must be cleared so the next predict re-loads.
         assert loader._current_model is None
         assert loader._current_model_info is None
@@ -352,9 +341,7 @@ class TestPredictionResponseConfig:
         # Count standalone assignments at any indentation. Class body
         # assignments look like "    model_config = ".
         assignment_count = sum(
-            1
-            for line in source.splitlines()
-            if line.lstrip().startswith("model_config =")
+            1 for line in source.splitlines() if line.lstrip().startswith("model_config =")
         )
         assert assignment_count == 1, (
             f"PredictionResponse has {assignment_count} model_config "
@@ -414,3 +401,60 @@ class TestResponseFieldRename:
         field = PredictionResponse.model_fields["prediction_interval_heuristic"]
         assert field.description is not None
         assert "heuristic" in field.description.lower()
+
+
+# ---------------------------------------------------------------------------
+# /model/info reads the runtime through its public describe_model
+# ---------------------------------------------------------------------------
+
+
+class TestModelInfoContract:
+    @staticmethod
+    def _runtime(engine_loaded: bool, package: dict[str, Any] | None):
+        from box_office.inference.app.predictor import ModelInfo
+        from box_office.inference.app.runtime import ModelRuntime
+        from box_office.ml.data_fingerprint import DataFingerprint
+
+        loader = MagicMock()
+        loader.get_latest_approved_model_info.return_value = package
+        engine = MagicMock()
+        engine.is_loaded.return_value = engine_loaded
+        engine.get_model_info.return_value = ModelInfo(
+            model_id="loaded",
+            version=3,
+            status="Approved",
+            created_at="2026-01-01",
+            metrics={"oof_r2": 0.6},
+            framework="XGBOOST",
+            data_fingerprint=DataFingerprint(
+                rows=6077, max_release_date="2025-12-31", content_sha256="ab" * 32
+            ),
+        )
+        return ModelRuntime(loader, engine)
+
+    def test_loaded_model_reports_framework_and_data_fingerprint(self, client):
+        with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:
+            get_runtime_mock.return_value = self._runtime(True, None)
+            body = client.get("/model/info").json()
+        assert (body["model_id"], body["loaded"], body["framework"]) == ("loaded", True, "XGBOOST")
+        assert body["data_fingerprint"] == {
+            "rows": 6077,
+            "max_release_date": "2025-12-31",
+            "content_sha256": "ab" * 32,
+        }
+
+    def test_unloaded_model_falls_back_to_the_registry(self, client):
+        package = {"ModelPackageArn": "arn:pkg", "ModelPackageVersion": 7}
+        with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:
+            get_runtime_mock.return_value = self._runtime(False, package)
+            body = client.get("/model/info").json()
+        assert (body["model_id"], body["version"], body["loaded"]) == ("arn:pkg", 7, False)
+        assert "framework" not in body
+        assert body["data_fingerprint"] is None
+
+    def test_no_model_returns_503(self, client):
+        with patch("box_office.inference.app.main.get_runtime") as get_runtime_mock:
+            get_runtime_mock.return_value = self._runtime(False, None)
+            resp = client.get("/model/info")
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["error"] == "NO_MODEL_AVAILABLE"

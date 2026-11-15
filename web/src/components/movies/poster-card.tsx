@@ -32,13 +32,7 @@ export function PosterCard({
       <ViewTransition name={`poster-${tmdbId}`}>
         <div className="relative aspect-2/3 w-full">
           {src ? (
-            <Image
-              src={src}
-              alt={`${title} poster`}
-              fill
-              sizes={sizes}
-              className="object-cover"
-            />
+            <Image src={src} alt={`${title} poster`} fill sizes={sizes} className="object-cover" />
           ) : (
             <PosterFallback title={title} releaseYear={releaseYear} />
           )}
@@ -56,19 +50,10 @@ export function PosterCard({
 }
 
 /** Missing poster: a designed title card, not a gray box. */
-export function PosterFallback({
-  title,
-  releaseYear,
-}: {
-  title: string;
-  releaseYear: number;
-}) {
+export function PosterFallback({ title, releaseYear }: { title: string; releaseYear: number }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border-b border-hairline bg-surface-2 px-4 text-center">
-      <span
-        aria-hidden
-        className="h-px w-8 bg-actual-deep"
-      />
+      <span aria-hidden className="h-px w-8 bg-actual-deep" />
       <span className="title-caps text-sm leading-snug text-ink [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:4] overflow-hidden">
         {title}
       </span>

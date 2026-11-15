@@ -7,6 +7,8 @@ and the SageMaker container must run CV with a per-fold preprocessor factory.
 
 from __future__ import annotations
 
+import argparse
+import logging
 from unittest.mock import patch
 
 import numpy as np
@@ -15,17 +17,9 @@ import pandas as pd
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 
 
-class _Logger:
-    def info(self, *a, **k):
-        pass
-
-    def warning(self, *a, **k):
-        pass
-
-
 def _staging_frame() -> pd.DataFrame:
     rows = []
-    # Years span the split boundary (config end_year=2024) so both train and
+    # Years span the split boundary (the 2024 confirmation start) so both train and
     # val are non-empty; <2026 so the future-year gate keeps them.
     for i in range(40):
         year = 2016 + (i % 9)  # 2016..2024
@@ -58,23 +52,10 @@ def _staging_frame() -> pd.DataFrame:
 
 
 def test_run_data_phase_x_train_has_13_v9_features():
-    from box_office.orchestration.phases import data_phase
-
-    captured: dict[str, pd.DataFrame] = {}
-
-    def fake_save_tables(specs, _impl):
-        for spec in specs:
-            captured[spec.table_name] = spec.df
-        from box_office.orchestration.persistence import TableSaveReport
-
-        return TableSaveReport(
-            results={s.table_name: True for s in specs},
-            operations=[],
-        )
-
     from unittest.mock import MagicMock
 
     import box_office.orchestration.tasks.data_tasks as data_tasks
+    from box_office.orchestration.phases import data_phase
 
     # Run the pure Prefect tasks as plain functions (no Prefect API round-trip).
     with (
@@ -93,26 +74,12 @@ def test_run_data_phase_x_train_has_13_v9_features():
         ),
         patch.object(data_phase, "scale_features", data_phase.scale_features.fn),
         patch.object(data_phase, "transform_targets", data_phase.transform_targets.fn),
-        patch.object(
-            data_phase,
-            "create_feature_metadata",
-            data_phase.create_feature_metadata.fn,
-        ),
-        patch.object(data_phase, "save_tables", side_effect=fake_save_tables),
-        patch.object(data_phase, "log_table_operations_summary"),
-        patch.object(
-            data_phase,
-            "validate_snowflake_tables",
-            return_value={"X_TRAIN": 30},
-        ),
         patch.object(data_phase, "save_artifacts", return_value=("/tmp/p", "/tmp/s")),
     ):
-        result = data_phase.run_data_phase(_Logger())
+        result = data_phase.run_data_phase(logging.getLogger("test"))
 
     assert list(result.X_train_processed.columns) == list(SELECTED_FEATURES)
     assert result.X_train_processed.shape[1] == 13
-    assert "X_TRAIN" in captured
-    assert list(captured["X_TRAIN"].columns) == list(SELECTED_FEATURES)
     # RAW frame kept for the leakage-free SageMaker upload.
     assert "ACTORS" in result.X_train_raw.columns
     assert "RELEASE_YEAR" in result.X_train_raw.columns
@@ -123,6 +90,7 @@ def test_container_train_passes_preprocessor_factory():
     per-fold factory, so each fold refits on train-year rows only (leakage-free)."""
     from box_office.ml import model_training
     from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
+    from box_office.ml.metrics_models import CrossValidationResults
 
     raw = _staging_frame()
     # Container load_data shape: raw preprocessor inputs + RELEASE_YEAR, GROSS_LOG.
@@ -141,27 +109,9 @@ def test_container_train_passes_preprocessor_factory():
     def fake_cross_validate(model_class, X_train, y_train_log, dates, **kwargs):
         seen["preprocessor_factory"] = kwargs.get("preprocessor_factory")
         seen["X_columns"] = list(X_train.columns)
-        return {
-            "mean_best_iteration": 10,
-            "mean_cv_mae": 0.5,
-            "std_cv_mae": 0.1,
-            "mean_cv_rmsle": 0.5,
-            "std_cv_rmsle": 0.1,
-            "cv_scores": [0.5],
-            "cv_rmsle_scores": [0.5],
-            "oof_predictions": {},
-            "oof_records": [],
-            "fold_results": [],
-            "feature_importances": None,
-            "feature_names": list(X_train.columns),
-        }
+        return CrossValidationResults.model_construct(mean_best_iteration=10)
 
-    args = type("Args", (), {})()
-    args.train = "/unused"
-    args.cv_folds = 3
-    args.start_eval_year = 2022
-    args.end_year = 2024
-    args.backtest_years = 3
+    args = argparse.Namespace(train="/unused", cv_folds=3, start_eval_year=2021, end_year=2023)
     for k, v in {
         "n_estimators": 10,
         "learning_rate": 0.04,
@@ -197,9 +147,7 @@ def test_container_train_passes_preprocessor_factory():
             "load_preprocessing_artifacts",
             return_value=(preprocessor, scaler, "/tmp/m/p", "/tmp/m/s"),
         ),
-        patch.object(
-            model_training.ModelEvaluator, "evaluate_oof_performance", return_value={}
-        ),
+        patch.object(model_training.ModelEvaluator, "evaluate_oof_performance", return_value={}),
         patch.object(model_training, "save_results"),
     ):
         model_training.train(args)

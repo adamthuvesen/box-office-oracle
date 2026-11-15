@@ -1,23 +1,26 @@
 # Multi-stage build for Lambda inference container
 # Build context: project root
 # Pin to a manifest-list digest; buildx selects arm64/amd64.
-# Resolved 2026-04-26 via: docker buildx imagetools inspect public.ecr.aws/lambda/python:3.12
-FROM public.ecr.aws/lambda/python@sha256:4fe0754d2499f7c4234fb55cf408a390af7099651e8fbf4fca2999d2be911253 AS builder
+# Resolved 2026-11-12 via: docker buildx imagetools inspect public.ecr.aws/lambda/python:3.14
+FROM public.ecr.aws/lambda/python@sha256:e6e52fb3a611579eac34a9b97c8970700552334c94d5ce6a045d4cdf833889b1 AS builder
 
 # Install uv from the official image instead of bootstrapping it with pip.
-COPY --from=ghcr.io/astral-sh/uv:0.5.13 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 
 # Copy dependency files and package code
 COPY pyproject.toml uv.lock README.md ./
 COPY box_office/ ./box_office/
 
-# Install dependencies into a dedicated target directory so the runtime stage
+# Install the locked serving closure (core dependencies plus the `inference`
+# extra, never `train`) into a dedicated target directory, so the runtime stage
 # copies only runtime deps.
-RUN uv pip install --target /opt/python ".[inference]"
+RUN uv export --frozen --no-dev --extra inference --no-emit-project --output-file /tmp/requirements.txt \
+ && uv pip install --target /opt/python --requirement /tmp/requirements.txt \
+ && uv pip install --target /opt/python --no-deps .
 
 # Stage 2: Runtime — copy only the dedicated target tree, not the builder's
 # system site-packages or /var/lang/bin.
-FROM public.ecr.aws/lambda/python@sha256:4fe0754d2499f7c4234fb55cf408a390af7099651e8fbf4fca2999d2be911253
+FROM public.ecr.aws/lambda/python@sha256:e6e52fb3a611579eac34a9b97c8970700552334c94d5ce6a045d4cdf833889b1
 
 # Copy installed runtime packages from the dedicated target dir.
 COPY --from=builder /opt/python /opt/python

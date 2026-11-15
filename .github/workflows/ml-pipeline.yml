@@ -16,7 +16,7 @@ on:
 permissions: {}
 
 env:
-  PYTHON_VERSION: "3.12"
+  PYTHON_VERSION: "3.14"
   AWS_REGION: "eu-north-1"
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
       with:
-        version: "0.5.13"
+        version: "0.13.5"
 
     - name: Cache uv dependencies
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
@@ -52,7 +52,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra dev --frozen
+        uv sync --extra dev --extra train --frozen
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
@@ -93,6 +93,7 @@ jobs:
         # AWS Configuration (required for config loading during deployment)
         AWS_REGION: ${{ env.AWS_REGION }}
         SAGEMAKER_ROLE_ARN: ${{ secrets.SAGEMAKER_ROLE_ARN }}
+        SAGEMAKER_TRAINING_IMAGE_URI: ${{ secrets.SAGEMAKER_TRAINING_IMAGE_URI }}
         AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET || secrets.SAGEMAKER_BUCKET || secrets.S3_BUCKET_NAME }}
 
         # Environment Configuration for model registry naming
@@ -107,8 +108,6 @@ jobs:
         SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
         SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
         SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
         # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the setup step via $GITHUB_ENV.
         SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
       run: |
@@ -116,7 +115,8 @@ jobs:
         echo "Environment: ${{ steps.set-env.outputs.environment }}"
         echo "GitHub SHA: ${{ github.sha }}"
         # Run the ML pipeline using the console script entry point
-        uv run box-office-pipeline --environment ${{ steps.set-env.outputs.environment }}
+        # A manual workflow_dispatch run is the approval for the spend.
+        uv run box-office-pipeline --approved --environment ${{ steps.set-env.outputs.environment }}
 
         echo "ML Pipeline execution completed!"
         echo "Check the job logs for training and registry results."
@@ -154,7 +154,6 @@ jobs:
 
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "- Check the artifacts directory for model outputs" >> $GITHUB_STEP_SUMMARY
-          echo "- Review Snowflake ML_TRAINING and FEATURE_STORE schemas for processed data" >> $GITHUB_STEP_SUMMARY
           echo "- Check SageMaker for training job details and model registry" >> $GITHUB_STEP_SUMMARY
         else
           echo "**ML Pipeline failed or incomplete**" >> $GITHUB_STEP_SUMMARY

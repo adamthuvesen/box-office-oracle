@@ -1,6 +1,6 @@
 # Box Office Oracle
 
-![License](https://img.shields.io/github/license/adamthuvesen/box-office-oracle) ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![License](https://img.shields.io/github/license/adamthuvesen/box-office-oracle) ![Python](https://img.shields.io/badge/python-3.14%2B-blue)
 
 ![Box Office Oracle web app](docs/assets/hero.jpg)
 
@@ -12,7 +12,7 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 
 | Layer | Tech |
 | --- | --- |
-| **Warehouse** | Snowflake (`RAW` → `STAGING` → `ML_TRAINING`) |
+| **Warehouse** | Snowflake (`RAW` → `STAGING`) |
 | **Transform** | dbt-core + dbt-snowflake |
 | **Features** | scikit-learn `Pipeline`: pre-release raw columns → 52 engineered → 13 selected |
 | **Training** | XGBoost on SageMaker `ml.m5.large` |
@@ -28,18 +28,25 @@ Data flows from Snowflake through dbt into a scikit-learn feature pipeline, trai
 
 The full pipeline needs private services — Snowflake, AWS, and TMDB
 credentials — and the repo ships no warehouse data or model artifacts. The
-test suite runs without any of them:
+checks run without any of them. They need Python 3.14 and Node 24 (`.python-version`, `.nvmrc`) with uv and pnpm:
 
 ```bash
-make install-dev
-make test
+make install-dev    # dev, inference, and train extras
+make web-install    # web dependencies from the lockfile
+make check          # lint, types, import contracts, fast tests, web lanes
+make verify ARGS=all  # drive the app on synthetic fixtures
+make slow           # full suite, infra linters, dbt parse, web build
 ```
+
+The `train` extra holds Prefect, dbt, SageMaker, and Snowflake. The Lambda image installs only the `inference` extra.
 
 Run the pipeline (requires AWS and Snowflake credentials in `.env`):
 
 ```bash
 box-office-pipeline --environment dev
 ```
+
+The pipeline runs dbt, writes the `STAGING` table, starts a SageMaker job, and writes to the model registry. Each of these steps spends money or writes to production, so each refuses until the caller passes the approval flag. The refusal message names the flag. Training needs a custom image: [docs/training-image.md](docs/training-image.md).
 
 Run the inference API locally:
 
@@ -57,7 +64,7 @@ The current contract excludes outcome-derived and post-release signals such as
 popularity scores, user ratings, ranking fields, and franchise scores derived
 from revenue. Revenue is log-transformed before training.
 
-Leakage guard: `tests/test_feature_leakage_guard.py` fails the build if any feature
+Leakage guard: `tests/ml/test_feature_leakage_guard.py` fails the build if any feature
 correlates >0.99 with the log-target on synthetic data. It also blocks forbidden
 post-release field names from entering the feature contract.
 
@@ -78,9 +85,10 @@ falling back to code defaults. Required variables:
 
 ```text
 SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_DATABASE, SNOWFLAKE_WAREHOUSE
-SNOWFLAKE_SCHEMA_{RAW,STAGING,ML_TRAINING,FEATURE_STORE}
+SNOWFLAKE_SCHEMA_{RAW,STAGING}
 SNOWFLAKE_PRIVATE_KEY_PATH, SNOWFLAKE_ROLE
 AWS_REGION, SAGEMAKER_ROLE_ARN, AWS_S3_BUCKET
+SAGEMAKER_TRAINING_IMAGE_URI        # training only: docs/training-image.md
 TMDB_API_TOKEN
 ```
 
@@ -123,12 +131,14 @@ predictions on /predict need `INFERENCE_API_URL` and `INFERENCE_API_KEY` in
 - **`infrastructure/terraform/`**: IaC
 - **`web/`**: Next.js frontend (local-only)
 - **[`docs/architecture.md`](docs/architecture.md)**: Architecture deep-dive
-- **[`AGENTS.md`](AGENTS.md)**: AI coding agent conventions
+- **[`docs/adr/`](docs/adr/)**: Decisions that are hard to reverse
+- **[`GLOSSARY.md`](GLOSSARY.md)**: The project's terms
+- **[`AGENTS.md`](AGENTS.md)**: Commands, layout, and enforced rules for AI coding agents
 
 ## Tests
 
 ```bash
-uv run pytest
+make check
 ```
 
 The suite is hermetic — no AWS or Snowflake access required. It includes the leakage guard

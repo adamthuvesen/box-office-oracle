@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 
 import argparse
+import importlib
 import json
 import logging
 import os
 import pickle
+import sys
 import time
+from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import boto3
 import joblib
-import numpy as np
 import pandas as pd
+from botocore.exceptions import BotoCoreError, ClientError
+from sklearn.preprocessing import StandardScaler
 
+from box_office.config import MODEL_HYPERPARAMETERS, ModelHyperparameters
+from box_office.eval_windows import ITERATION_CV_FOLDS, ITERATION_END_YEAR, START_EVAL_YEAR
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
@@ -19,35 +27,48 @@ from box_office.ml.artifacts import (
 )
 from box_office.ml.cv import ModelEvaluator, TimeSeriesCrossValidator
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
-from box_office.ml.model import BoxOfficeXGBoostModel
+from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
+from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
 from box_office.utils.aws_helpers import parse_s3_uri, resolve_aws_region
 
+if TYPE_CHECKING:
+    from mypy_boto3_cloudwatch.type_defs import DimensionTypeDef, MetricDatumTypeDef
+
+# The SageMaker Experiments SDK exists only inside SageMaker's own images.
+load_run_context: Callable[[], Any] | None
 try:
-    from smexperiments.experiment_context import load_run_context  # type: ignore
+    load_run_context = importlib.import_module("smexperiments.experiment_context").load_run_context
 except ImportError:
     load_run_context = None
 
 
-def setup_logging_once():
+def setup_logging_once() -> None:
     """Configure logging only if not already configured."""
     if not logging.getLogger().handlers:
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-        )
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 setup_logging_once()
 logger = logging.getLogger(__name__)
 
 
-def parse_args():
-    """Parse command-line arguments passed to the training script."""
+SAGEMAKER_HYPERPARAMETERS_PATH = Path("/opt/ml/input/config/hyperparameters.json")
+
+
+def _sagemaker_hyperparameter_args() -> list[str]:
+    """``--name value`` pairs from the file SageMaker writes for a custom image."""
+    if not SAGEMAKER_HYPERPARAMETERS_PATH.exists():
+        return []
+    hyperparameters = json.loads(SAGEMAKER_HYPERPARAMETERS_PATH.read_text())
+    return [arg for name, value in hyperparameters.items() for arg in (f"--{name}", str(value))]
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse the training arguments: the command line, then SageMaker's hyperparameters file."""
     parser = argparse.ArgumentParser()
 
     # SageMaker channel paths; fall back to local defaults outside SageMaker.
-    parser.add_argument(
-        "--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "./model")
-    )
+    parser.add_argument("--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "./model"))
     parser.add_argument(
         "--train", type=str, default=os.environ.get("SM_CHANNEL_TRAIN", "./data/train")
     )
@@ -58,62 +79,44 @@ def parse_args():
     )
 
     # XGBoost hyperparameters injected via Estimator.hyperparameters.
-    parser.add_argument("--n_estimators", type=int, default=1500)
-    parser.add_argument("--learning_rate", type=float, default=0.04)
-    parser.add_argument("--max_depth", type=int, default=4)
-    parser.add_argument("--min_child_weight", type=int, default=2)
-    parser.add_argument("--subsample", type=float, default=0.8)
-    parser.add_argument("--colsample_bytree", type=float, default=0.8)
-    parser.add_argument("--reg_alpha", type=float, default=0.01)
-    parser.add_argument("--reg_lambda", type=float, default=0.2)
-    parser.add_argument("--early_stopping_rounds", type=int, default=50)
+    for name, default in MODEL_HYPERPARAMETERS.model_dump().items():
+        parser.add_argument(f"--{name}", type=type(default), default=default)
 
-    args = parser.parse_args()
+    args = parser.parse_args(sys.argv[1:] + _sagemaker_hyperparameter_args())
 
-    # Custom parameters injected via Estimator.environment.
-    args.cv_folds = int(os.environ.get("cv_folds", "8"))
-    args.end_year = int(os.environ.get("end_year", "2024"))
-    args.backtest_years = int(os.environ.get("backtest_years", "5"))
-    derived_start = args.end_year - args.backtest_years + 1
-    args.start_eval_year = int(os.environ.get("start_eval_year", str(derived_start)))
+    # Custom parameters injected via Estimator.environment. The lowercase names are the
+    # contract with the training job's environment dict (see sagemaker_train_job.py).
+    args.cv_folds = int(os.environ.get("cv_folds", str(ITERATION_CV_FOLDS)))  # noqa: SIM112
+    args.end_year = int(os.environ.get("end_year", str(ITERATION_END_YEAR)))  # noqa: SIM112
+    args.start_eval_year = int(os.environ.get("start_eval_year", str(START_EVAL_YEAR)))  # noqa: SIM112
 
-    processor_uri = os.environ.get("processor_s3_uri", "None")
+    processor_uri = os.environ.get("processor_s3_uri", "None")  # noqa: SIM112
     args.processor_s3_uri = None if processor_uri == "None" else processor_uri
 
-    scaler_uri = os.environ.get("scaler_s3_uri", "None")
+    scaler_uri = os.environ.get("scaler_s3_uri", "None")  # noqa: SIM112
     args.scaler_s3_uri = None if scaler_uri == "None" else scaler_uri
 
     return args
 
 
-def load_data(train_path):
+def load_data(train_path: str | Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     """Load training data from the directory specified by SageMaker."""
     logger.info(f"Loading training data from: {train_path}")
 
     # SageMaker stages a channel as a directory of files.
-    try:
-        input_files = os.listdir(train_path)
-        parquet_files = [f for f in input_files if f.endswith(".parquet")]
-        if not parquet_files:
-            raise FileNotFoundError(
-                f"No .parquet file found in the training directory: {train_path}"
-            )
+    parquet_files = [f.name for f in Path(train_path).iterdir() if f.name.endswith(".parquet")]
+    if not parquet_files:
+        raise FileNotFoundError(f"No .parquet file found in the training directory: {train_path}")
 
-        data_path = os.path.join(train_path, parquet_files[0])
-        data = pd.read_parquet(data_path)
-        logger.info(f"Loaded data with shape: {data.shape} from {data_path}")
-
-    except Exception as e:
-        logger.error(f"Error loading data from {train_path}: {e}")
-        raise
+    data_path = Path(train_path) / parquet_files[0]
+    data = pd.read_parquet(data_path)
+    logger.info(f"Loaded data with shape: {data.shape} from {data_path}")
 
     date_col = "RELEASE_YEAR"
     target_col = "GROSS_LOG"
 
     if date_col not in data.columns or target_col not in data.columns:
-        raise ValueError(
-            f"Required columns '{date_col}' or '{target_col}' not in dataset."
-        )
+        raise ValueError(f"Required columns '{date_col}' or '{target_col}' not in dataset.")
 
     dates = data[date_col].copy()
     y_train_log = data[target_col]
@@ -128,39 +131,22 @@ def load_data(train_path):
 
     # The cross-validator does integer year comparisons, so coerce upfront.
     if not pd.api.types.is_integer_dtype(dates):
-        logger.warning(
-            f"Date column '{date_col}' is not integer. Attempting conversion."
-        )
+        logger.warning(f"Date column '{date_col}' is not integer. Attempting conversion.")
         dates = dates.astype(int)
 
     return X_train, y_train_log, dates
 
 
-def train_final_model(X_train, y_train_log, cv_results, args):
-    """Train final model on all data using best iteration from CV."""
-
-    # Use mean best iteration from CV to avoid overfitting on the full dataset.
-    best_iteration = int(cv_results.get("mean_best_iteration", args.n_estimators))
-    logger.info(f"Training final model with {best_iteration} estimators based on CV.")
-
-    model = BoxOfficeXGBoostModel(
-        n_estimators=best_iteration,
-        learning_rate=args.learning_rate,
-        max_depth=args.max_depth,
-        min_child_weight=args.min_child_weight,
-        subsample=args.subsample,
-        colsample_bytree=args.colsample_bytree,
-        reg_alpha=args.reg_alpha,
-        reg_lambda=args.reg_lambda,
-        random_state=42,
+def hyperparameters_from_args(args: argparse.Namespace) -> ModelHyperparameters:
+    """The XGBoost hyperparameters the estimator passed, validated by their owner."""
+    return ModelHyperparameters(
+        **{name: getattr(args, name) for name in ModelHyperparameters.model_fields}
     )
 
-    model.fit(X_train, y_train_log)
-    logger.info("Final model training completed.")
-    return model
 
-
-def load_preprocessing_artifacts(args):
+def load_preprocessing_artifacts(
+    args: argparse.Namespace,
+) -> tuple[FeaturePreprocessorHigh, StandardScaler, Path, Path]:
     """Download the pipeline-fitted preprocessor + scaler from S3 into model_dir.
 
     These were fit on all training rows in the data phase; the container reuses
@@ -174,20 +160,20 @@ def load_preprocessing_artifacts(args):
             "Set processor_s3_uri and scaler_s3_uri environment variables."
         )
 
-    os.makedirs(args.model_dir, exist_ok=True)
+    Path(args.model_dir).mkdir(parents=True, exist_ok=True)
     logger.info("Downloading fitted preprocessing artifacts from S3...")
     aws_region = resolve_aws_region()
     s3_client = boto3.client("s3", region_name=aws_region)
 
     try:
         processor_bucket, processor_key = parse_s3_uri(args.processor_s3_uri)
-        processor_path = os.path.join(args.model_dir, FEATURE_PREPROCESSOR_PKL)
-        s3_client.download_file(processor_bucket, processor_key, processor_path)
+        processor_path = Path(args.model_dir) / FEATURE_PREPROCESSOR_PKL
+        s3_client.download_file(processor_bucket, processor_key, str(processor_path))
 
         scaler_bucket, scaler_key = parse_s3_uri(args.scaler_s3_uri)
-        scaler_path = os.path.join(args.model_dir, FEATURE_SCALER_PKL)
-        s3_client.download_file(scaler_bucket, scaler_key, scaler_path)
-    except Exception as e:
+        scaler_path = Path(args.model_dir) / FEATURE_SCALER_PKL
+        s3_client.download_file(scaler_bucket, scaler_key, str(scaler_path))
+    except (ClientError, BotoCoreError, ValueError) as e:
         raise RuntimeError(
             f"Failed to download preprocessing artifacts: {e}. "
             f"Ensure artifacts exist at processor_s3_uri={args.processor_s3_uri} "
@@ -203,7 +189,9 @@ def load_preprocessing_artifacts(args):
     )
 
 
-def transform_for_final_fit(X_raw, preprocessor, scaler):
+def transform_for_final_fit(
+    X_raw: pd.DataFrame, preprocessor: FeaturePreprocessorHigh, scaler: StandardScaler
+) -> pd.DataFrame:
     """Engineer + scale the raw frame with the pipeline-fitted artifacts.
 
     NaN-aware: StandardScaler uses nanmean/nanvar, so missing budgets stay NaN
@@ -217,54 +205,52 @@ def transform_for_final_fit(X_raw, preprocessor, scaler):
     )
 
 
-def save_results(model, cv_results, oof_results, args, processor_path, scaler_path):
+def save_results(
+    model: BoxOfficeXGBoostModel,
+    cv_results: CrossValidationResults,
+    oof_results: OofEvaluation,
+    args: argparse.Namespace,
+    processor_path: Path,
+    scaler_path: Path,
+) -> None:
     """Save model artifacts and evaluation metrics.
 
     ``processor_path`` / ``scaler_path`` were downloaded into ``model_dir`` by
     ``load_preprocessing_artifacts`` and are already staged for the tarball.
     """
 
-    os.makedirs(args.model_dir, exist_ok=True)
-    os.makedirs(args.output_data_dir, exist_ok=True)
+    model_dir = Path(args.model_dir)
+    output_data_dir = Path(args.output_data_dir)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    output_data_dir.mkdir(parents=True, exist_ok=True)
 
     # Pickle preserves the BoxOfficeXGBoostModel wrapper used at inference.
-    model_path = os.path.join(args.model_dir, MODEL_PKL)
-    with open(model_path, "wb") as f:
+    model_path = model_dir / MODEL_PKL
+    with model_path.open("wb") as f:
         pickle.dump(model, f)
     logger.info(f"Final model saved to: {model_path}")
     logger.info(f"Bundled preprocessing artifacts: {processor_path}, {scaler_path}")
 
-    def convert_for_json(obj):
-        if isinstance(obj, (np.integer, np.int64)):
-            return int(obj)
-        if isinstance(obj, (np.floating, np.float64)):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return obj
-
-    cv_results_path = os.path.join(args.output_data_dir, "cv_results.json")
-    with open(cv_results_path, "w") as f:
-        json.dump(cv_results, f, indent=4, default=convert_for_json)
+    cv_results_path = output_data_dir / "cv_results.json"
+    cv_results_path.write_text(cv_results.model_dump_json(indent=4))
     logger.info(f"CV results saved to: {cv_results_path}")
 
-    oof_results_path = os.path.join(args.output_data_dir, "oof_evaluation.json")
-    with open(oof_results_path, "w") as f:
-        json.dump(oof_results, f, indent=4, default=convert_for_json)
+    oof_results_path = output_data_dir / "oof_evaluation.json"
+    oof_results_path.write_text(oof_results.model_dump_json(indent=4))
     logger.info(f"OOF evaluation results saved to: {oof_results_path}")
 
     logger.info("Training metrics summary")
 
-    cv_mae = cv_results.get("mean_cv_mae", 0)
-    cv_mae_std = cv_results.get("std_cv_mae", 0)
-    cv_rmsle = cv_results.get("mean_cv_rmsle", 0)
-    cv_rmsle_std = cv_results.get("std_cv_rmsle", 0)
-    mean_best_iteration = cv_results.get("mean_best_iteration", 0)
-    oof_r2 = oof_results.get("oof_r2", 0)
-    oof_mae = oof_results.get("oof_mae", 0)
-    oof_rmsle = oof_results.get("oof_rmsle", 0)
-    oof_num_samples = oof_results.get("num_oof_samples", 0)
-    cv_folds = len(cv_results.get("cv_scores", []))
+    cv_mae = cv_results.mean_cv_mae
+    cv_mae_std = cv_results.std_cv_mae
+    cv_rmsle = cv_results.mean_cv_rmsle
+    cv_rmsle_std = cv_results.std_cv_rmsle
+    mean_best_iteration = cv_results.mean_best_iteration
+    oof_r2 = oof_results.oof_r2
+    oof_mae = oof_results.oof_mae
+    oof_rmsle = oof_results.oof_rmsle
+    oof_num_samples = oof_results.num_oof_samples
+    cv_folds = len(cv_results.cv_scores)
 
     # 1. Detailed console output
     logger.info("CROSS-VALIDATION PERFORMANCE METRICS:")
@@ -315,13 +301,9 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
             "mean_rmsle": cv_rmsle,
             "std_rmsle": cv_rmsle_std,
             "mean_best_iteration": mean_best_iteration,
-            "individual_fold_scores": cv_results.get("cv_scores", []),
-            "individual_rmsle_scores": cv_results.get("cv_rmsle_scores", []),
-            "individual_best_iterations": [
-                fr.get("best_iteration")
-                for fr in cv_results.get("fold_results", [])
-                if fr.get("best_iteration") is not None
-            ],
+            "individual_fold_scores": cv_results.cv_scores,
+            "individual_rmsle_scores": cv_results.cv_rmsle_scores,
+            "individual_best_iterations": [fr.best_iteration for fr in cv_results.fold_results],
         },
         "out_of_fold_evaluation": {
             "r2_score": oof_r2,
@@ -337,11 +319,9 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
         },
     }
 
-    comprehensive_metrics_file = os.path.join(
-        args.output_data_dir, "comprehensive_metrics.json"
-    )
-    with open(comprehensive_metrics_file, "w") as f:
-        json.dump(detailed_metrics, f, indent=2, default=convert_for_json)
+    comprehensive_metrics_file = output_data_dir / "comprehensive_metrics.json"
+    with comprehensive_metrics_file.open("w") as f:
+        json.dump(detailed_metrics, f, indent=2)
     logger.info(f"Detailed metrics saved to: {comprehensive_metrics_file}")
 
     # Per-year model-side metrics table. The log-budget baseline column is
@@ -350,10 +330,10 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
     from box_office.ml.backtest import assemble_per_year_metrics_table
 
     per_year_model_table = assemble_per_year_metrics_table(
-        model_fold_results=cv_results.get("fold_results", []),
+        model_fold_results=cv_results.fold_results,
         baseline_results=[],
     )
-    per_year_path = os.path.join(args.output_data_dir, "per_year_model_metrics.json")
+    per_year_path = output_data_dir / "per_year_model_metrics.json"
     per_year_model_table.to_json(per_year_path, orient="records", indent=2)
     logger.info(f"Per-year model metrics saved to: {per_year_path}")
 
@@ -363,11 +343,11 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
         cloudwatch = boto3.client("cloudwatch", region_name=aws_region)
         logger.info(f"CloudWatch client created for region: {aws_region}")
 
-        dimensions = [
+        dimensions: list[DimensionTypeDef] = [
             {"Name": "Environment", "Value": "dev"},
             {"Name": "ModelType", "Value": "XGBoost"},
         ]
-        cloudwatch_metrics = [
+        cloudwatch_metrics: list[MetricDatumTypeDef] = [
             {
                 "MetricName": "OOF_R2_Score",
                 "Value": oof_r2,
@@ -409,7 +389,8 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
 
         logger.info(f"Sent {len(cloudwatch_metrics)} metrics to CloudWatch")
 
-    except Exception as e:
+    except (ClientError, BotoCoreError) as e:
+        # CloudWatch metrics are telemetry; the artifacts above are already saved.
         logger.warning(f"Could not send CloudWatch metrics: {e}")
 
     # 5. Performance summary
@@ -426,28 +407,28 @@ def save_results(model, cv_results, oof_results, args, processor_path, scaler_pa
         run_ctx = load_run_context() if load_run_context is not None else None
         if run_ctx:
             custom_metrics = {
-                "cv_mean_mae": cv_results.get("mean_cv_mae"),
-                "cv_mean_rmsle": cv_results.get("mean_cv_rmsle"),
-                "cv_std_mae": cv_results.get("std_cv_mae"),
-                "cv_std_rmsle": cv_results.get("std_cv_rmsle"),
-                "cv_mean_best_iteration": cv_results.get("mean_best_iteration"),
-                "oof_r2": oof_results.get("oof_r2"),
-                "oof_mae": oof_results.get("oof_mae"),
-                "oof_rmsle": oof_results.get("oof_rmsle"),
-                "oof_num_samples": oof_results.get("num_oof_samples"),
+                "cv_mean_mae": cv_results.mean_cv_mae,
+                "cv_mean_rmsle": cv_results.mean_cv_rmsle,
+                "cv_std_mae": cv_results.std_cv_mae,
+                "cv_std_rmsle": cv_results.std_cv_rmsle,
+                "cv_mean_best_iteration": cv_results.mean_best_iteration,
+                "oof_r2": oof_results.oof_r2,
+                "oof_mae": oof_results.oof_mae,
+                "oof_rmsle": oof_results.oof_rmsle,
+                "oof_num_samples": oof_results.num_oof_samples,
             }
             for k, v in custom_metrics.items():
-                if v is not None:
-                    run_ctx.log_metric(k, float(v))
+                run_ctx.log_metric(k, float(v))
             logger.info("Custom metrics logged to SageMaker Experiment")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        # The optional SageMaker Experiments SDK has no documented error types;
+        # a failure here only loses experiment metrics, never the artifacts.
         logger.warning(f"Could not log custom metrics via run context: {e}")
 
 
-def train(args):
+def train(args: argparse.Namespace) -> None:
     """Main training orchestrator function."""
     logger.info("Starting Box Office Prediction Model Training")
-    logger.info("Running in XGBoost framework mode with custom metric capture")
     logger.info(f"Training parameters: {vars(args)}")
 
     X_train, y_train_log, dates = load_data(args.train)
@@ -459,14 +440,9 @@ def train(args):
         early_stopping_rounds=args.early_stopping_rounds,
     )
 
+    hyperparameters = hyperparameters_from_args(args)
     model_kwargs = {
-        "n_estimators": args.n_estimators,
-        "learning_rate": args.learning_rate,
-        "max_depth": args.max_depth,
-        "subsample": args.subsample,
-        "colsample_bytree": args.colsample_bytree,
-        "reg_alpha": args.reg_alpha,
-        "reg_lambda": args.reg_lambda,
+        **hyperparameters.model_dump(exclude={"early_stopping_rounds"}),
         "random_state": 42,
     }
 
@@ -487,15 +463,17 @@ def train(args):
     # Final model trains on the full frame engineered + scaled with the
     # pipeline-fitted artifacts (correct for serving: at prediction time every
     # training row is legitimately past).
-    preprocessor, scaler, processor_path, scaler_path = load_preprocessing_artifacts(
-        args
-    )
+    preprocessor, scaler, processor_path, scaler_path = load_preprocessing_artifacts(args)
     X_train_scaled = transform_for_final_fit(X_train, preprocessor, scaler)
-    final_model = train_final_model(X_train_scaled, y_train_log, cv_results, args)
-
-    save_results(
-        final_model, cv_results, oof_results, args, processor_path, scaler_path
+    logger.info(
+        "Training final model with %d estimators based on CV.",
+        int(cv_results.mean_best_iteration),
     )
+    final_model = fit_final_model(
+        X_train_scaled, y_train_log, cv_results.mean_best_iteration, hyperparameters
+    )
+
+    save_results(final_model, cv_results, oof_results, args, processor_path, scaler_path)
 
     logger.info("Training script completed successfully!")
 

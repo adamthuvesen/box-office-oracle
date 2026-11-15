@@ -25,6 +25,7 @@ _test_env = {
     "AWS_REGION": "eu-north-1",
     "SAGEMAKER_ROLE_ARN": "arn:aws:iam::123456789:role/test-sagemaker-role",
     "AWS_S3_BUCKET": "box-office-test-bucket",
+    "SAGEMAKER_TRAINING_IMAGE_URI": "123456789012.dkr.ecr.eu-north-1.amazonaws.com/box-office-training:test",
     # Snowflake Configuration (required)
     "SNOWFLAKE_USER": "test_user",
     "SNOWFLAKE_ACCOUNT": "test_account",
@@ -33,8 +34,6 @@ _test_env = {
     # Snowflake Schemas (optional but good to have)
     "SNOWFLAKE_SCHEMA_RAW": "RAW",
     "SNOWFLAKE_SCHEMA_STAGING": "STAGING",
-    "SNOWFLAKE_SCHEMA_ML_TRAINING": "ML_TRAINING",
-    "SNOWFLAKE_SCHEMA_FEATURE_STORE": "FEATURE_STORE",
 }
 
 # Apply env vars now so ``box_office.config`` gets sane values during the
@@ -45,7 +44,7 @@ for _key, _value in _test_env.items():
         _test_env_mp.setenv(_key, _value)
 
 
-def pytest_unconfigure(config):  # noqa: ARG001 - pytest hook signature
+def pytest_unconfigure(config):
     """Restore the original environment after the session ends."""
     _test_env_mp.undo()
 
@@ -239,7 +238,5 @@ def pytest_collection_modifyitems(config, items):
         if "integration" in nodeid_lower and "integration" not in item.keywords:
             item.add_marker(pytest.mark.integration)
 
-        if not any(
-            marker in item.keywords for marker in ("unit", "integration", "slow")
-        ):
+        if not any(marker in item.keywords for marker in ("unit", "integration", "slow")):
             item.add_marker(pytest.mark.unit)

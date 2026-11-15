@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from botocore.exceptions import ClientError
 
+from tests.fakes import FakeModelRegistry
+
 # --------------------------------------------------------------------------- #
 # 1.8 — _parse_s3_uri
 # --------------------------------------------------------------------------- #
@@ -66,36 +68,28 @@ def _client_error(code: str, message: str = "") -> ClientError:
 
 
 class TestModelRegistryErrorClassification:
-    def _make_registry(self):
-        from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
-
-        registry = AWSModelRegistry.__new__(AWSModelRegistry)
-        registry.region_name = "eu-north-1"
-        registry.sagemaker_client = MagicMock()
-        registry.s3_client = MagicMock()
-        return registry
+    def _make_registry(self) -> FakeModelRegistry:
+        return FakeModelRegistry()
 
     def test_create_group_treats_validation_does_not_exist_as_create_path(self):
         registry = self._make_registry()
-        registry.sagemaker_client.describe_model_package_group.side_effect = (
-            _client_error(
-                "ValidationException", "ModelPackageGroup foo does not exist."
-            )
+        registry.sagemaker_mock.describe_model_package_group.side_effect = _client_error(
+            "ValidationException", "ModelPackageGroup foo does not exist."
         )
-        registry.sagemaker_client.create_model_package_group.return_value = {
+        registry.sagemaker_mock.create_model_package_group.return_value = {
             "ModelPackageGroupArn": "arn:aws:sagemaker:eu-north-1:123:model-package-group/foo"
         }
 
-        result = registry.create_model_package_group("foo")
+        result = registry.create_model_package_group("foo", approved=True)
         assert result["status"] == "created"
 
     def test_create_group_propagates_access_denied(self):
         registry = self._make_registry()
-        registry.sagemaker_client.describe_model_package_group.side_effect = (
-            _client_error("AccessDeniedException", "Not authorized.")
+        registry.sagemaker_mock.describe_model_package_group.side_effect = _client_error(
+            "AccessDeniedException", "Not authorized."
         )
         with pytest.raises(ClientError):
-            registry.create_model_package_group("foo")
+            registry.create_model_package_group("foo", approved=True)
 
     def test_register_model_package_raises_on_hard_failure(self):
         registry = self._make_registry()
@@ -104,22 +98,21 @@ class TestModelRegistryErrorClassification:
             "box_office.ml.model_registry.aws_model_registry._compute_sha256_of_s3_object",
             return_value=("a" * 64, 1024),
         ):
-            registry.sagemaker_client.create_model_package.side_effect = _client_error(
+            registry.sagemaker_mock.create_model_package.side_effect = _client_error(
                 "ThrottlingException", "Rate exceeded"
             )
             with pytest.raises(ClientError) as excinfo:
                 registry.register_model_package(
                     model_package_group_name="foo",
                     model_data_url="s3://bucket/key.tar.gz",
+                    approved=True,
                 )
             # Cause chain preserved (the `raise` re-raises the same exception).
-            assert excinfo.value.response["Error"]["Code"] == "ThrottlingException"
+            assert excinfo.value.response.get("Error", {}).get("Code") == "ThrottlingException"
 
     def test_get_account_id_propagates_sts_failure(self):
         registry = self._make_registry()
-        with patch(
-            "box_office.ml.model_registry.aws_model_registry.boto3.client"
-        ) as mock_client:
+        with patch("box_office.ml.model_registry.aws_model_registry.boto3.client") as mock_client:
             sts = MagicMock()
             sts.get_caller_identity.side_effect = _client_error(
                 "ExpiredToken", "Security token expired"
@@ -154,9 +147,7 @@ def fake_estimator():
 class TestTrainingTaskErrorClassification:
     """The Prefect tasks are imported as plain functions via `.fn`."""
 
-    def _patched_boto(
-        self, monkeypatch, s3_side_effect=None, sagemaker_side_effect=None
-    ):
+    def _patched_boto(self, monkeypatch, s3_side_effect=None, sagemaker_side_effect=None):
         """Patch boto3.client to return mocks whose chosen call raises."""
         from box_office.orchestration.tasks import training_tasks
 
@@ -183,9 +174,7 @@ class TestTrainingTaskErrorClassification:
 
         self._patched_boto(
             monkeypatch,
-            s3_side_effect=_client_error(
-                "NoSuchKey", "The specified key does not exist."
-            ),
+            s3_side_effect=_client_error("NoSuchKey", "The specified key does not exist."),
             sagemaker_side_effect=_client_error(
                 "ValidationException", "TrainingJob job-123 does not exist."
             ),
@@ -212,10 +201,8 @@ class TestTrainingTaskErrorClassification:
         monkeypatch.setattr(training_tasks, "get_run_logger", lambda: MagicMock())
 
         with pytest.raises(ClientError) as excinfo:
-            training_tasks.download_and_analyze_results.fn(
-                fake_estimator, fake_sagemaker_client
-            )
-        assert excinfo.value.response["Error"]["Code"] == "AccessDenied"
+            training_tasks.download_and_analyze_results.fn(fake_estimator, fake_sagemaker_client)
+        assert excinfo.value.response.get("Error", {}).get("Code") == "AccessDenied"
 
     def test_throttled_describe_propagates(
         self, monkeypatch, fake_sagemaker_client, fake_estimator, tmp_path
@@ -231,9 +218,17 @@ class TestTrainingTaskErrorClassification:
                 json.dumps(
                     {
                         "cv_scores": [0.1, 0.2],
+                        "cv_rmsle_scores": [0.3, 0.4],
                         "mean_cv_mae": 0.5,
                         "std_cv_mae": 0.05,
+                        "mean_cv_rmsle": 0.35,
+                        "std_cv_rmsle": 0.05,
                         "mean_best_iteration": 100,
+                        "oof_predictions": {},
+                        "oof_records": [],
+                        "feature_importances": None,
+                        "feature_names": [],
+                        "fold_results": [],
                     }
                 )
             )
@@ -247,9 +242,7 @@ class TestTrainingTaskErrorClassification:
         s3.download_file.side_effect = fake_download
 
         sm = MagicMock()
-        sm.describe_training_job.side_effect = _client_error(
-            "ThrottlingException", "Rate exceeded"
-        )
+        sm.describe_training_job.side_effect = _client_error("ThrottlingException", "Rate exceeded")
         cw = MagicMock()
 
         def client_factory(service, **kwargs):
@@ -259,7 +252,5 @@ class TestTrainingTaskErrorClassification:
         monkeypatch.setattr(training_tasks, "get_run_logger", lambda: MagicMock())
 
         with pytest.raises(ClientError) as excinfo:
-            training_tasks.download_and_analyze_results.fn(
-                fake_estimator, fake_sagemaker_client
-            )
-        assert excinfo.value.response["Error"]["Code"] == "ThrottlingException"
+            training_tasks.download_and_analyze_results.fn(fake_estimator, fake_sagemaker_client)
+        assert excinfo.value.response.get("Error", {}).get("Code") == "ThrottlingException"

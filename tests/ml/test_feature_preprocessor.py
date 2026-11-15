@@ -28,16 +28,12 @@ class TestFeaturePreprocessor:
 
         assert isinstance(X_transformed, pd.DataFrame)
         assert len(X_transformed) == 10
-        assert not X_transformed.isnull().any().any(), (
-            "Transformed data contains NaN values"
+        assert not X_transformed.isnull().any().any(), "Transformed data contains NaN values"
+        assert X_transformed.dtypes.apply(lambda x: np.issubdtype(x, np.number)).all(), (
+            "Not all features are numeric"
         )
-        assert X_transformed.dtypes.apply(
-            lambda x: np.issubdtype(x, np.number)
-        ).all(), "Not all features are numeric"
 
-    def test_produces_correct_feature_count(
-        self, sample_movie_data, expected_feature_count
-    ):
+    def test_produces_correct_feature_count(self, sample_movie_data, expected_feature_count):
         """Feature count tracks the live preprocessor."""
         from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 
@@ -142,9 +138,7 @@ class TestFeatureNameCollision:
             for i, (name, _) in enumerate(preprocessor.pipeline.steps)
             if name == "feature_selector"
         )
-        preprocessor.pipeline.steps.insert(
-            selector_idx, ("collider", CollidingTransformer())
-        )
+        preprocessor.pipeline.steps.insert(selector_idx, ("collider", CollidingTransformer()))
 
         df = pd.DataFrame(
             {

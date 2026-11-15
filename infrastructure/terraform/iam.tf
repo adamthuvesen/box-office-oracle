@@ -163,8 +163,8 @@ resource "aws_iam_role_policy" "sagemaker_execution_policy" {
 
 # Do NOT attach AmazonSageMakerFullAccess: it grants iam:PassRole on "*"
 # and is a known privilege-escalation surface. The scoped inline policy
-# above is the intended replacement; tests/infrastructure/test_iam_posture.py
-# fails if the managed policy comes back.
+# above is the intended replacement; the checkov policy CKV_BO_1
+# (infrastructure/checkov) fails if the managed policy comes back.
 
 # GitHub Actions Role for CI/CD
 resource "aws_iam_role" "github_actions_role" {

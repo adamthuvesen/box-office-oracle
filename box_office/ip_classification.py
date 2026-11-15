@@ -19,7 +19,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 import pandas as pd
 import yaml
@@ -34,8 +34,7 @@ from box_office.movie_data_quality import clean_movie_source_data
 # classifier's row set and gross values match training (curated exclusions
 # and financial fixes applied in main() via clean_movie_source_data).
 DEFAULT_MOVIES_PATH = Path(
-    "data/generated/tmdb/rich_backfill_1980_2026/"
-    "tmdb_budget_wikipedia_5m_1980_2026.parquet"
+    "data/generated/tmdb/rich_backfill_1980_2026/tmdb_budget_wikipedia_5m_1980_2026.parquet"
 )
 DEFAULT_RAW_JSONL_PATH = Path(
     "data/generated/tmdb/rich_backfill_1980_2026/tmdb_rich_raw_5m_1980_2026.jsonl"
@@ -249,8 +248,8 @@ def load_raw_movie_metadata(path: Path = DEFAULT_RAW_JSONL_PATH) -> pd.DataFrame
                 raise ValueError(f"Missing payload object at {path}:{line_number}")
 
             external_ids = payload.get("external_ids") or {}
-            wikidata_by_id[int(payload.get("id") or record["tmdb_id"])] = (
-                external_ids.get("wikidata_id")
+            wikidata_by_id[int(payload.get("id") or record["tmdb_id"])] = external_ids.get(
+                "wikidata_id"
             )
 
     # Collection links come from the merged sources, so include tmdb_ids the
@@ -279,14 +278,15 @@ def classify_movies(
     normalized = _normalize_columns(movies)
     # The source parquet may carry materialized collection columns; the
     # merged metadata (JSONL + refetch + overrides) is canonical here.
-    normalized = normalized.drop(
-        columns=["collection_id", "collection_name"], errors="ignore"
-    )
+    normalized = normalized.drop(columns=["collection_id", "collection_name"], errors="ignore")
     metadata = raw_metadata.drop_duplicates("tmdb_id")
     df = normalized.merge(metadata, on="tmdb_id", how="left")
     collection_counts = _collection_movie_counts(df)
 
-    records = df.to_dict(orient="records")
+    records = [
+        {str(column): value for column, value in row.items()}
+        for row in df.to_dict(orient="records")
+    ]
     contexts = [_match_context(row) for row in records]
     brand_matches = [_brand_match(context, rules) for context in contexts]
     prior = prior_franchise_stats(
@@ -297,9 +297,7 @@ def classify_movies(
                 "worldwide_gross": df["worldwide_gross"].astype(float),
                 # Rows without a real release_date may actually be later than
                 # their Jan-1 fallback suggests, so they never count as prior.
-                "counts_as_prior": pd.to_datetime(
-                    df["release_date"], errors="coerce"
-                ).notna(),
+                "counts_as_prior": pd.to_datetime(df["release_date"], errors="coerce").notna(),
             }
         )
     )
@@ -338,9 +336,7 @@ def write_classification_outputs(
     audit_path = output_dir / "ip_classification_audit_1980_2026.csv"
 
     classification = classification.copy()
-    classification["brand_power_tier"] = classification["brand_power_tier"].astype(
-        "Int64"
-    )
+    classification["brand_power_tier"] = classification["brand_power_tier"].astype("Int64")
     classification.to_csv(csv_path, index=False)
     classification.to_parquet(parquet_path, index=False)
     audit.to_csv(audit_path, index=False)
@@ -352,9 +348,7 @@ def write_classification_outputs(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Classify movies by pre-release IP strength."
-    )
+    parser = argparse.ArgumentParser(description="Classify movies by pre-release IP strength.")
     parser.add_argument("--movies", type=Path, default=DEFAULT_MOVIES_PATH)
     parser.add_argument("--raw-jsonl", type=Path, default=DEFAULT_RAW_JSONL_PATH)
     parser.add_argument("--rules", type=Path, default=DEFAULT_RULES_PATH)
@@ -475,7 +469,7 @@ def _collection_movie_counts(df: pd.DataFrame) -> dict[int, int]:
     if rows.empty:
         return {}
     counts = rows.groupby("collection_id")["tmdb_id"].size()
-    return {int(cid): int(count) for cid, count in counts.items()}
+    return dict(zip(map(int, counts.index), map(int, counts), strict=True))
 
 
 def _brand_tier_at(rule: BrandRule, year: int) -> TierPeriod | None:
@@ -485,9 +479,7 @@ def _brand_tier_at(rule: BrandRule, year: int) -> TierPeriod | None:
     return max(applicable, key=lambda period: period.from_year)
 
 
-def _tier_from_prior_gross(
-    gross: float, thresholds: TierThresholds
-) -> tuple[int, str] | None:
+def _tier_from_prior_gross(gross: float, thresholds: TierThresholds) -> tuple[int, str] | None:
     for tier, threshold in (
         (1, thresholds.prior_tier_1),
         (2, thresholds.prior_tier_2),
@@ -645,8 +637,8 @@ def _classify_row(
         )
 
     if source_match or source_work:
-        if _is_awareness_only(awareness) and source_work is None:
-            rule, match = source_match  # type: ignore[misc]
+        if source_match is not None and source_work is None and _is_awareness_only(awareness):
+            rule, match = source_match
             return _awareness_only_classification(
                 awareness,
                 {
@@ -708,7 +700,7 @@ def _classify_row(
     )
 
 
-def _is_awareness_only(awareness: str | None) -> bool:
+def _is_awareness_only(awareness: str | None) -> TypeGuard[str]:
     if not awareness:
         return False
     sources = set(awareness.split(","))
@@ -785,11 +777,7 @@ def _source_match(
 
 
 def _awareness_source(context: MatchContext, rules: IpRules) -> str | None:
-    matches = [
-        rule.name
-        for rule in rules.awareness_rules
-        if _first_match(rule.patterns, context)
-    ]
+    matches = [rule.name for rule in rules.awareness_rules if _first_match(rule.patterns, context)]
     if not matches:
         return None
     return ",".join(matches)

@@ -29,8 +29,8 @@ export default function StatsPage() {
       <header className="mb-12">
         <h1 className="title-caps text-2xl text-ink">The Numbers</h1>
         <p className="mt-2 text-dim">
-          What actually happened at the box office — the catalog cut by year,
-          season, genre, budget, and studio. No predictions on this page.
+          What actually happened at the box office — the catalog cut by year, season, genre, budget,
+          and studio. No predictions on this page.
         </p>
       </header>
       <Suspense fallback={<StatsSkeleton />}>
@@ -70,9 +70,9 @@ async function StatsLive() {
         title="Total gross by year"
         takeaway={
           <>
-            <Figure>{bestYear.year}</Figure> is the biggest year in this
-            sample: <Figure>{dollarsCompact(bestYear.totalGross)}</Figure>{" "}
-            across <Figure>{bestYear.releases}</Figure> releases.
+            <Figure>{bestYear.year}</Figure> is the biggest year in this sample:{" "}
+            <Figure>{dollarsCompact(bestYear.totalGross)}</Figure> across{" "}
+            <Figure>{bestYear.releases}</Figure> releases.
           </>
         }
         note="This catalog is a sample of wide releases, not the whole industry — totals undercount the real market."
@@ -81,11 +81,7 @@ async function StatsLive() {
         <ViewAsTable
           caption="Total worldwide gross and number of releases per year"
           headers={["Year", "Worldwide gross", "Releases"]}
-          rows={years.map((y) => [
-            y.year,
-            dollarsCompact(y.totalGross),
-            y.releases,
-          ])}
+          rows={years.map((y) => [y.year, dollarsCompact(y.totalGross), y.releases])}
         />
       </Section>
 
@@ -93,10 +89,8 @@ async function StatsLive() {
         title="The seasonality strip"
         takeaway={
           <>
-            <Figure>{season.bestMonth.name}</Figure> is the strongest month of
-            the release calendar —{" "}
-            <Figure>{dollarsCompact(season.bestMonth.total)}</Figure> across
-            the sample.
+            <Figure>{season.bestMonth.name}</Figure> is the strongest month of the release calendar
+            — <Figure>{dollarsCompact(season.bestMonth.total)}</Figure> across the sample.
           </>
         }
       >
@@ -104,10 +98,7 @@ async function StatsLive() {
         <ViewAsTable
           caption="Total worldwide gross per calendar month, summed across all years"
           headers={["Month", "Worldwide gross, all years"]}
-          rows={MONTH_NAMES.map((name, i) => [
-            name,
-            dollarsCompact(monthTotals[i]),
-          ])}
+          rows={MONTH_NAMES.map((name, i) => [name, dollarsCompact(monthTotals[i])])}
         />
       </Section>
 
@@ -116,14 +107,12 @@ async function StatsLive() {
         takeaway={
           topGenre && (
             <>
-              <Figure>{topGenre.genre}</Figure> earns the highest median gross
-              — <Figure>{dollarsCompact(topGenre.medianGross)}</Figure>
+              <Figure>{topGenre.genre}</Figure> earns the highest median gross —{" "}
+              <Figure>{dollarsCompact(topGenre.medianGross)}</Figure>
               {topGenre.medianBudget != null && (
                 <>
                   {" "}
-                  on a median{" "}
-                  <Figure>{dollarsCompact(topGenre.medianBudget)}</Figure>{" "}
-                  budget
+                  on a median <Figure>{dollarsCompact(topGenre.medianBudget)}</Figure> budget
                 </>
               )}
               .
@@ -151,10 +140,9 @@ async function StatsLive() {
           <>
             <Figure>{over.count.toLocaleString("en-US")}</Figure> of{" "}
             <Figure>{points.length.toLocaleString("en-US")}</Figure> movies (
-            <Figure>{percent(over.share)}</Figure>) returned at least 2.5×
-            their budget; <Figure>{under.count.toLocaleString("en-US")}</Figure>{" "}
-            (<Figure>{percent(under.share)}</Figure>) never grossed their
-            budget back.
+            <Figure>{percent(over.share)}</Figure>) returned at least 2.5× their budget;{" "}
+            <Figure>{under.count.toLocaleString("en-US")}</Figure> (
+            <Figure>{percent(under.share)}</Figure>) never grossed their budget back.
           </>
         }
         note="Both axes are logarithmic. Movies without a documented budget or a final gross are excluded."
@@ -220,34 +208,19 @@ function Figure({ children }: { children: ReactNode }) {
   return <span className="font-mono tabular text-actual">{children}</span>;
 }
 
-function LeaderList({
-  title,
-  leaders,
-}: {
-  title: string;
-  leaders: GrossLeader[];
-}) {
+function LeaderList({ title, leaders }: { title: string; leaders: GrossLeader[] }) {
   return (
     <div>
       <h3 className="title-caps text-xs text-dim">{title}</h3>
       <ol className="mt-3 border-t border-hairline">
         {leaders.map((leader, i) => (
-          <li
-            key={leader.name}
-            className="flex items-baseline gap-3 border-b border-hairline py-2"
-          >
-            <span className="w-5 shrink-0 font-mono tabular text-xs text-dim">
-              {i + 1}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm text-ink">
-              {leader.name}
-            </span>
+          <li key={leader.name} className="flex items-baseline gap-3 border-b border-hairline py-2">
+            <span className="w-5 shrink-0 font-mono tabular text-xs text-dim">{i + 1}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">{leader.name}</span>
             <span className="font-mono tabular text-sm text-actual">
               {dollarsCompact(leader.total)}
             </span>
-            <span className="w-16 shrink-0 text-right text-xs text-dim">
-              {leader.count} films
-            </span>
+            <span className="w-16 shrink-0 text-right text-xs text-dim">{leader.count} films</span>
           </li>
         ))}
       </ol>

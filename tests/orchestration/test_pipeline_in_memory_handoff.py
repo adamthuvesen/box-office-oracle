@@ -1,8 +1,11 @@
 """Pipeline must not reload training data from Snowflake after the data phase."""
 
+import logging
 from unittest.mock import patch
 
 import pandas as pd
+
+from box_office.ml.data_fingerprint import DataFingerprint
 
 
 def test_train_phase_does_not_call_snowflake_reload():
@@ -18,9 +21,10 @@ def test_train_phase_does_not_call_snowflake_reload():
         X_val_shape=(1, 1),
         processor_path="/tmp/p.pkl",
         scaler_path="/tmp/s.pkl",
-        save_results={},
-        validation_results={},
         feature_names=["A"],
+        data_fingerprint=DataFingerprint(
+            rows=1, max_release_date="2020-01-01", content_sha256="0" * 64
+        ),
     )
 
     with (
@@ -46,9 +50,7 @@ def test_train_phase_does_not_call_snowflake_reload():
             return_value=object(),
         ),
     ):
-        train_phase.run_train_phase(
-            fake_data, logger=type("L", (), {"info": lambda *a, **k: None})()
-        )
+        train_phase.run_train_phase(fake_data, logger=logging.getLogger("test"))
 
     # The train phase consumes the in-memory frames it is handed; it must not
     # reload the dataset from Snowflake (there is no reload task to call).
@@ -74,18 +76,17 @@ def test_sagemaker_training_frames_upload_raw_frame_with_unscaled_release_year()
     data = DataPhaseResult(
         target_column="WORLDWIDE_GROSS",
         X_train_raw=raw,
-        X_train_processed=pd.DataFrame(
-            {"RELEASE_YEAR": [2020, 2021], "A": [10.0, 20.0]}
-        ),
+        X_train_processed=pd.DataFrame({"RELEASE_YEAR": [2020, 2021], "A": [10.0, 20.0]}),
         X_train_scaled=pd.DataFrame({"RELEASE_YEAR": [-1.0, 1.0], "A": [-0.5, 0.5]}),
         y_train_log=pd.Series([1.0, 2.0], name="GROSS_LOG"),
         X_train_shape=(2, 3),
         X_val_shape=(0, 3),
         processor_path="/tmp/p.pkl",
         scaler_path="/tmp/s.pkl",
-        save_results={},
-        validation_results={},
         feature_names=["RELEASE_YEAR", "A"],
+        data_fingerprint=DataFingerprint(
+            rows=1, max_release_date="2020-01-01", content_sha256="0" * 64
+        ),
     )
 
     X_train, y_train = sagemaker_training_frames(data)

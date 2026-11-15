@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# Raw input columns dropped by the final ``_SelectEngineered`` step.
+# Raw input columns dropped by the final ``SelectEngineered`` step.
 # Core numerical columns are not in this list; ``CoreNumericalTransformer``
 # claims them as engineered, type-coerced output.
 RAW_INPUT_COLUMNS_TO_DROP: tuple[str, ...] = (

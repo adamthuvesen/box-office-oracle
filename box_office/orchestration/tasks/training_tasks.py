@@ -1,22 +1,27 @@
 import json
+import numbers
 import time
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
 
 import boto3
 import pandas as pd
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from prefect import get_run_logger, task
 from prefect.cache_policies import NONE as NO_CACHE
 from prefect.tasks import exponential_backoff
 
 from box_office.config import config
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.model_registry.aws_model_registry import (
     AWSModelRegistry,
     ModelRegistryRegistrationError,
 )
 from box_office.sagemaker import sagemaker_train_job
+from box_office.sagemaker.sagemaker_train_job import Estimator, SageMakerClient, TrainingInput
+from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import BOTO3_CONFIG
-from box_office.utils.format_helpers import safe_format
 
 
 @task(
@@ -24,13 +29,19 @@ from box_office.utils.format_helpers import safe_format
     retries=3,
     retry_delay_seconds=exponential_backoff(backoff_factor=5),
 )
-def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
+def upload_processed_data_to_s3(
+    sagemaker_client: SageMakerClient,
+    X_train: pd.DataFrame,
+    y_train: pd.DataFrame,
+    approved: bool = False,
+) -> TrainingInput:
+    require_approval("uploading training data to S3", approved)
     logger = get_run_logger()
     logger.info("Uploading processed data to S3...")
 
     start_time = time.time()
     train_input = sagemaker_train_job.upload_processed_data_to_s3(
-        sagemaker_client, X_train, y_train
+        sagemaker_client, X_train, y_train, approved=approved
     )
     upload_time = time.time() - start_time
 
@@ -43,20 +54,20 @@ def upload_processed_data_to_s3(sagemaker_client, X_train, y_train):
     logger.info(f"Data size: {data_size_mb:.2f} MB")
     upload_speed = data_size_mb / upload_time if upload_time > 0.001 else float("inf")
     logger.info(f"Upload speed: {upload_speed:.2f} MB/s")
-    logger.info(
-        f"S3 location: {train_input.config['DataSource']['S3DataSource']['S3Uri']}"
-    )
+    logger.info(f"S3 location: {train_input.config['DataSource']['S3DataSource']['S3Uri']}")
 
     return train_input
 
 
 @task(cache_policy=NO_CACHE)
 def train_model(
-    sagemaker_client,
-    train_input,
-    X_train_shape,
-    artifacts_s3_uris=None,
-):
+    sagemaker_client: SageMakerClient,
+    train_input: TrainingInput,
+    X_train_shape: tuple[int, int],
+    artifacts_s3_uris: dict[str, str] | None = None,
+    approved: bool = False,
+) -> Estimator:
+    require_approval("launching a SageMaker training job", approved)
     logger = get_run_logger()
     logger.info("Training XGBoost model with comprehensive metrics logging...")
 
@@ -69,21 +80,11 @@ def train_model(
 
     training_start = time.time()
 
-    # XGBoost hyperparameters using framework mode
-    xgboost_hyperparameters = {
-        "n_estimators": config.model.hyperparameters.n_estimators,
-        "learning_rate": config.model.hyperparameters.learning_rate,
-        "max_depth": config.model.hyperparameters.max_depth,
-        "min_child_weight": config.model.hyperparameters.min_child_weight,
-        "subsample": config.model.hyperparameters.subsample,
-        "colsample_bytree": config.model.hyperparameters.colsample_bytree,
-        "reg_alpha": config.model.hyperparameters.reg_alpha,
-        "reg_lambda": config.model.hyperparameters.reg_lambda,
-        "early_stopping_rounds": config.model.hyperparameters.early_stopping_rounds,
-    }
+    # XGBoost hyperparameters from their owner, config.ModelHyperparameters
+    xgboost_hyperparameters = config.model.hyperparameters.model_dump()
 
     # Custom script parameters for the training script
-    script_parameters = {
+    script_parameters: dict[str, int | str] = {
         "cv_folds": config.model.cross_validation.cv_folds,
         "start_eval_year": config.model.cross_validation.start_eval_year,
         "end_year": config.model.cross_validation.end_year,
@@ -120,6 +121,7 @@ def train_model(
         X_train_shape,
         hyperparameters,
         experiment_config=experiment_config,
+        approved=approved,
     )
 
     training_duration = time.time() - training_start
@@ -129,7 +131,10 @@ def train_model(
     logger.info(
         f"Total training time: {training_duration:.2f} seconds ({training_duration / 60:.2f} minutes)"
     )
-    logger.info(f"Job name: {estimator.latest_training_job.name}")
+    training_job = estimator.latest_training_job
+    if training_job is None:
+        raise RuntimeError("SageMaker estimator has no training job")
+    logger.info(f"Job name: {training_job.name}")
     logger.info(f"Model artifacts: {estimator.model_data}")
     logger.info(
         f"Estimated cost: ~${(training_duration / 3600) * 0.269:.4f} ({config.sagemaker.instance_type})"
@@ -143,14 +148,19 @@ def train_model(
     retries=3,
     retry_delay_seconds=exponential_backoff(backoff_factor=5),
 )
-def download_and_analyze_results(estimator, sagemaker_client):
+def download_and_analyze_results(
+    estimator: Estimator, sagemaker_client: SageMakerClient
+) -> dict[str, Any]:
     """Download and analyze training results with comprehensive metrics logging."""
     from box_office.sagemaker.training_output import build_training_metrics
 
     logger = get_run_logger()
     logger.info("Downloading and analyzing training results with detailed metrics...")
 
-    job_name = estimator.latest_training_job.name
+    training_job = estimator.latest_training_job
+    if training_job is None:
+        raise RuntimeError("SageMaker estimator has no training job")
+    job_name = training_job.name
     bucket = sagemaker_client.s3_bucket
     output_prefix = f"{sagemaker_client.s3_prefix}/output"
 
@@ -158,7 +168,8 @@ def download_and_analyze_results(estimator, sagemaker_client):
     logger.info(f"Job name: {job_name}")
     logger.info(f"Output path: s3://{bucket}/{output_prefix}")
 
-    model_data_url = estimator.model_data if hasattr(estimator, "model_data") else None
+    model_data = estimator.model_data
+    model_data_url = model_data if isinstance(model_data, str) else None
     performance_metrics = build_training_metrics(
         job_name=job_name,
         region=sagemaker_client.region,
@@ -169,16 +180,20 @@ def download_and_analyze_results(estimator, sagemaker_client):
 
     if "cv_results" in performance_metrics:
         cv = performance_metrics["cv_results"]
+        mean_cv_mae = cv.get("mean_cv_mae", "N/A")
+        mean_cv_mae_text = f"{mean_cv_mae:.4f}" if isinstance(mean_cv_mae, numbers.Real) else "N/A"
         logger.info("Cross-Validation Results:")
-        logger.info(f"Mean CV MAE: {safe_format(cv.get('mean_cv_mae', 'N/A'), '.4f')}")
+        logger.info(f"Mean CV MAE: {mean_cv_mae_text}")
         if "cv_scores" in cv:
             for i, score in enumerate(cv["cv_scores"]):
                 logger.info(f"Fold {i + 1}: {score:.4f}")
 
     if "oof_results" in performance_metrics:
         oof = performance_metrics["oof_results"]
+        oof_r2 = oof.get("oof_r2", "N/A")
+        oof_r2_text = f"{oof_r2:.4f}" if isinstance(oof_r2, numbers.Real) else "N/A"
         logger.info("Out-of-Fold Evaluation:")
-        logger.info(f"OOF R²: {safe_format(oof.get('oof_r2', 'N/A'), '.4f')}")
+        logger.info(f"OOF R²: {oof_r2_text}")
 
     if performance_metrics.get("training_duration_seconds"):
         duration = performance_metrics["training_duration_seconds"]
@@ -190,14 +205,17 @@ def download_and_analyze_results(estimator, sagemaker_client):
 
 @task(cache_policy=NO_CACHE)
 def register_model_in_registry(
-    job_name,
-    duration,
-    model_data_url,
-    aws_registry,
-    performance_metrics=None,
-    environment="dev",
-):
+    job_name: str,
+    duration: float,
+    model_data_url: str,
+    aws_registry: AWSModelRegistry,
+    performance_metrics: dict[str, Any] | None = None,
+    environment: str = "dev",
+    data_fingerprint: DataFingerprint | None = None,
+    approved: bool = False,
+) -> dict[str, Any]:
     """Register the trained model in AWS Model Registry with comprehensive metrics."""
+    require_approval("registering a model package", approved)
     logger = get_run_logger()
     logger.info("Registering model in AWS SageMaker Model Registry...")
 
@@ -214,7 +232,7 @@ def register_model_in_registry(
         logger.info(f"Using model group name: {group_name}")
 
         # Create model package group (if not exists)
-        group_result = aws_registry.create_model_package_group(group_name)
+        group_result = aws_registry.create_model_package_group(group_name, approved=approved)
         if group_result.get("status") == "error":
             raise ModelRegistryRegistrationError(
                 f"Failed to create model package group: {group_result.get('error')}"
@@ -230,6 +248,8 @@ def register_model_in_registry(
             "instance_type": config.sagemaker.instance_type,
             "training_duration_minutes": round(duration / 60, 4),
         }
+        if data_fingerprint is not None:
+            metadata |= data_fingerprint.as_registry_metadata()
 
         # Register the model package
         aws_result = aws_registry.register_model_package(
@@ -241,6 +261,7 @@ def register_model_in_registry(
             metrics=performance_metrics,
             metadata=metadata,
             training_job_name=job_name,
+            approved=approved,
         )
 
         if aws_result.get("status") == "success":
@@ -260,39 +281,42 @@ def register_model_in_registry(
 
 
 @task(cache_policy=NO_CACHE)
-def upload_preprocessing_artifacts_to_s3(sagemaker_client, processor_path, scaler_path):
+def upload_preprocessing_artifacts_to_s3(
+    sagemaker_client: SageMakerClient,
+    processor_path: str | Path,
+    scaler_path: str | Path,
+    approved: bool = False,
+) -> dict[str, str]:
     """Upload fitted preprocessing artifacts to S3 for SageMaker training job."""
+    require_approval("uploading preprocessing artifacts to S3", approved)
     logger = get_run_logger()
     logger.info("Uploading preprocessing artifacts to S3...")
 
-    try:
-        # Upload processor
-        processor_s3_uri = sagemaker_client.sagemaker_session.upload_data(
-            path=processor_path,
-            bucket=sagemaker_client.s3_bucket,
-            key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
-        )
+    # Upload processor
+    processor_s3_uri = sagemaker_client.sagemaker_session.upload_data(
+        path=processor_path,
+        bucket=sagemaker_client.s3_bucket,
+        key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
+    )
 
-        # Upload scaler
-        scaler_s3_uri = sagemaker_client.sagemaker_session.upload_data(
-            path=scaler_path,
-            bucket=sagemaker_client.s3_bucket,
-            key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
-        )
+    # Upload scaler
+    scaler_s3_uri = sagemaker_client.sagemaker_session.upload_data(
+        path=scaler_path,
+        bucket=sagemaker_client.s3_bucket,
+        key_prefix=f"{sagemaker_client.s3_prefix}/artifacts",
+    )
 
-        logger.info("Preprocessing artifacts uploaded successfully:")
-        logger.info(f"Processor: {processor_s3_uri}")
-        logger.info(f"Scaler: {scaler_s3_uri}")
+    logger.info("Preprocessing artifacts uploaded successfully:")
+    logger.info(f"Processor: {processor_s3_uri}")
+    logger.info(f"Scaler: {scaler_s3_uri}")
 
-        return {"processor_s3_uri": processor_s3_uri, "scaler_s3_uri": scaler_s3_uri}
-
-    except Exception as e:
-        logger.error(f"Failed to upload preprocessing artifacts: {e}")
-        raise
+    return {"processor_s3_uri": processor_s3_uri, "scaler_s3_uri": scaler_s3_uri}
 
 
 @task
-def validate_model_for_promotion(model_package_arn, min_r2_score=None):
+def validate_model_for_promotion(
+    model_package_arn: str, min_r2_score: float | None = None
+) -> dict[str, Any]:
     """
     Validate if a model meets the criteria for production promotion using AWS Model Registry.
     """
@@ -311,24 +335,21 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         aws_region = config.aws.region
 
         # Get model package details
-        sagemaker_client = boto3.client(
-            "sagemaker", region_name=aws_region, config=BOTO3_CONFIG
-        )
+        sagemaker_client = boto3.client("sagemaker", region_name=aws_region, config=BOTO3_CONFIG)
 
         try:
-            model_package = sagemaker_client.describe_model_package(
-                ModelPackageName=model_package_arn
+            model_package = cast(
+                "dict[str, Any]",
+                sagemaker_client.describe_model_package(ModelPackageName=model_package_arn),
             )
-        except Exception as e:
+        except ClientError as e:
             return {
                 "promote": False,
-                "reason": f"Model package not found: {str(e)}",
+                "reason": f"Model package not found: {e!s}",
                 "validation_time_seconds": time.time() - start_time,
             }
 
-        logger.info(
-            f"Model Package Status: {model_package.get('ModelPackageStatus', 'Unknown')}"
-        )
+        logger.info(f"Model Package Status: {model_package.get('ModelPackageStatus', 'Unknown')}")
         logger.info(f"Created: {model_package.get('CreationTime', 'Unknown')}")
 
         # Perform actual validation using OOF R2 score from model package metrics
@@ -340,7 +361,7 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         if "oof_r2" in customer_metadata:
             try:
                 oof_r2 = float(customer_metadata["oof_r2"])
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 logger.warning(
                     f"Could not parse oof_r2 from metadata: {customer_metadata.get('oof_r2')}"
                 )
@@ -349,15 +370,14 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
         if oof_r2 is None:
             metrics = model_package.get("ModelMetrics", {}).get("ModelQuality", {})
             if "Value" in metrics:
-                try:
-                    metrics_dict = (
-                        json.loads(metrics["Value"])
-                        if isinstance(metrics["Value"], str)
-                        else metrics["Value"]
-                    )
-                    oof_r2 = metrics_dict.get("oof_r2")
-                except (json.JSONDecodeError, TypeError, AttributeError):
-                    pass
+                # The registry never writes ModelMetrics, so a malformed value is
+                # an anomaly to surface, not a reason to skip promotion quietly.
+                metrics_dict = (
+                    json.loads(metrics["Value"])
+                    if isinstance(metrics["Value"], str)
+                    else metrics["Value"]
+                )
+                oof_r2 = metrics_dict.get("oof_r2")
 
         if oof_r2 is None:
             logger.warning("Could not extract OOF R² from model package metrics")
@@ -389,27 +409,28 @@ def validate_model_for_promotion(model_package_arn, min_r2_score=None):
                 "r2_score": oof_r2,
                 "min_required": min_r2_score,
                 "model_package_arn": model_package_arn,
-                "model_package_status": model_package.get(
-                    "ModelPackageStatus", "Unknown"
-                ),
+                "model_package_status": model_package.get("ModelPackageStatus", "Unknown"),
             },
             "validation_time_seconds": time.time() - start_time,
         }
 
-    except Exception as e:
+    except (ClientError, BotoCoreError) as e:
         logger.error(f"Model validation failed: {e}")
         return {
             "promote": False,
-            "reason": f"Validation error: {str(e)}",
+            "reason": f"Validation error: {e!s}",
             "validation_time_seconds": time.time() - start_time,
         }
 
 
 @task
-def promote_model_in_aws_registry(model_package_arn, approval_description=None):
+def promote_model_in_aws_registry(
+    model_package_arn: str, approval_description: str | None = None, approved: bool = False
+) -> dict[str, Any]:
     """
     Promote a model package to Approved status in AWS SageMaker Model Registry.
     """
+    require_approval("promoting a model package to Approved", approved)
     logger = get_run_logger()
     logger.info("Promoting model package to Approved status...")
     logger.info(f"Model Package ARN: {model_package_arn}")
@@ -429,6 +450,7 @@ def promote_model_in_aws_registry(model_package_arn, approval_description=None):
             approval_status="Approved",
             approval_description=approval_description
             or f"Automatically approved based on performance criteria - {datetime.now(UTC).isoformat()}",
+            approved=approved,
         )
 
         promotion_time = time.time() - start_time
@@ -453,7 +475,7 @@ def promote_model_in_aws_registry(model_package_arn, approval_description=None):
                 "promotion_time_seconds": promotion_time,
             }
 
-    except Exception as e:
+    except (ClientError, BotoCoreError, ValueError) as e:
         promotion_time = time.time() - start_time
         logger.error(f"AWS Model Registry promotion failed: {e}")
         return {

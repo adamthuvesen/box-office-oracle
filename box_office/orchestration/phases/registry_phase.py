@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from box_office.config import config
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.orchestration.run_logger import RunLogger
 from box_office.orchestration.tasks.training_tasks import (
     promote_model_in_aws_registry,
     register_model_in_registry,
@@ -24,7 +26,9 @@ class RegistryPhaseResult:
 def run_registry_phase(
     training_metrics: dict[str, Any],
     environment: str,
-    logger,
+    logger: RunLogger,
+    data_fingerprint: DataFingerprint,
+    approved: bool = False,
 ) -> RegistryPhaseResult:
     """Register model package and optionally promote to Approved."""
     aws_registry = AWSModelRegistry(config.aws.region)
@@ -35,6 +39,8 @@ def run_registry_phase(
         aws_registry=aws_registry,
         performance_metrics=training_metrics,
         environment=environment,
+        data_fingerprint=data_fingerprint,
+        approved=approved,
     )
 
     promotion_result = None
@@ -59,6 +65,7 @@ def run_registry_phase(
             aws_promotion_result = promote_model_in_aws_registry(
                 model_package_arn=aws_model_package_arn,
                 approval_description=approval_description,
+                approved=approved,
             )
 
             if aws_promotion_result.get("status") == "success":
@@ -71,9 +78,7 @@ def run_registry_phase(
         else:
             logger.info("Model does not meet promotion criteria")
     else:
-        logger.warning(
-            "Skipping model promotion validation due to AWS registration failure"
-        )
+        logger.warning("Skipping model promotion validation due to AWS registration failure")
 
     return RegistryPhaseResult(
         registration_result=registration_result,

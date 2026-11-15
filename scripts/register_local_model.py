@@ -36,7 +36,6 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from box_office.config import config
@@ -46,7 +45,11 @@ from box_office.ml.artifacts import (
     MODEL_PKL,
 )
 from box_office.ml.cv import ModelEvaluator
+from box_office.ml.metrics_models import CrossValidationResults, OofEvaluation
+from box_office.ml.model_metadata import LocalModelMetadata
 from box_office.ml.model_registry.aws_model_registry import AWSModelRegistry
+from box_office.ml.target import to_log_target
+from box_office.utils.approval import require_approval
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("register_local_model")
@@ -76,36 +79,36 @@ def build_model_tarball(artifact_dir: Path, out_path: Path) -> Path:
     return out_path
 
 
-def compute_oof_metrics(cv_results: dict, frame_path: Path) -> dict[str, float]:
+def compute_oof_metrics(cv_results: CrossValidationResults, frame_path: Path) -> OofEvaluation:
     """Pooled OOF metrics via the container's ``evaluate_oof_performance``.
 
     ``y_train_log = log1p(WORLDWIDE_GROSS)`` reconstructed from the same frame
     the local run trained on; ``ModelEvaluator.evaluate_oof_performance`` then
-    inverts log1p with ``expm1`` and computes pooled dollar-space R² — the
+    inverts the log target and computes pooled dollar-space R² — the
     exact number the container writes to ``oof_evaluation.json`` and that the
     promotion gate reads from ``CustomerMetadataProperties['oof_r2']``.
     """
     frame = pd.read_parquet(frame_path)
-    y_train_log = pd.Series(np.log1p(frame["WORLDWIDE_GROSS"].astype(float)))
+    y_train_log = pd.Series(to_log_target(frame["WORLDWIDE_GROSS"].astype(float)))
     return ModelEvaluator.evaluate_oof_performance(cv_results, y_train_log)
 
 
-def build_metrics(cv_results: dict, oof: dict[str, float]) -> dict[str, float]:
+def build_metrics(cv_results: CrossValidationResults, oof: OofEvaluation) -> dict[str, float]:
     """Metrics dict for the registry (allowlisted in register_model_package)."""
     return {
-        "oof_r2": oof["oof_r2"],
-        "oof_mae": oof["oof_mae"],
-        "oof_rmsle": oof["oof_rmsle"],
-        "oof_num_samples": oof["num_oof_samples"],
-        "cv_mean_mae": cv_results["mean_cv_mae"],
-        "cv_std_mae": cv_results["std_cv_mae"],
-        "cv_mean_rmsle": cv_results["mean_cv_rmsle"],
-        "cv_std_rmsle": cv_results["std_cv_rmsle"],
-        "cv_mean_best_iteration": cv_results["mean_best_iteration"],
+        "oof_r2": oof.oof_r2,
+        "oof_mae": oof.oof_mae,
+        "oof_rmsle": oof.oof_rmsle,
+        "oof_num_samples": oof.num_oof_samples,
+        "cv_mean_mae": cv_results.mean_cv_mae,
+        "cv_std_mae": cv_results.std_cv_mae,
+        "cv_mean_rmsle": cv_results.mean_cv_rmsle,
+        "cv_std_rmsle": cv_results.std_cv_rmsle,
+        "cv_mean_best_iteration": cv_results.mean_best_iteration,
     }
 
 
-def provenance_metadata(metadata: dict) -> dict[str, str]:
+def provenance_metadata(metadata: LocalModelMetadata) -> dict[str, str]:
     """CustomerMetadataProperties marking this as a local, quota-blocked run."""
     return {
         "trained_on": "local",
@@ -116,8 +119,9 @@ def provenance_metadata(metadata: dict) -> dict[str, str]:
             "SageMaker training quota-blocked account training quota=0 "
             "registered from artifacts/local via scripts/register_local_model.py"
         ),
-        "training_rows": str(metadata.get("training_rows", "")),
-        "eval_years": str(metadata.get("eval_years", "")),
+        "training_rows": str(metadata.training_rows),
+        "eval_years": metadata.eval_years,
+        **metadata.data_fingerprint.as_registry_metadata(),
     }
 
 
@@ -133,14 +137,23 @@ def main() -> None:
         action="store_true",
         help="Compute metrics and build the tarball, but do not touch AWS.",
     )
+    parser.add_argument(
+        "--approved",
+        action="store_true",
+        help="Approve the S3 upload and the registry writes.",
+    )
     args = parser.parse_args()
+    if not args.dry_run:
+        require_approval("uploading and registering the local model", args.approved)
 
-    cv_results = json.loads((ARTIFACT_DIR / "cv_results.json").read_text())
-    metadata = json.loads((ARTIFACT_DIR / "metadata.json").read_text())
+    cv_results = CrossValidationResults.model_validate_json(
+        (ARTIFACT_DIR / "cv_results.json").read_text()
+    )
+    metadata = LocalModelMetadata.model_validate_json((ARTIFACT_DIR / "metadata.json").read_text())
 
     oof = compute_oof_metrics(cv_results, FRAME_PATH)
     metrics = build_metrics(cv_results, oof)
-    oof_r2 = oof["oof_r2"]
+    oof_r2 = oof.oof_r2
     threshold = config.model.promotion_threshold
     logger.info("Pooled OOF R2 (dollar space): %.4f", oof_r2)
     logger.info("Promotion threshold: %.2f", threshold)
@@ -162,7 +175,7 @@ def main() -> None:
         logger.info("Uploaded model artifact to %s", model_data_url)
 
     group_name = AWSModelRegistry.get_model_group_name()
-    registry.create_model_package_group(group_name)
+    registry.create_model_package_group(group_name, approved=args.approved)
 
     result = registry.register_model_package(
         model_package_group_name=group_name,
@@ -171,6 +184,7 @@ def main() -> None:
         model_approval_status="PendingManualApproval",
         metrics=metrics,
         metadata=provenance_metadata(metadata),
+        approved=args.approved,
     )
     model_package_arn = result["model_package_arn"]
     logger.info("Registered model package: %s", model_package_arn)
@@ -192,6 +206,7 @@ def main() -> None:
                 f"Local v9 model; pooled OOF R2={oof_r2:.4f} >= {threshold} gate. "
                 "SageMaker training quota-blocked."
             ),
+            approved=args.approved,
         )
         logger.info("PROMOTED to Approved: %s", model_package_arn)
     else:

@@ -18,15 +18,19 @@ Every visualization follows one dichotomy — **warm amber light is reality**
 
 ## Run
 
-```bash
-# from the repo root — export gitignored data snapshots to web/data/
-# (reads the local 1980-2026 parquet; no Snowflake, no TMDB API)
-make web-data
+Node 24 (`.nvmrc`) and pnpm. Run these from the repo root.
 
-pnpm install
-pnpm dev          # http://localhost:3000
-pnpm build        # type-check + production build
+```bash
+make web-data       # export gitignored data snapshots to web/data/
+                    # (reads the local 1980-2026 parquet; no Snowflake, no TMDB API)
+make web-install    # pnpm install --frozen-lockfile
+pnpm --dir web dev  # http://localhost:3000
+make web-build      # type-check + production build
 ```
+
+`make check` runs the web lint (oxlint), format check (oxfmt), type check, and tests (vitest).
+
+The predict form's bounds, defaults, genres, and IP tiers come from `src/generated/predict-contract.json`. `scripts/generate_web_contract.py` writes it from the Python models, and a test fails when the committed file is stale. Run `make fix` after a change to the Python side.
 
 Live predictions need `INFERENCE_API_URL` + `INFERENCE_API_KEY` in
 `.env.local` (see `.env.example`); without them `/api/predict` answers in

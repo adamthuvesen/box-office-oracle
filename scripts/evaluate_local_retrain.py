@@ -18,9 +18,7 @@ only for a final confirmation run.
 
 Headline metric = the recent window (2023 onward): per-year table plus pooled
 median APE and mean log-R² over those years. The full per-year table stays as
-a diagnostic. The pre-leakage-fix variant comparison is kept in the report as
-history (those numbers were inflated by frequency features fit on the full
-frame before CV).
+a diagnostic.
 
 Run:  uv run python scripts/evaluate_local_retrain.py [--confirm]
 """
@@ -31,44 +29,27 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import r2_score
 
+from box_office.eval_windows import CONFIRMATION_END_YEAR, ITERATION_END_YEAR, START_EVAL_YEAR
 from box_office.ml.backtest import render_metrics_table_markdown
 from box_office.ml.backtest_report import build_report
 from box_office.ml.cv import TimeSeriesCrossValidator
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.feature_schema import CURRENT_FEATURE_SCHEMA_VERSION
+from box_office.ml.metrics_models import CrossValidationResults
 from box_office.ml.model import BoxOfficeXGBoostModel
-from box_office.ml.regression_metrics import spearman_rank_corr
+from box_office.ml.target import from_log_target, to_log_target
+from box_office.training_frame import PREPROCESSOR_INPUT_COLUMNS
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 DROPPED_PATH = Path("data/generated/training/dropped_rows_1980_2026.csv")
 FLAGGED_PATH = Path("data/generated/training/flagged_kept_rows_1980_2026.csv")
-OLD_TABLE_PATH = Path("results/per_year_table.json")
-OLD_SNAPSHOT_X = Path("analysis/prior_training_snapshot/X_train.csv")
 OUTPUT_DIR = Path("docs/internal/experiments/local_retrain")
 
-PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
-    "RELEASE_YEAR",
-    "RELEASE_DATE",
-    "PRODUCTION_BUDGET",
-    "RUNTIME",
-    "MPAA",
-    "GENRES",
-    "DIRECTOR",
-    "PRODUCTION_COMPANY",
-    "ACTORS",
-    "IP_TIER",
-    "PRIOR_FRANCHISE_GROSS_LOG",
-    "IS_FRANCHISE_FOLLOWUP",
-)
-
-START_EVAL_YEAR = 2015
-ITERATION_END_YEAR = 2023  # iterate against <= 2023 only
-CONFIRM_END_YEAR = 2025  # touched once, for the frozen confirmation
 RECENT_WINDOW_START = 2023
 
 DISCIPLINE_RULE = (
@@ -79,38 +60,9 @@ DISCIPLINE_RULE = (
     "validation set."
 )
 
-# History: numbers produced BEFORE the frequency-feature leakage fix, when
-# FeaturePreprocessorHigh was fit once on the full frame and the engineered
-# matrix was split afterwards (director/company/actor frequencies and the
-# MPAA encoding saw future years inside each fold).
-PRE_FIX_R2_LOG_BY_YEAR: dict[int, float] = {
-    2015: 0.621,
-    2016: 0.607,
-    2017: 0.630,
-    2018: 0.646,
-    2019: 0.601,
-    2020: 0.364,
-    2021: 0.437,
-    2022: 0.612,
-    2023: 0.595,
-    2024: 0.586,
-    2025: 0.669,
-}
-
-PRE_FIX_VARIANT_TABLE = """\
-| Variant | n | missing budgets | Mean CV MAE (log) | Per-year R² (log) range | Pooled median APE |
-|---|---:|---:|---:|---:|---:|
-| headline_nan_passthrough | 6080 | 323 | 0.7290 ± 0.0496 | 0.364 – 0.669 | 55.3% |
-| drop_missing_budget | 5757 | 0 | 0.7431 ± 0.0489 | 0.312 – 0.635 | 54.8% |
-| missing_budget_flag_11th_col | 6080 | 323 | 0.7304 ± 0.0548 | 0.367 – 0.670 | 54.4% |
-| gross_50m_plus | 2640 | 18 | 0.4712 ± 0.0561 | 0.102 – 0.667 | 39.2% |
-| min_year_1990 | 5185 | 254 | 0.7355 ± 0.0529 | 0.327 – 0.650 | 55.5% |"""
-
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Evaluate the local retrain with leakage-free CV."
-    )
+    parser = argparse.ArgumentParser(description="Evaluate the local retrain with leakage-free CV.")
     parser.add_argument(
         "--confirm",
         action="store_true",
@@ -140,17 +92,20 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def run_headline_cv(frame: pd.DataFrame, end_eval_year: int) -> dict:
+def run_headline_cv(
+    frame: pd.DataFrame, end_eval_year: int, *, burn_holdout: bool = False
+) -> dict[str, Any]:
     """One leakage-free CV run on the full frame (NaN budgets pass through)."""
     X_input = frame[list(PREPROCESSOR_INPUT_COLUMNS)].reset_index(drop=True)
     y_raw = frame["WORLDWIDE_GROSS"].astype(float).reset_index(drop=True)
-    y_log = pd.Series(np.log1p(y_raw), name="GROSS_LOG")
+    y_log = pd.Series(to_log_target(y_raw), name="GROSS_LOG")
     dates = frame["RELEASE_YEAR"].astype(int).reset_index(drop=True)
 
     cv = TimeSeriesCrossValidator(
         cv_folds=end_eval_year - START_EVAL_YEAR + 1,
         start_eval_year=START_EVAL_YEAR,
         end_year=end_eval_year,
+        allow_confirmation_years=burn_holdout,
     )
     cv_results = cv.cross_validate(
         BoxOfficeXGBoostModel,
@@ -160,10 +115,6 @@ def run_headline_cv(frame: pd.DataFrame, end_eval_year: int) -> dict:
         preprocessor_factory=FeaturePreprocessorHigh,
     )
 
-    failed = [f for f in cv_results["fold_results"] if f["error"] is not None]
-    if failed:
-        raise RuntimeError(f"{len(failed)} CV folds failed: {failed}")
-
     return {
         "cv_results": cv_results,
         "y_raw": y_raw,
@@ -171,22 +122,22 @@ def run_headline_cv(frame: pd.DataFrame, end_eval_year: int) -> dict:
     }
 
 
-def pooled_window_metrics(headline: dict, start_year: int, end_year: int) -> dict:
+def pooled_window_metrics(
+    headline: dict[str, Any], start_year: int, end_year: int
+) -> dict[str, Any]:
     """Pooled median APE + mean fold log-R² over an eval-year window."""
     cv_results = headline["cv_results"]
     y_raw = headline["y_raw"]
     dates = headline["dates"]
 
     fold_r2 = [
-        f["model_r2_log"]
-        for f in cv_results["fold_results"]
-        if start_year <= f["eval_year"] <= end_year
+        f.model_r2_log for f in cv_results.fold_results if start_year <= f.eval_year <= end_year
     ]
 
-    oof = pd.DataFrame(cv_results["oof_records"])
+    oof = pd.DataFrame([record.model_dump() for record in cv_results.oof_records])
     years = dates.iloc[oof["idx"]].to_numpy()
     in_window = (years >= start_year) & (years <= end_year)
-    pred_dollars = np.expm1(oof["pred"].to_numpy()[in_window])
+    pred_dollars = from_log_target(oof["pred"].to_numpy()[in_window])
     true_dollars = y_raw.iloc[oof["idx"]].to_numpy()[in_window]
     pooled_median_ape = float(
         np.median(np.abs(pred_dollars - true_dollars) / np.maximum(true_dollars, 1.0))
@@ -200,7 +151,7 @@ def pooled_window_metrics(headline: dict, start_year: int, end_year: int) -> dic
     }
 
 
-def build_per_year_table(frame: pd.DataFrame, cv_results: dict) -> pd.DataFrame:
+def build_per_year_table(frame: pd.DataFrame, cv_results: CrossValidationResults) -> pd.DataFrame:
     raw_df = pd.DataFrame(
         {
             "release_year": frame["RELEASE_YEAR"].to_numpy(),
@@ -217,159 +168,7 @@ def build_per_year_table(frame: pd.DataFrame, cv_results: dict) -> pd.DataFrame:
     )
 
 
-def build_delta_table(new_table: pd.DataFrame, old_table: pd.DataFrame) -> pd.DataFrame:
-    merged = old_table.merge(
-        new_table, on="year", suffixes=("_old", "_new"), how="inner"
-    )
-    return pd.DataFrame(
-        {
-            "year": merged["year"],
-            "n_old": merged["n_movies_old"],
-            "n_new": merged["n_movies_new"],
-            "model_r2_log_old": merged["model_r2_log_old"],
-            "model_r2_log_new": merged["model_r2_log_new"],
-            "delta_r2_log": merged["model_r2_log_new"] - merged["model_r2_log_old"],
-            "model_spearman_old": merged["model_spearman_old"],
-            "model_spearman_new": merged["model_spearman_new"],
-            "delta_spearman": (
-                merged["model_spearman_new"] - merged["model_spearman_old"]
-            ),
-            "median_ape_old": merged["model_median_ape_old"],
-            "median_ape_new": merged["model_median_ape_new"],
-            "delta_median_ape": (
-                merged["model_median_ape_new"] - merged["model_median_ape_old"]
-            ),
-        }
-    )
-
-
-def overlap_mask_from_old_snapshot(frame: pd.DataFrame) -> pd.Series | None:
-    """Approximate membership in the old snapshot via (year, runtime, budget).
-
-    The old snapshot carries only engineered features — no imdb_id, no title —
-    so an exact identity join is impossible. Returns None when the gitignored
-    snapshot is absent.
-    """
-    if not OLD_SNAPSHOT_X.exists():
-        return None
-    old = pd.read_csv(
-        OLD_SNAPSHOT_X, usecols=["release_year", "runtime", "production_budget"]
-    )
-    old_keys = set(
-        zip(
-            old["release_year"].astype(int),
-            old["runtime"].astype(float),
-            old["production_budget"].astype(float),
-            strict=True,
-        )
-    )
-    keys = zip(
-        frame["RELEASE_YEAR"].astype(int),
-        frame["RUNTIME"].astype(float),
-        frame["PRODUCTION_BUDGET"].astype(float),
-        strict=True,
-    )
-    return pd.Series([k in old_keys for k in keys], index=frame.index)
-
-
-def per_year_metrics_on_subset(
-    headline: dict, subset_positions: np.ndarray, max_year: int
-) -> pd.DataFrame:
-    """Per-year OOF metrics restricted to a row subset (positional indices)."""
-    oof = pd.DataFrame(headline["cv_results"]["oof_records"]).set_index("idx")
-    y_raw = headline["y_raw"]
-    dates = headline["dates"]
-    rows = []
-    for year in sorted(dates.unique()):
-        if not (START_EVAL_YEAR <= year <= max_year):
-            continue
-        year_positions = np.flatnonzero((dates == year).to_numpy())
-        positions = np.intersect1d(year_positions, subset_positions)
-        positions = np.array([p for p in positions if p in oof.index])
-        if len(positions) < 2:
-            continue
-        pred_log = oof.loc[positions, "pred"].to_numpy()
-        true_log = np.log1p(y_raw.iloc[positions].to_numpy())
-        true_dollars = y_raw.iloc[positions].to_numpy()
-        pred_dollars = np.expm1(pred_log)
-        rows.append(
-            {
-                "year": int(year),
-                "n_movies": int(len(positions)),
-                "model_r2_log": float(r2_score(true_log, pred_log)),
-                "model_spearman": spearman_rank_corr(true_log, pred_log),
-                "model_median_ape": float(
-                    np.median(
-                        np.abs(pred_dollars - true_dollars)
-                        / np.maximum(true_dollars, 1.0)
-                    )
-                ),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def render_delta_markdown(delta: pd.DataFrame) -> str:
-    header = (
-        "| Year | n old | n new | R² log old | R² log new | ΔR² log "
-        "| ρ old | ρ new | Δρ | APE old | APE new | ΔAPE |\n"
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
-    )
-    rows = [
-        f"| {int(r['year'])} | {int(r['n_old'])} | {int(r['n_new'])} "
-        f"| {r['model_r2_log_old']:.3f} | {r['model_r2_log_new']:.3f} "
-        f"| {r['delta_r2_log']:+.3f} "
-        f"| {r['model_spearman_old']:.3f} | {r['model_spearman_new']:.3f} "
-        f"| {r['delta_spearman']:+.3f} "
-        f"| {r['median_ape_old']:.1%} | {r['median_ape_new']:.1%} "
-        f"| {r['delta_median_ape']:+.1%} |"
-        for _, r in delta.iterrows()
-    ]
-    return "\n".join([header, *rows])
-
-
-def render_overlap_markdown(overlap: pd.DataFrame, old_table: pd.DataFrame) -> str:
-    merged = old_table[
-        ["year", "n_movies", "model_r2_log", "model_spearman", "model_median_ape"]
-    ].merge(overlap, on="year", suffixes=("_old", "_ovl"), how="inner")
-    header = (
-        "| Year | n old | n overlap | R² log old | R² log overlap "
-        "| ρ old | ρ overlap | APE old | APE overlap |\n"
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|"
-    )
-    rows = [
-        f"| {int(r['year'])} | {int(r['n_movies_old'])} | {int(r['n_movies_ovl'])} "
-        f"| {r['model_r2_log_old']:.3f} | {r['model_r2_log_ovl']:.3f} "
-        f"| {r['model_spearman_old']:.3f} | {r['model_spearman_ovl']:.3f} "
-        f"| {r['model_median_ape_old']:.1%} | {r['model_median_ape_ovl']:.1%} |"
-        for _, r in merged.iterrows()
-    ]
-    return "\n".join([header, *rows])
-
-
-def pre_fix_history_section(new_table: pd.DataFrame) -> str:
-    """Pre-leakage-fix variant table plus a quantified before/after note."""
-    new_by_year = dict(
-        zip(
-            new_table["year"].astype(int),
-            new_table["model_r2_log"].astype(float),
-            strict=True,
-        )
-    )
-    common_years = sorted(set(PRE_FIX_R2_LOG_BY_YEAR) & set(new_by_year))
-    pre_mean = float(np.mean([PRE_FIX_R2_LOG_BY_YEAR[y] for y in common_years]))
-    post_mean = float(np.mean([new_by_year[y] for y in common_years]))
-    note = (
-        f"Numbers below predate the frequency-feature leakage fix (preprocessor "
-        f"fit on the full frame before CV) and are inflated: over "
-        f"{common_years[0]}-{common_years[-1]}, mean per-year log-R² dropped "
-        f"from {pre_mean:.3f} (pre-fix) to {post_mean:.3f} (leakage-free), "
-        f"{post_mean - pre_mean:+.3f}."
-    )
-    return "\n\n".join([note, PRE_FIX_VARIANT_TABLE])
-
-
-def dropped_rows_summary() -> tuple[str, dict]:
+def dropped_rows_summary() -> tuple[str, dict[str, Any]]:
     dropped = pd.read_csv(DROPPED_PATH)
     counts = dropped["DROP_REASON"].str.split(";").explode().value_counts().to_dict()
     lines = [f"Dropped rows: {len(dropped)} (reasons overlap; counts are per rule)"]
@@ -384,11 +183,11 @@ def dropped_rows_summary() -> tuple[str, dict]:
         f"${r['PRODUCTION_BUDGET']:,.0f}, gross ${r['WORLDWIDE_GROSS']:,.0f}"
         for _, r in flagged.iterrows()
     ]
-    return "\n".join(lines), {"drop_counts": counts, "n_dropped": int(len(dropped))}
+    return "\n".join(lines), {"drop_counts": counts, "n_dropped": len(dropped)}
 
 
 def render_recent_window_markdown(
-    recent_table: pd.DataFrame, recent_summary: dict
+    recent_table: pd.DataFrame, recent_summary: dict[str, Any]
 ) -> str:
     table_md = render_metrics_table_markdown(recent_table)
     summary = (
@@ -402,18 +201,16 @@ def render_recent_window_markdown(
 
 def main() -> None:
     args = parse_args()
-    end_eval_year = CONFIRM_END_YEAR if args.confirm else ITERATION_END_YEAR
+    end_eval_year = CONFIRMATION_END_YEAR if args.confirm else ITERATION_END_YEAR
     mode = "confirm" if args.confirm else "iteration"
 
     for path in (FRAME_PATH, DROPPED_PATH, FLAGGED_PATH):
         if not path.exists():
-            raise SystemExit(
-                f"missing input: {path}. Run scripts/prepare_training_frame.py first."
-            )
+            raise SystemExit(f"missing input: {path}. Run scripts/prepare_training_frame.py first.")
 
     frame = pd.read_parquet(FRAME_PATH)
 
-    headline = run_headline_cv(frame, end_eval_year)
+    headline = run_headline_cv(frame, end_eval_year, burn_holdout=args.burn_holdout)
     cv_results = headline["cv_results"]
 
     full_table = build_per_year_table(frame, cv_results)
@@ -421,40 +218,12 @@ def main() -> None:
     recent_summary = pooled_window_metrics(headline, RECENT_WINDOW_START, end_eval_year)
     full_summary = pooled_window_metrics(headline, START_EVAL_YEAR, end_eval_year)
 
-    old_table = pd.read_json(OLD_TABLE_PATH) if OLD_TABLE_PATH.exists() else None
-    delta_table = (
-        build_delta_table(full_table, old_table) if old_table is not None else None
-    )
-
-    overlap_mask = (
-        overlap_mask_from_old_snapshot(frame) if old_table is not None else None
-    )
-    overlap_table = None
-    if overlap_mask is None:
-        overlap_note = (
-            "Old snapshot (`analysis/prior_training_snapshot/X_train.csv`) not found; "
-            "overlap view skipped."
-        )
-    else:
-        overlap_positions = np.flatnonzero(overlap_mask.to_numpy())
-        overlap_table = per_year_metrics_on_subset(
-            headline, overlap_positions, max_year=int(old_table["year"].max())
-        )
-        overlap_note = (
-            f"Overlap key: (release_year, runtime, production_budget) — the old "
-            f"snapshot has no imdb_id or title, so this match is approximate. "
-            f"{int(overlap_mask.sum())} of {len(frame)} new rows matched "
-            f"{len(pd.read_csv(OLD_SNAPSHOT_X))} old rows."
-        )
-
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     full_md = render_metrics_table_markdown(full_table) + "\n"
     if args.confirm:
         report_path = OUTPUT_DIR / "report.md"
         results_path = OUTPUT_DIR / "results.json"
-        full_table.to_json(
-            OUTPUT_DIR / "per_year_table.json", orient="records", indent=2
-        )
+        full_table.to_json(OUTPUT_DIR / "per_year_table.json", orient="records", indent=2)
         (OUTPUT_DIR / "per_year_table.md").write_text(full_md)
         mode_label = (
             "**FROZEN CONFIRMATION RUN** (`--confirm`): eval years include the "
@@ -470,30 +239,6 @@ def main() -> None:
         )
 
     dropped_md, dropped_json = dropped_rows_summary()
-
-    old_model_section: list[str] = []
-    if delta_table is not None:
-        old_model_section = [
-            "## Delta vs the committed old-model table (results/per_year_table.md)",
-            "",
-            "Positive ΔR²/Δρ and negative ΔAPE mean the new run is better. The eval "
-            "population changed (old ~2.7k-row snapshot vs the new $5M+ frame), so "
-            "this table confounds model and population — judge on the overlap view. "
-            "The old table also predates the leakage fix.",
-            "",
-            render_delta_markdown(delta_table),
-            "",
-            "## Overlap view (eval restricted to movies in the old snapshot)",
-            "",
-            overlap_note,
-            "",
-            (
-                render_overlap_markdown(overlap_table, old_table)
-                if overlap_table is not None and not overlap_table.empty
-                else "_No overlap rows with OOF predictions._"
-            ),
-            "",
-        ]
 
     report = [
         "# Local retrain evaluation — 1980-2026 TMDB dataset",
@@ -522,21 +267,9 @@ def main() -> None:
         "",
         full_md.rstrip(),
         "",
-        *old_model_section,
-        "## Pre-leakage-fix history: variant comparison",
-        "",
-        pre_fix_history_section(full_table),
-        "",
         "## Dropped rows",
         "",
         dropped_md,
-        "",
-        "## Caveats",
-        "",
-        "- The overlap join is approximate (composite key, no stable id).",
-        "- Per-fold preprocessor refits make CV slower than the pre-fix runs; "
-        "the numbers are not comparable to pre-fix reports (see the history "
-        "section for the quantified gap).",
     ]
     report_path.write_text("\n".join(report) + "\n")
 
@@ -552,21 +285,10 @@ def main() -> None:
         },
         "recent_window": recent_summary,
         "full_window": full_summary,
-        "mean_cv_mae_log": float(cv_results["mean_cv_mae"]),
-        "std_cv_mae_log": float(cv_results["std_cv_mae"]),
-        "mean_cv_rmsle": float(cv_results["mean_cv_rmsle"]),
+        "mean_cv_mae_log": cv_results.mean_cv_mae,
+        "std_cv_mae_log": cv_results.std_cv_mae,
+        "mean_cv_rmsle": cv_results.mean_cv_rmsle,
         "per_year": json.loads(full_table.to_json(orient="records")),
-        "delta_vs_committed": (
-            json.loads(delta_table.to_json(orient="records"))
-            if delta_table is not None
-            else None
-        ),
-        "overlap_per_year": (
-            json.loads(overlap_table.to_json(orient="records"))
-            if overlap_table is not None
-            else None
-        ),
-        "overlap_note": overlap_note,
         "dropped_rows": dropped_json,
     }
     results_path.write_text(json.dumps(results_json, indent=2) + "\n")

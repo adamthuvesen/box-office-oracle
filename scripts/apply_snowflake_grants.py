@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+from box_office.utils.approval import require_approval
+
 logger = logging.getLogger("apply_snowflake_grants")
 
 SQL_FILE = Path(__file__).with_name("snowflake_role_grants.sql")
@@ -42,8 +44,7 @@ def split_statements(sql: str) -> list[str]:
     for line in sql.splitlines():
         if "'" in line and "--" in line:
             raise ValueError(
-                f"cannot safely strip a comment from a line with a string "
-                f"literal: {line!r}"
+                f"cannot safely strip a comment from a line with a string literal: {line!r}"
             )
         lines.append(line.split("--", 1)[0])
     body = "\n".join(lines)
@@ -57,6 +58,11 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run",
         action="store_true",
         help="Print the statements without connecting to Snowflake",
+    )
+    parser.add_argument(
+        "--approved",
+        action="store_true",
+        help="Approve running the grants as ACCOUNTADMIN.",
     )
     args = parser.parse_args(argv)
 
@@ -74,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[{i:2d}] {stmt}")
         print(f"\n[dry-run] {len(statements)} statements; nothing executed")
         return 0
+
+    return apply_statements(statements, approved=args.approved)
+
+
+def apply_statements(statements: list[str], approved: bool = False) -> int:
+    require_approval("applying Snowflake grants as ACCOUNTADMIN", approved)
 
     # Administration path: force ACCOUNTADMIN irrespective of the pipeline role.
     os.environ["SNOWFLAKE_ROLE"] = "ACCOUNTADMIN"
@@ -93,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
                     rows = cursor.fetchall()
                     result = rows[0][0] if rows and rows[0] else "OK"
                     print(f"       -> {result}")
-                except Exception as exc:  # noqa: BLE001 - surface and abort
+                except Exception as exc:  # noqa: BLE001 - CLI boundary: stop at the first failed grant
                     failures += 1
                     print(f"       -> FAILED: {exc}", file=sys.stderr)
                     break

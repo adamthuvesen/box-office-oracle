@@ -25,9 +25,7 @@ def synthetic_movies() -> pd.DataFrame:
             budget = float(rng.uniform(5_000_000, 250_000_000))
             runtime = float(rng.uniform(80, 180))
             # Target is a noisy-nonlinear function of budget+runtime, NOT a feature.
-            log_gross = (
-                np.log1p(budget) * 0.7 + runtime * 0.015 + float(rng.normal(0, 0.5))
-            )
+            log_gross = np.log1p(budget) * 0.7 + runtime * 0.015 + float(rng.normal(0, 0.5))
             rows.append(
                 {
                     "RELEASE_DATE": f"{year}-{int(rng.integers(1, 13)):02d}-15",
@@ -61,7 +59,7 @@ def test_no_feature_correlates_perfectly_with_target(synthetic_movies):
             continue
         y = target_log.loc[group_idx]
         for col in features.columns:
-            x = features.loc[group_idx, col]
+            x = features[col].loc[group_idx]
             if x.nunique(dropna=True) < 2 or y.nunique(dropna=True) < 2:
                 continue
             corr = float(x.corr(y))

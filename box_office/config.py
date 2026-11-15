@@ -2,16 +2,27 @@
 
 All callers use the module-level ``config`` instance and reach through
 nested views (e.g. ``config.aws.region``, ``config.snowflake.schemas.staging``).
-Env vars are loaded once at import time from ``os.environ`` plus an optional
-``.env`` file in the project root.
+Env vars are loaded from ``os.environ`` plus an optional ``.env`` file in the
+project root, on the first read of ``config``. Importing this module does not
+read them, so the model code and the Lambda path can import the model settings
+without cloud credentials in the environment.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
+from typing import Any
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from box_office.eval_windows import (
+    ITERATION_CV_FOLDS,
+    ITERATION_END_YEAR,
+    START_EVAL_YEAR,
+    refuse_confirmation_years,
+)
 
 
 def model_registry_group_name(
@@ -33,8 +44,6 @@ class _AwsView:
 class _SnowflakeSchemas:
     raw: str
     staging: str
-    feature_store: str
-    ml_training: str
 
 
 @dataclass(frozen=True)
@@ -49,24 +58,43 @@ class _SnowflakeView:
     schemas: _SnowflakeSchemas
 
 
-@dataclass(frozen=True)
-class _ModelHyperparams:
-    n_estimators: int = 1500
-    learning_rate: float = 0.04
-    max_depth: int = 4
-    min_child_weight: int = 2
+class ModelHyperparameters(BaseModel):
+    """XGBoost hyperparameters for every training path, with their allowed ranges."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+    n_estimators: int = Field(default=1500, ge=1, le=10000)
+    learning_rate: float = Field(default=0.04, ge=0.001, le=1.0)
+    max_depth: int = Field(default=4, ge=1, le=20)
+    min_child_weight: int = Field(default=2, ge=0, le=100)
     subsample: float = 0.8
     colsample_bytree: float = 0.8
-    reg_alpha: float = 0.01
-    reg_lambda: float = 0.2
-    early_stopping_rounds: int = 50
+    reg_alpha: float = Field(default=0.01, ge=0, le=100)
+    reg_lambda: float = Field(default=0.2, ge=0, le=100)
+    early_stopping_rounds: int = Field(default=50, ge=1, le=1000)
 
 
-@dataclass(frozen=True)
-class _ModelCV:
-    cv_folds: int = 8
-    start_eval_year: int = 2015
-    end_year: int = 2024
+MODEL_HYPERPARAMETERS = ModelHyperparameters()
+
+
+class CrossValidationWindow(BaseModel):
+    """The cloud path's CV window. Defaults are the local iteration window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+    cv_folds: int = Field(default=ITERATION_CV_FOLDS, ge=2, le=20)
+    start_eval_year: int = Field(default=START_EVAL_YEAR, ge=1900, le=2030)
+    end_year: int = Field(default=ITERATION_END_YEAR, ge=1900, le=2030)
+
+    @model_validator(mode="after")
+    def _check_window(self) -> CrossValidationWindow:
+        if self.start_eval_year >= self.end_year:
+            raise ValueError("start_eval_year must be less than end_year")
+        refuse_confirmation_years(self.end_year)
+        return self
+
+
+CROSS_VALIDATION_WINDOW = CrossValidationWindow()
 
 
 @dataclass(frozen=True)
@@ -75,8 +103,8 @@ class _ModelView:
     # the leakage-free local backtest (see docs/internal/model.md, local-only).
     promotion_threshold: float = 0.55
     artifacts_dir: str = "artifacts"
-    hyperparameters: _ModelHyperparams = _ModelHyperparams()
-    cross_validation: _ModelCV = _ModelCV()
+    hyperparameters: ModelHyperparameters = MODEL_HYPERPARAMETERS
+    cross_validation: CrossValidationWindow = CROSS_VALIDATION_WINDOW
 
 
 @dataclass(frozen=True)
@@ -87,7 +115,11 @@ class _PathsView:
 
 @dataclass(frozen=True)
 class _SagemakerView:
+    # The ECR URI of the training image (infrastructure/docker/training); unset
+    # until it is built and pushed (docs/training-image.md).
+    training_image_uri: str | None = None
     instance_type: str = "ml.m5.large"
+    # The registry's inference container spec only; training uses training_image_uri.
     framework_version: str = "1.7-1"
     s3_prefix: str = "box-office"
 
@@ -102,9 +134,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AWS_REGION", "AWS_DEFAULT_REGION"),
     )
     AWS_S3_BUCKET: str = Field(
-        validation_alias=AliasChoices(
-            "AWS_S3_BUCKET", "S3_BUCKET_NAME", "SAGEMAKER_BUCKET"
-        ),
+        validation_alias=AliasChoices("AWS_S3_BUCKET", "S3_BUCKET_NAME", "SAGEMAKER_BUCKET"),
     )
     SAGEMAKER_ROLE_ARN: str
 
@@ -117,46 +147,47 @@ class Settings(BaseSettings):
     SNOWFLAKE_DATABASE: str
     SNOWFLAKE_SCHEMA_RAW: str = "RAW"
     SNOWFLAKE_SCHEMA_STAGING: str = "STAGING"
-    SNOWFLAKE_SCHEMA_FEATURE_STORE: str = "FEATURE_STORE"
-    SNOWFLAKE_SCHEMA_ML_TRAINING: str = "ML_TRAINING"
 
-    def model_post_init(self, __context) -> None:
+    SAGEMAKER_TRAINING_IMAGE_URI: str | None = None
+
+    _aws: _AwsView
+    _snowflake: _SnowflakeView
+    _model: _ModelView
+    _paths: _PathsView
+    _sagemaker: _SagemakerView
+
+    # Declared so a type checker accepts Settings() and Settings(_env_file=None): pydantic
+    # fills the required fields from the environment, which a synthesized __init__ hides.
+    def __init__(self, **values: Any) -> None:
+        super().__init__(**values)
+
+    def model_post_init(self, context: object, /) -> None:
         """Pre-compute the nested view dataclasses once.
 
         The views materialise at ``Settings()`` construction and subsequent
         reads are pure attribute lookups; ``config.aws is config.aws`` holds.
         """
-        object.__setattr__(
-            self,
-            "_aws",
-            _AwsView(
-                region=self.AWS_REGION,
-                s3_bucket=self.AWS_S3_BUCKET,
-                sagemaker_role_arn=self.SAGEMAKER_ROLE_ARN,
+        self._aws = _AwsView(
+            region=self.AWS_REGION,
+            s3_bucket=self.AWS_S3_BUCKET,
+            sagemaker_role_arn=self.SAGEMAKER_ROLE_ARN,
+        )
+        self._snowflake = _SnowflakeView(
+            user=self.SNOWFLAKE_USER,
+            account=self.SNOWFLAKE_ACCOUNT,
+            database=self.SNOWFLAKE_DATABASE,
+            warehouse=self.SNOWFLAKE_WAREHOUSE,
+            password=self.SNOWFLAKE_PASSWORD,
+            private_key_path=self.SNOWFLAKE_PRIVATE_KEY_PATH,
+            private_key_passphrase=self.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE,
+            schemas=_SnowflakeSchemas(
+                raw=self.SNOWFLAKE_SCHEMA_RAW,
+                staging=self.SNOWFLAKE_SCHEMA_STAGING,
             ),
         )
-        object.__setattr__(
-            self,
-            "_snowflake",
-            _SnowflakeView(
-                user=self.SNOWFLAKE_USER,
-                account=self.SNOWFLAKE_ACCOUNT,
-                database=self.SNOWFLAKE_DATABASE,
-                warehouse=self.SNOWFLAKE_WAREHOUSE,
-                password=self.SNOWFLAKE_PASSWORD,
-                private_key_path=self.SNOWFLAKE_PRIVATE_KEY_PATH,
-                private_key_passphrase=self.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE,
-                schemas=_SnowflakeSchemas(
-                    raw=self.SNOWFLAKE_SCHEMA_RAW,
-                    staging=self.SNOWFLAKE_SCHEMA_STAGING,
-                    feature_store=self.SNOWFLAKE_SCHEMA_FEATURE_STORE,
-                    ml_training=self.SNOWFLAKE_SCHEMA_ML_TRAINING,
-                ),
-            ),
-        )
-        object.__setattr__(self, "_model", _ModelView())
-        object.__setattr__(self, "_paths", _PathsView())
-        object.__setattr__(self, "_sagemaker", _SagemakerView())
+        self._model = _ModelView()
+        self._paths = _PathsView()
+        self._sagemaker = _SagemakerView(training_image_uri=self.SAGEMAKER_TRAINING_IMAGE_URI)
 
     @property
     def aws(self) -> _AwsView:
@@ -179,4 +210,12 @@ class Settings(BaseSettings):
         return self._sagemaker
 
 
-config = Settings()
+@cache
+def _settings() -> Settings:
+    return Settings()
+
+
+def __getattr__(name: str) -> Settings:
+    if name == "config":
+        return _settings()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

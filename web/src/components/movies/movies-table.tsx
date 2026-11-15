@@ -25,9 +25,7 @@ export function MoviesTable({ movies }: { movies: CatalogMovie[] }) {
     () => [
       columnHelper.accessor("title", {
         header: "Title",
-        cell: (info) => (
-          <span className="font-medium text-ink">{info.getValue()}</span>
-        ),
+        cell: (info) => <span className="font-medium text-ink">{info.getValue()}</span>,
       }),
       columnHelper.accessor("release_year", {
         header: "Year",
@@ -40,9 +38,7 @@ export function MoviesTable({ movies }: { movies: CatalogMovie[] }) {
       }),
       columnHelper.accessor("director", {
         header: "Director",
-        cell: (info) => (
-          <span className="text-dim">{info.getValue() ?? "—"}</span>
-        ),
+        cell: (info) => <span className="text-dim">{info.getValue() ?? "—"}</span>,
       }),
       columnHelper.accessor("production_budget", {
         header: "Budget",
@@ -56,11 +52,7 @@ export function MoviesTable({ movies }: { movies: CatalogMovie[] }) {
         header: "Gross",
         cell: (info) => {
           const v = info.getValue();
-          return (
-            <Mono className="text-actual">
-              {v != null ? dollarsCompact(v) : "—"}
-            </Mono>
-          );
+          return <Mono className="text-actual">{v != null ? dollarsCompact(v) : "—"}</Mono>;
         },
         sortUndefined: "last",
       }),
@@ -77,6 +69,7 @@ export function MoviesTable({ movies }: { movies: CatalogMovie[] }) {
     [],
   );
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack's useReactTable returns functions the React Compiler cannot memoize; the compiler skips this component by design.
   const table = useReactTable({
     data: movies,
     columns,
@@ -111,10 +104,7 @@ export function MoviesTable({ movies }: { movies: CatalogMovie[] }) {
                         onClick={header.column.getToggleSortingHandler()}
                         className="inline-flex items-center gap-1 text-xs uppercase tracking-wider text-dim hover:text-ink"
                       >
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
+                        {flexRender(header.column.columnDef.header, header.getContext())}
                         <span aria-hidden className="w-3 text-actual">
                           {sorted === "asc" ? "↑" : sorted === "desc" ? "↓" : ""}
                         </span>
@@ -158,8 +148,7 @@ export function MoviesTable({ movies }: { movies: CatalogMovie[] }) {
             Previous
           </button>
           <span className="font-mono tabular text-xs">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
+            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
           </span>
           <button
             type="button"
@@ -175,14 +164,6 @@ export function MoviesTable({ movies }: { movies: CatalogMovie[] }) {
   );
 }
 
-function Mono({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <span className={`font-mono tabular text-sm ${className}`}>{children}</span>
-  );
+function Mono({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <span className={`font-mono tabular text-sm ${className}`}>{children}</span>;
 }

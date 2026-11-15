@@ -20,10 +20,7 @@ import {
   numericTick,
 } from "@/components/charts/chart-tooltip";
 
-function GenreTooltip({
-  active,
-  payload,
-}: TooltipContentProps) {
+function GenreTooltip({ active, payload }: TooltipContentProps) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload as GenreEconomics;
   return (
@@ -37,8 +34,7 @@ function GenreTooltip({
         },
         {
           name: "Median budget",
-          value:
-            row.medianBudget != null ? dollarsCompact(row.medianBudget) : "—",
+          value: row.medianBudget != null ? dollarsCompact(row.medianBudget) : "—",
           color: "var(--color-actual-deep)",
         },
       ]}

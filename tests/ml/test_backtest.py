@@ -11,6 +11,34 @@ from box_office.ml.backtest import (
     render_metrics_table_markdown,
 )
 from box_office.ml.backtest_report import build_report
+from box_office.ml.metrics_models import CrossValidationResults, FoldResult
+
+
+def _fold(**metrics: float) -> FoldResult:
+    defaults: dict[str, float] = {
+        "fold_number": 1,
+        "mae_score": 0.5,
+        "best_iteration": 100,
+        "train_samples": 500,
+    }
+    return FoldResult.model_validate(defaults | metrics)
+
+
+def _cv_results(fold_results: list[FoldResult]) -> CrossValidationResults:
+    return CrossValidationResults(
+        mean_cv_mae=0.5,
+        std_cv_mae=0.1,
+        mean_cv_rmsle=1.0,
+        std_cv_rmsle=0.1,
+        cv_scores=[0.5] * len(fold_results),
+        cv_rmsle_scores=[1.0] * len(fold_results),
+        mean_best_iteration=100,
+        oof_predictions={},
+        oof_records=[],
+        feature_importances=None,
+        feature_names=[],
+        fold_results=fold_results,
+    )
 
 
 @pytest.fixture
@@ -35,9 +63,7 @@ def synthetic_yearly_movies() -> pd.DataFrame:
 class TestLogBudgetBaseline:
     def test_fits_and_predicts(self, synthetic_yearly_movies):
         df = synthetic_yearly_movies
-        baseline = LogBudgetBaseline().fit(
-            df["production_budget"], np.log1p(df["worldwide_gross"])
-        )
+        baseline = LogBudgetBaseline().fit(df["production_budget"], np.log1p(df["worldwide_gross"]))
         preds = baseline.predict_log(df["production_budget"])
         assert preds.shape == (len(df),)
         assert np.all(np.isfinite(preds))
@@ -93,26 +119,24 @@ class TestComputeBaselinePerYear:
 class TestAssemblePerYearTable:
     def test_combines_model_and_baseline(self):
         fold_results = [
-            {
-                "eval_year": 2023,
-                "val_samples": 100,
-                "rmsle_score": 1.2,
-                "model_r2_log": 0.80,
-                "model_spearman": 0.88,
-                "model_r2_dollars": 0.65,
-                "model_median_ape": 0.4,
-                "error": None,
-            },
-            {
-                "eval_year": 2024,
-                "val_samples": 95,
-                "rmsle_score": 1.4,
-                "model_r2_log": 0.78,
-                "model_spearman": 0.86,
-                "model_r2_dollars": 0.55,
-                "model_median_ape": 0.5,
-                "error": None,
-            },
+            _fold(
+                eval_year=2023,
+                val_samples=100,
+                rmsle_score=1.2,
+                model_r2_log=0.80,
+                model_spearman=0.88,
+                model_r2_dollars=0.65,
+                model_median_ape=0.4,
+            ),
+            _fold(
+                eval_year=2024,
+                val_samples=95,
+                rmsle_score=1.4,
+                model_r2_log=0.78,
+                model_spearman=0.86,
+                model_r2_dollars=0.55,
+                model_median_ape=0.5,
+            ),
         ]
         baseline_results = compute_baseline_per_year(
             pd.DataFrame(
@@ -147,27 +171,7 @@ class TestAssemblePerYearTable:
             "model_median_ape",
         }
         assert (table["gain_r2"] == table["model_r2"] - table["baseline_r2"]).all()
-        assert (
-            table["gain_r2_log"] == table["model_r2_log"] - table["baseline_r2_log"]
-        ).all()
-
-    def test_skips_failed_folds(self):
-        fold_results = [
-            {"eval_year": 2023, "error": "boom"},
-            {
-                "eval_year": 2024,
-                "val_samples": 50,
-                "rmsle_score": 1.1,
-                "model_r2_dollars": 0.7,
-                "model_median_ape": 0.3,
-                "error": None,
-            },
-        ]
-        table = assemble_per_year_metrics_table(
-            model_fold_results=fold_results,
-            baseline_results=[],
-        )
-        assert list(table["year"]) == [2024]
+        assert (table["gain_r2_log"] == table["model_r2_log"] - table["baseline_r2_log"]).all()
 
 
 class TestMarkdownRendering:
@@ -201,30 +205,28 @@ class TestMarkdownRendering:
 
 class TestBuildReportEndToEnd:
     def test_report_combines_inputs(self, synthetic_yearly_movies):
-        cv_results = {
-            "fold_results": [
-                {
-                    "eval_year": 2023,
-                    "val_samples": 30,
-                    "rmsle_score": 1.0,
-                    "model_r2_log": 0.83,
-                    "model_spearman": 0.9,
-                    "model_r2_dollars": 0.78,
-                    "model_median_ape": 0.32,
-                    "error": None,
-                },
-                {
-                    "eval_year": 2024,
-                    "val_samples": 30,
-                    "rmsle_score": 1.05,
-                    "model_r2_log": 0.81,
-                    "model_spearman": 0.88,
-                    "model_r2_dollars": 0.74,
-                    "model_median_ape": 0.36,
-                    "error": None,
-                },
+        cv_results = _cv_results(
+            [
+                _fold(
+                    eval_year=2023,
+                    val_samples=30,
+                    rmsle_score=1.0,
+                    model_r2_log=0.83,
+                    model_spearman=0.9,
+                    model_r2_dollars=0.78,
+                    model_median_ape=0.32,
+                ),
+                _fold(
+                    eval_year=2024,
+                    val_samples=30,
+                    rmsle_score=1.05,
+                    model_r2_log=0.81,
+                    model_spearman=0.88,
+                    model_r2_dollars=0.74,
+                    model_median_ape=0.36,
+                ),
             ]
-        }
+        )
         table = build_report(
             raw_df=synthetic_yearly_movies,
             cv_results=cv_results,

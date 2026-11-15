@@ -48,7 +48,7 @@ def process_text_list(value: Any) -> list[str]:
             parsed = ast.literal_eval(value)
             if isinstance(parsed, list):
                 return [str(tok).strip().lower() for tok in parsed if tok]
-        except (ValueError, SyntaxError):
+        except ValueError, SyntaxError:
             pass
         return [value.strip().lower()]
 

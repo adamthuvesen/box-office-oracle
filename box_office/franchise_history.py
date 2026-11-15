@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import yaml
@@ -72,7 +73,7 @@ def collection_memberships(
     return mapping
 
 
-def load_collection_overrides(path: Path = DEFAULT_OVERRIDES_PATH) -> list[dict]:
+def load_collection_overrides(path: Path = DEFAULT_OVERRIDES_PATH) -> list[dict[str, Any]]:
     """Public reader for ``data/collection_overrides.yml``.
 
     Returns ``[]`` when the file is absent so callers can layer overrides on
@@ -84,7 +85,7 @@ def load_collection_overrides(path: Path = DEFAULT_OVERRIDES_PATH) -> list[dict]
     return _load_overrides(path)
 
 
-def _load_overrides(path: Path) -> list[dict]:
+def _load_overrides(path: Path) -> list[dict[str, Any]]:
     raw = yaml.safe_load(path.read_text()) or {}
     entries = raw.get("overrides") or []
     parsed = []

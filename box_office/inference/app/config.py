@@ -12,32 +12,26 @@ class Settings(BaseSettings):
     """Application settings with environment variable support."""
 
     # Environment Configuration
-    environment: str = Field(
-        default="dev", description="Deployment environment (dev/prod)"
-    )
+    environment: str = Field(default="dev", description="Deployment environment (dev/prod)")
     project_name: str = Field(
         default="box-office", description="Project name used to compose resource names"
     )
 
     # API Configuration
-    api_title: str = Field(
-        default="Serverless ML Inference API", description="API title"
-    )
+    api_title: str = Field(default="Serverless ML Inference API", description="API title")
     api_version: str = Field(default="1.0.0", description="API version")
 
     # AWS Configuration
     aws_region: str = Field(default="eu-north-1", description="AWS region")
     # Model Registry Configuration
-    model_registry_group_name: str | None = Field(
-        default=None,
+    model_registry_group_name: str = Field(
+        default="",
         description="SageMaker Model Registry group name. Composed from project_name and environment when unset.",
     )
 
     # Authentication Configuration
     api_key_header: str = Field(default="X-API-Key", description="API key header name")
-    enable_api_key_auth: bool = Field(
-        default=True, description="Enable API key authentication"
-    )
+    enable_api_key_auth: bool = Field(default=True, description="Enable API key authentication")
     api_key: str | None = Field(
         default=None,
         description="API key for authentication (from API_KEY env var)",
@@ -68,7 +62,7 @@ class Settings(BaseSettings):
     }
 
     @model_validator(mode="after")
-    def _compose_model_registry_group_name(self) -> "Settings":
+    def _compose_model_registry_group_name(self) -> Settings:
         if not self.model_registry_group_name:
             self.model_registry_group_name = model_registry_group_name(
                 project_name=self.project_name,

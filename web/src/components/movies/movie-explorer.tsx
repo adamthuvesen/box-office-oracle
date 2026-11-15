@@ -19,25 +19,21 @@ const SORTS = {
   },
   "roi-desc": {
     label: "Return on budget",
-    compare: (a: CatalogMovie, b: CatalogMovie) =>
-      (roi(b) ?? -1) - (roi(a) ?? -1),
+    compare: (a: CatalogMovie, b: CatalogMovie) => (roi(b) ?? -1) - (roi(a) ?? -1),
   },
   "year-desc": {
     label: "Newest first",
     compare: (a: CatalogMovie, b: CatalogMovie) =>
-      b.release_year - a.release_year ||
-      (b.worldwide_gross ?? -1) - (a.worldwide_gross ?? -1),
+      b.release_year - a.release_year || (b.worldwide_gross ?? -1) - (a.worldwide_gross ?? -1),
   },
   "year-asc": {
     label: "Oldest first",
     compare: (a: CatalogMovie, b: CatalogMovie) =>
-      a.release_year - b.release_year ||
-      (b.worldwide_gross ?? -1) - (a.worldwide_gross ?? -1),
+      a.release_year - b.release_year || (b.worldwide_gross ?? -1) - (a.worldwide_gross ?? -1),
   },
   "title-asc": {
     label: "Title, A to Z",
-    compare: (a: CatalogMovie, b: CatalogMovie) =>
-      a.title.localeCompare(b.title),
+    compare: (a: CatalogMovie, b: CatalogMovie) => a.title.localeCompare(b.title),
   },
 } as const;
 
@@ -75,8 +71,7 @@ export function MovieExplorer({ movies }: { movies: CatalogMovie[] }) {
     return movies
       .filter((m) => {
         if (genre && !m.genres.includes(genre)) return false;
-        if (decade !== null && Math.floor(m.release_year / 10) * 10 !== decade)
-          return false;
+        if (decade !== null && Math.floor(m.release_year / 10) * 10 !== decade) return false;
         if (
           q &&
           !m.title.toLowerCase().includes(q) &&
@@ -142,9 +137,7 @@ export function MovieExplorer({ movies }: { movies: CatalogMovie[] }) {
               onClick={() => setView(v)}
               aria-pressed={view === v}
               className={`px-3 py-1.5 text-sm capitalize transition-colors duration-150 ${
-                view === v
-                  ? "bg-surface-2 text-actual"
-                  : "bg-surface text-dim hover:text-ink"
+                view === v ? "bg-surface-2 text-actual" : "bg-surface text-dim hover:text-ink"
               }`}
             >
               {v}
@@ -199,8 +192,7 @@ export function MovieExplorer({ movies }: { movies: CatalogMovie[] }) {
               onClick={() => setVisible((v) => v + GRID_PAGE * 2)}
               className="mx-auto rounded border border-hairline px-4 py-2 text-sm text-ink transition-colors duration-150 hover:bg-surface"
             >
-              Show more ({(filtered.length - visible).toLocaleString("en-US")}{" "}
-              remaining)
+              Show more ({(filtered.length - visible).toLocaleString("en-US")} remaining)
             </button>
           )}
           {filtered.length === 0 && (

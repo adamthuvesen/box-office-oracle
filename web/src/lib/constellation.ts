@@ -35,16 +35,11 @@ export interface StarField {
 const X_RANGE = 0.88;
 const Y_RANGE = 0.78;
 
-export function buildStarField(
-  movies: Movie[],
-  predictions: OraclePredictions | null,
-): StarField {
+export function buildStarField(movies: Movie[], predictions: OraclePredictions | null): StarField {
   /** Honest, gradeable prediction: out-of-sample with a real gross to compare. */
   const honest = (m: Movie): OraclePrediction | null => {
     const p = predictions?.[String(m.tmdb_id)] ?? null;
-    return p && p.prediction_kind === "out_of_sample" && p.actual_gross != null
-      ? p
-      : null;
+    return p && p.prediction_kind === "out_of_sample" && p.actual_gross != null ? p : null;
   };
 
   const eligible = movies.filter(
@@ -62,9 +57,7 @@ export function buildStarField(
   const budgetRank = rankPositions(logBudget);
   const [gMin, gMax] = percentileBounds(logGross, 0.01, 0.995);
   const years = eligible.map((m) => m.release_year);
-  const predYears = eligible
-    .filter((m) => honest(m) != null)
-    .map((m) => m.release_year);
+  const predYears = eligible.filter((m) => honest(m) != null).map((m) => m.release_year);
   const minYear = predYears.length ? Math.min(...predYears) : Math.min(...years);
   const maxYear = predYears.length ? Math.max(...predYears) : Math.max(...years);
 
@@ -75,26 +68,19 @@ export function buildStarField(
   const stars: Star[] = eligible.map((m, i) => {
     const pred = honest(m);
     const fieldX = budgetRank[i] * 2 * X_RANGE - X_RANGE;
-    const fieldY =
-      clamp01((logGross[i] - gMin) / (gMax - gMin)) * 2 * Y_RANGE - Y_RANGE;
+    const fieldY = clamp01((logGross[i] - gMin) / (gMax - gMin)) * 2 * Y_RANGE - Y_RANGE;
 
     // Per-year error columns: only movies the model was graded on spread out.
     const yearSpan = Math.max(maxYear - minYear, 1);
-    const yearX =
-      ((m.release_year - minYear) / yearSpan) * 2 * X_RANGE - X_RANGE;
+    const yearX = ((m.release_year - minYear) / yearSpan) * 2 * X_RANGE - X_RANGE;
     const logRatio = pred
-      ? Math.max(
-          -1.2,
-          Math.min(1.2, Math.log(pred.predicted_gross / pred.actual_gross!)),
-        )
+      ? Math.max(-1.2, Math.min(1.2, Math.log(pred.predicted_gross / pred.actual_gross!)))
       : 0;
     const yearY = pred ? (logRatio / 1.2) * Y_RANGE * 0.9 : -0.95;
 
     const yScale = (2 * Y_RANGE) / (gMax - gMin);
     const predictedFieldY = pred
-      ? fieldY +
-        (Math.log10(pred.predicted_gross) - Math.log10(pred.actual_gross!)) *
-          yScale
+      ? fieldY + (Math.log10(pred.predicted_gross) - Math.log10(pred.actual_gross!)) * yScale
       : null;
 
     const roi = m.worldwide_gross! / m.production_budget!;
@@ -203,9 +189,7 @@ export class StarGrid {
 
 /** 0..1 rank position per value (ties keep insertion order — fine for layout). */
 function rankPositions(values: number[]): number[] {
-  const order = values
-    .map((v, i) => [v, i] as const)
-    .sort((a, b) => a[0] - b[0]);
+  const order = values.map((v, i) => [v, i] as const).sort((a, b) => a[0] - b[0]);
   const ranks = new Array<number>(values.length);
   order.forEach(([, originalIndex], rank) => {
     ranks[originalIndex] = rank / Math.max(values.length - 1, 1);
@@ -213,11 +197,7 @@ function rankPositions(values: number[]): number[] {
   return ranks;
 }
 
-function percentileBounds(
-  values: number[],
-  lo: number,
-  hi: number,
-): [number, number] {
+function percentileBounds(values: number[], lo: number, hi: number): [number, number] {
   const sorted = [...values].sort((a, b) => a - b);
   const at = (q: number) =>
     sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * sorted.length)))];

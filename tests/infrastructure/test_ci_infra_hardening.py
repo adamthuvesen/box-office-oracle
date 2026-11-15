@@ -29,8 +29,6 @@ CI_YML = WORKFLOWS_DIR / "ci.yml"
 ML_PIPELINE_YML = WORKFLOWS_DIR / "ml-pipeline.yml"
 CD_INFRA_YML = WORKFLOWS_DIR / "cd-infrastructure.yml"
 
-DATA_TASKS_PY = REPO_ROOT / "box_office" / "orchestration" / "tasks" / "data_tasks.py"
-
 
 def _strip_hcl_comments(text: str) -> str:
     """Strip ``#``/``//`` line comments and ``/* */`` blocks from HCL."""
@@ -67,21 +65,11 @@ def test_cd_workflow_does_not_push_latest_tag() -> None:
 
 
 def test_sagemaker_artifacts_bucket_has_lifecycle_rule() -> None:
+    # checkov CKV_BO_4 checks the expiry window; a linter cannot require the resource.
     text = _strip_hcl_comments(MAIN_TF.read_text())
-    assert (
-        'resource "aws_s3_bucket_lifecycle_configuration" "sagemaker_artifacts"' in text
-    ), (
-        "Release hardening M3: SageMaker artifacts bucket must declare a lifecycle "
-        "configuration."
+    assert 'resource "aws_s3_bucket_lifecycle_configuration" "sagemaker_artifacts"' in text, (
+        "Release hardening M3: SageMaker artifacts bucket must declare a lifecycle configuration."
     )
-    assert "noncurrent_version_expiration" in text, (
-        "Release hardening M3: lifecycle must include a noncurrent_version_expiration "
-        "block."
-    )
-    # Confirm the noncurrent-days value is present and <= 90 (we set 90).
-    m = re.search(r"noncurrent_days\s*=\s*(\d+)", text)
-    assert m is not None, "noncurrent_days must be set"
-    assert int(m.group(1)) <= 90, "noncurrent_days must be <= 90"
 
 
 # ---------------------------------------------------------------------------
@@ -129,9 +117,7 @@ def test_no_aws_account_id_in_tracked_terraform() -> None:
     injected at init) and tfvars must use example/placeholder bucket names.
     """
     for path in (BACKEND_TF, PROD_TFVARS, DEV_TFVARS):
-        active = "\n".join(
-            line.split("#", 1)[0] for line in path.read_text().splitlines()
-        )
+        active = "\n".join(line.split("#", 1)[0] for line in path.read_text().splitlines())
         assert not re.search(r"\d{12}", active), (
             f"{path.name} contains a 12-digit AWS account id; keep state/bucket "
             "values out of tracked files (inject at init / via untracked override)."
@@ -199,12 +185,8 @@ def test_dockerfile_runtime_uses_dedicated_target_dir() -> None:
     # And the runtime stage must NOT wholesale-copy the builder's
     # /var/lang/lib/python3.12/site-packages tree.
     assert (
-        "/var/lang/lib/python3.12/site-packages /var/lang/lib/python3.12/site-packages"
-        not in text
-    ), (
-        "Release hardening M10: runtime stage must not copy the entire builder "
-        "site-packages tree."
-    )
+        "/var/lang/lib/python3.12/site-packages /var/lang/lib/python3.12/site-packages" not in text
+    ), "Release hardening M10: runtime stage must not copy the entire builder site-packages tree."
 
 
 # ---------------------------------------------------------------------------
@@ -245,8 +227,7 @@ def test_ml_pipeline_training_is_manual_only() -> None:
         "Full SageMaker training must not run automatically on main pushes."
     )
     assert "schedule" not in triggers, (
-        "Full SageMaker training must not run on a schedule without fresh-data "
-        "automation."
+        "Full SageMaker training must not run on a schedule without fresh-data automation."
     )
 
 
@@ -254,19 +235,14 @@ def test_cd_infrastructure_deploy_is_manual_only() -> None:
     data = yaml.safe_load(CD_INFRA_YML.read_text())
     triggers = data.get("on") or data.get(True)
 
-    assert isinstance(triggers, dict), (
-        "cd-infrastructure.yml must declare workflow triggers"
-    )
+    assert isinstance(triggers, dict), "cd-infrastructure.yml must declare workflow triggers"
     assert "workflow_dispatch" in triggers, (
         "Infrastructure deploy must stay available as a manual workflow."
     )
     assert "push" not in triggers, (
-        "Infrastructure deploy must not run automatically on main pushes in a "
-        "public repo."
+        "Infrastructure deploy must not run automatically on main pushes in a public repo."
     )
-    assert "schedule" not in triggers, (
-        "Infrastructure deploy must not run on a schedule."
-    )
+    assert "schedule" not in triggers, "Infrastructure deploy must not run on a schedule."
 
 
 # ---------------------------------------------------------------------------
@@ -285,23 +261,33 @@ def test_dbt_ci_includes_compile_step() -> None:
     )
 
 
-def test_ci_enforces_python_lint_and_formatting() -> None:
+def test_ci_first_job_runs_make_check_and_gates_the_rest() -> None:
     data = yaml.safe_load(CI_YML.read_text())
-    steps = data["jobs"]["test"]["steps"]
+    jobs = data["jobs"]
+    assert next(iter(jobs)) == "check"
+    commands = "\n".join(step.get("run", "") for step in jobs["check"]["steps"])
+    assert "make check" in commands
+    for name, job in jobs.items():
+        if name != "check":
+            assert job.get("needs") == "check", f"job {name} must declare needs: check"
+
+
+def test_check_script_runs_lint_format_and_fast_tests() -> None:
+    script = (REPO_ROOT / "scripts" / "check.sh").read_text()
+
+    assert "uv sync --locked" in script
+    assert "ruff check box_office tests scripts" in script
+    assert "ruff format --check box_office tests scripts" in script
+    assert 'pytest tests/ -m "not integration and not slow"' in script
+
+
+def test_ci_builds_web_app_through_recipes() -> None:
+    data = yaml.safe_load(CI_YML.read_text())
+    steps = data["jobs"]["web-build"]["steps"]
     commands = "\n".join(step.get("run", "") for step in steps)
 
-    assert "ruff check box_office tests scripts" in commands
-    assert "ruff format --check box_office tests scripts" in commands
-
-
-def test_ci_enforces_web_lint_and_build() -> None:
-    data = yaml.safe_load(CI_YML.read_text())
-    steps = data["jobs"]["web-quality"]["steps"]
-    commands = "\n".join(step.get("run", "") for step in steps)
-
-    assert "pnpm --dir web install --frozen-lockfile" in commands
-    assert "pnpm --dir web lint" in commands
-    assert "pnpm --dir web build" in commands
+    assert "make web-install" in commands
+    assert "make web-build" in commands
 
 
 def test_dbt_ci_parses_without_snowflake_credentials() -> None:
@@ -315,31 +301,3 @@ def test_dbt_ci_parses_without_snowflake_credentials() -> None:
         "steps.creds.outputs.has_creds == 'true'"
     )
     assert "offline" in job["env"]["SNOWFLAKE_ACCOUNT"]
-
-
-# ---------------------------------------------------------------------------
-# 3.12 / Spec: save_dataset_to_snowflake validates table_name first
-# ---------------------------------------------------------------------------
-
-
-def test_save_dataset_to_snowflake_validates_identifier() -> None:
-    text = DATA_TASKS_PY.read_text()
-    # Find the save_dataset_to_snowflake function body.
-    m = re.search(
-        r"^def save_dataset_to_snowflake_impl\([\s\S]*?\) -> bool:(?P<body>[\s\S]*?)(?=^def )",
-        text,
-        flags=re.MULTILINE,
-    )
-    assert m is not None, "save_dataset_to_snowflake_impl function not found"
-    body = m.group("body")
-    # The validate call for table_name MUST come before write_pandas.
-    validate_idx = body.find('validate_sql_identifier(table_name, "table")')
-    write_idx = body.find("write_pandas(")
-    assert validate_idx != -1, (
-        "Release hardening M66: save_dataset_to_snowflake must call "
-        'validate_sql_identifier(table_name, "table") before write_pandas.'
-    )
-    assert write_idx != -1, "write_pandas call missing"
-    assert validate_idx < write_idx, (
-        "validate_sql_identifier(table_name, ...) must precede write_pandas."
-    )

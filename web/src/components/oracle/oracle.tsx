@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import { MotionConfig } from "motion/react";
-import {
-  QueryClient,
-  QueryClientProvider,
-  useMutation,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useMutation } from "@tanstack/react-query";
 import type { ComparableMovie } from "@/lib/predict";
 import { askOracle } from "./api";
 import { OracleForm } from "./oracle-form";
@@ -46,10 +42,7 @@ function OracleInner({ catalog, liveApi }: OracleProps) {
   return (
     <MotionConfig reducedMotion="user">
       <div className="grid gap-10 lg:grid-cols-2 lg:gap-12">
-        <OracleForm
-          pending={mutation.isPending}
-          onAsk={(request) => mutation.mutate(request)}
-        />
+        <OracleForm pending={mutation.isPending} onAsk={(request) => mutation.mutate(request)} />
         <RevealStage
           status={status}
           result={mutation.data ?? null}

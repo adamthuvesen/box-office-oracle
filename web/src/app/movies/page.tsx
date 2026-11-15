@@ -15,8 +15,8 @@ export default function MoviesPage() {
       <header className="mb-8">
         <h1 className="title-caps text-2xl text-ink">The Catalog</h1>
         <p className="mt-2 text-dim">
-          Every movie the model has studied — pre-release facts on the left,
-          what actually happened on the right.
+          Every movie the model has studied — pre-release facts on the left, what actually happened
+          on the right.
         </p>
       </header>
       <Suspense fallback={<ExplorerSkeleton />}>

@@ -58,7 +58,10 @@ class TestMangumHoisting:
         import sys
         import types
 
-        fake_mangum = types.ModuleType("mangum")
+        class FakeMangumModule(types.ModuleType):
+            Mangum: MagicMock
+
+        fake_mangum = FakeMangumModule("mangum")
         MockMangum = MagicMock(return_value=MagicMock())
         fake_mangum.Mangum = MockMangum
 
@@ -142,9 +145,7 @@ class TestSingleSlotCacheCleanup:
         # New extract, real SHA.
         tar_dir = tmp_path / "tars"
         tar_dir.mkdir()
-        tar_path = _make_tarball(
-            tar_dir / "new.tar.gz", with_files=self._make_payload()
-        )
+        tar_path = _make_tarball(tar_dir / "new.tar.gz", with_files=self._make_payload())
         new_sha = "1" * 64
 
         loader._extract_and_load_model_with_cache(

@@ -12,9 +12,7 @@ export class OracleError extends Error {
   }
 }
 
-export async function askOracle(
-  request: PredictRequestInput,
-): Promise<PredictionResult> {
+export async function askOracle(request: PredictRequestInput): Promise<PredictionResult> {
   const res = await fetch("/api/predict", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -21,9 +21,7 @@ def test_split_strips_comments_and_blank_lines():
 
 def test_split_keeps_string_literal_intact():
     sql = "CREATE ROLE IF NOT EXISTS DBT_RUNNER COMMENT = 'runs dbt';"
-    assert split_statements(sql) == [
-        "CREATE ROLE IF NOT EXISTS DBT_RUNNER COMMENT = 'runs dbt'"
-    ]
+    assert split_statements(sql) == ["CREATE ROLE IF NOT EXISTS DBT_RUNNER COMMENT = 'runs dbt'"]
 
 
 def test_split_refuses_to_strip_comment_from_a_string_literal():

@@ -2,6 +2,7 @@
 
 import os
 import unittest
+from typing import Any
 from unittest.mock import patch
 
 from pydantic import ValidationError
@@ -18,6 +19,7 @@ DOCUMENTED_ENV_VARS = {
     "S3_BUCKET_NAME",
     "SAGEMAKER_BUCKET",
     "SAGEMAKER_ROLE_ARN",
+    "SAGEMAKER_TRAINING_IMAGE_URI",
     "SNOWFLAKE_USER",
     "SNOWFLAKE_PASSWORD",
     "SNOWFLAKE_PRIVATE_KEY_PATH",
@@ -27,12 +29,10 @@ DOCUMENTED_ENV_VARS = {
     "SNOWFLAKE_DATABASE",
     "SNOWFLAKE_SCHEMA_RAW",
     "SNOWFLAKE_SCHEMA_STAGING",
-    "SNOWFLAKE_SCHEMA_FEATURE_STORE",
-    "SNOWFLAKE_SCHEMA_ML_TRAINING",
 }
 
 
-def _required_env() -> dict:
+def _required_env() -> dict[str, Any]:
     return {
         "AWS_S3_BUCKET": "test-bucket",
         "SAGEMAKER_ROLE_ARN": "arn:test",
@@ -64,16 +64,16 @@ class TestSettingsBasics(unittest.TestCase):
             self.assertEqual(s.aws.region, "us-east-1")
 
     def test_missing_required_raises(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(ValidationError):
-                Settings(_env_file=None)
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(ValidationError):
+            Settings(_env_file=None)
 
     def test_nested_model_views_are_sane(self):
         with patch.dict(os.environ, _required_env(), clear=True):
             s = Settings(_env_file=None)
             # Static views surface stable defaults.
-            self.assertEqual(s.model.cross_validation.cv_folds, 8)
-            self.assertEqual(s.model.cross_validation.end_year, 2024)
+            self.assertEqual(s.model.cross_validation.start_eval_year, 2015)
+            self.assertEqual(s.model.cross_validation.end_year, 2023)
+            self.assertEqual(s.model.cross_validation.cv_folds, 9)
             self.assertEqual(s.sagemaker.instance_type, "ml.m5.large")
 
 

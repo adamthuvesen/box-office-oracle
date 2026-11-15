@@ -17,52 +17,23 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
-    # AWS & Cloud
+    # The serving closure: the Lambda image installs only these plus `inference`.
     "boto3==1.42.90",
     "botocore==1.42.90",
-
-    # Data & Plotting
-    "numpy==1.26.4",
-    "pandas==2.3.1",
-    "pydantic==2.13.4",
-    "requests==2.34.2",
-    "scikit-learn==1.7.0",
-    "scipy==1.16.0",
-
-    # Data Transformation
-    "dbt-core==1.11.11",
-    "dbt-snowflake==1.11.5",
-
-    # Environment & Configuration
-    "python-dotenv==1.2.2",
-    "PyYAML==6.0.2",
-
-    # Machine Learning & Optimization
-    "xgboost==3.2.0",
-
-    # SageMaker
-    "sagemaker==2.257.2",
-
-    # Security & Cryptography
-    "cryptography==46.0.7",
-
-    # Snowflake
-    "snowflake-connector-python[pandas]==4.6.0",
-
-    # Utilities
     "joblib==1.5.3",
-
-    # Workflow Orchestration
-    "prefect==3.7.3",
-    "prefect-dbt==0.7.24",
+    "numpy==2.5.4",
+    "pandas==2.3.3",
+    "pydantic==2.13.4",
     "pydantic-settings==2.14.1",
-
+    "scikit-learn==1.7.2",
+    "scipy==1.18.1",
+    "xgboost==3.2.0",
 ]
 
 [project.optional-dependencies]
@@ -71,27 +42,15 @@ dev = [
     "pytest==9.0.3",
     "pytest-asyncio>=1.0",
     "pytest-cov==7.1.0",
-    "ruff==0.15.20",
+    "ruff==0.17.4",
     "pre-commit>=3.0.0",
-
-    # Jupyter & Notebooks
-    "jupyter==1.1.1",
-    "ipykernel==7.2.0",
-    "ipython==9.14.0",
-
-    # Data & Plotting
-    "plotly==6.7.0",
-
-    # Machine Learning
-    "optuna==4.9.0",
-    "lightgbm==4.6.0",
-    "catboost==1.2.10",
-
-    # PyTorch
-    "torch==2.12.0",
-
-    # ML Explainability
-    "shap==0.46.0",
+    "httpx==0.28.1",
+    "import-linter==2.16",
+    "basedpyright==1.40.2",
+    "pandas-stubs==2.3.3.260113",
+    "types-requests==2.33.0.20261030",
+    "types-PyYAML==6.0.12.20261111",
+    "boto3-stubs[cloudwatch,s3,sagemaker,sagemaker-runtime,sts]==1.42.90",
 ]
 
 inference = [
@@ -100,17 +59,23 @@ inference = [
     "uvicorn==0.48.0",
 ]
 
-test = [
-    "pytest>=9.0.3",
-    "pytest-cov>=7.1.0",
-    "pytest-asyncio>=1.0",
-    "ruff==0.15.20",
+# Training, data preparation, and ingestion: Prefect, dbt, SageMaker, Snowflake.
+train = [
+    "cryptography==46.0.7",
+    "dbt-core==1.12.6",
+    "dbt-snowflake==1.12.5",
+    "prefect==3.7.3",
+    "prefect-dbt==0.7.24",
+    "python-dotenv==1.2.2",
+    "PyYAML==6.0.3",
+    "requests==2.34.2",
+    "sagemaker==2.257.7",
+    "snowflake-connector-python[pandas]==4.6.0",
 ]
 
 
 [project.scripts]
 box-office-pipeline = "box_office.orchestration.flows.ml_pipeline:main"
-box-office-api = "box_office.inference.app.main:cli_main"
 box-office-rich-backfill = "box_office.ingestion.tmdb_rich_backfill:main"
 box-office-curated-movies = "box_office.ingestion.curated_movies:main"
 box-office-wikipedia-budget-fill = "box_office.ingestion.wikipedia_budget_fill:main"
@@ -124,15 +89,15 @@ Repository = "https://github.com/adamthuvesen/box-office-oracle"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["box_office*"]
-exclude = ["tests*", "analysis*", "artifacts*", "docs*", "infrastructure*", "transformations*", "data*"]
+exclude = ["tests*", "artifacts*", "docs*", "infrastructure*", "transformations*", "data*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yml", "*.yaml", "*.sql", "*.json", "*.txt"]
 "box_office.inference" = ["**/*.txt", "**/*.json"]
 
 [tool.ruff]
-line-length = 88
-target-version = "py311"
+line-length = 100
+target-version = "py314"
 exclude = [
     ".eggs",
     ".git",
@@ -149,8 +114,38 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W", "UP", "B"]
+select = ["E", "F", "W", "I", "UP", "B", "BLE", "SIM", "C4", "PTH", "RUF", "PGH003", "PGH004", "TID251"]
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.system".msg = "Process spawning is banned. There is no owner file for it."
+"os.popen".msg = "Process spawning is banned. There is no owner file for it."
+"os.execl".msg = "Process spawning is banned. There is no owner file for it."
+"os.execle".msg = "Process spawning is banned. There is no owner file for it."
+"os.execlp".msg = "Process spawning is banned. There is no owner file for it."
+"os.execlpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.execv".msg = "Process spawning is banned. There is no owner file for it."
+"os.execve".msg = "Process spawning is banned. There is no owner file for it."
+"os.execvp".msg = "Process spawning is banned. There is no owner file for it."
+"os.execvpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnl".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnle".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnlp".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnlpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnv".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnve".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnvp".msg = "Process spawning is banned. There is no owner file for it."
+"os.spawnvpe".msg = "Process spawning is banned. There is no owner file for it."
+"os.posix_spawn".msg = "Process spawning is banned. There is no owner file for it."
+"os.posix_spawnp".msg = "Process spawning is banned. There is no owner file for it."
+"asyncio.subprocess".msg = "Process spawning is banned. There is no owner file for it."
+"asyncio.create_subprocess_exec".msg = "Process spawning is banned. There is no owner file for it."
+"asyncio.create_subprocess_shell".msg = "Process spawning is banned. There is no owner file for it."
+"numpy.expm1".msg = "Convert the log target with box_office.ml.target.from_log_target."
+
+[tool.ruff.lint.per-file-ignores]
+"box_office/ml/target.py" = ["TID251"]
+"tests/**" = ["BLE001", "TID251"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -170,3 +165,104 @@ markers = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
+
+[tool.importlinter]
+root_packages = ["box_office", "scripts", "tests", "snowflake", "urllib", "http"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: config, utils, ml, then sagemaker and inference, then orchestration"
+type = "layers"
+layers = [
+    "box_office.orchestration",
+    "box_office.sagemaker | box_office.inference",
+    "box_office.ml",
+    "box_office.utils",
+    "box_office.config",
+]
+
+[[tool.importlinter.contracts]]
+name = "Process modules are banned everywhere"
+type = "forbidden"
+source_modules = ["box_office", "scripts", "tests"]
+forbidden_modules = ["subprocess", "pty"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Network clients only in the ingestion owners"
+type = "forbidden"
+source_modules = ["box_office", "scripts"]
+forbidden_modules = ["requests", "httpx", "urllib.request", "http.client", "socket"]
+allow_indirect_imports = true
+ignore_imports = [
+    "box_office.ingestion.curated_movies -> requests",
+    "box_office.ingestion.wikipedia_budget_fill -> requests",
+    "box_office.ingestion.tmdb_rich_backfill -> requests",
+    "scripts.export_web_data -> requests",
+    "scripts.refetch_collections -> requests",
+    "scripts.validate_inference_api -> urllib.request",
+]
+
+[[tool.importlinter.contracts]]
+name = "Cloud and warehouse SDKs only in their owner modules"
+type = "forbidden"
+source_modules = ["box_office", "scripts"]
+forbidden_modules = ["boto3", "sagemaker", "snowflake.connector"]
+allow_indirect_imports = true
+ignore_imports = [
+    "box_office.ml.model_training -> boto3",
+    "box_office.ml.model_registry.aws_model_registry -> boto3",
+    "box_office.ml.model_registry.aws_model_registry -> sagemaker",
+    "box_office.orchestration.tasks.training_tasks -> boto3",
+    "box_office.sagemaker.sagemaker_train_job -> boto3",
+    "box_office.sagemaker.sagemaker_train_job -> sagemaker",
+    "box_office.sagemaker.training_output -> boto3",
+    "box_office.inference.app.model_loader -> boto3",
+    "box_office.utils.snowflake_connection -> snowflake.connector",
+    "scripts.load_dataset_to_snowflake -> snowflake.connector.pandas_tools",
+]
+
+[[tool.importlinter.contracts]]
+name = "The Lambda path does not import the model registry writer"
+type = "forbidden"
+source_modules = ["box_office.inference"]
+forbidden_modules = ["box_office.ml.model_registry"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Inference tests import nothing train-only"
+type = "forbidden"
+source_modules = ["tests.inference"]
+forbidden_modules = [
+    "box_office.sagemaker",
+    "box_office.orchestration",
+    "sagemaker",
+    "prefect",
+    "prefect_dbt",
+    "dbt",
+    "snowflake",
+    "requests",
+    "box_office.utils.snowflake_connection",
+    "tests.fakes",
+]
+allow_indirect_imports = true
+
+[tool.basedpyright]
+include = ["box_office", "scripts", "tests"]
+pythonVersion = "3.14"
+typeCheckingMode = "strict"
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
+reportIgnoreCommentWithoutRule = "error"
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+reportMissingTypeStubs = false
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+reportMissingParameterType = false
+reportPrivateUsage = false

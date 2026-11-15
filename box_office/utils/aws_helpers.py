@@ -46,9 +46,7 @@ def resolve_aws_region(default: str = "eu-north-1") -> str:
     For use in modules where importing the project ``config`` is awkward
     (e.g. the SageMaker entry script that runs inside the training container).
     """
-    return (
-        os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or default
-    )
+    return os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or default
 
 
 def compute_sha256_stream(path: Path) -> str:

@@ -7,24 +7,62 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class CvResultsMetrics(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    mean_cv_mae: float | None = None
-    std_cv_mae: float | None = None
-    mean_cv_rmsle: float | None = None
-    std_cv_rmsle: float | None = None
-    mean_best_iteration: float | None = None
-    cv_scores: list[float] = Field(default_factory=list)
+class _Strict(BaseModel):
+    # NaN is a legitimate metric value (an overflowing dollar-scale fold), so
+    # it round-trips as a JSON NaN constant instead of null.
+    model_config = ConfigDict(extra="forbid", ser_json_inf_nan="constants")
 
 
-class OofResultsMetrics(BaseModel):
-    model_config = ConfigDict(extra="allow")
+class FoldResult(_Strict):
+    """One CV fold: the model scored on one eval year."""
 
-    oof_r2: float | None = None
-    oof_mae: float | None = None
-    oof_rmsle: float | None = None
-    num_oof_samples: int | None = None
+    fold_number: int
+    eval_year: int
+    mae_score: float
+    rmsle_score: float
+    model_r2_log: float
+    model_spearman: float
+    model_r2_dollars: float
+    model_median_ape: float
+    best_iteration: int
+    train_samples: int
+    val_samples: int
+    # Artifacts written before a failed fold failed the run carry ``error: null``.
+    error: None = None
+
+
+class OofRecord(_Strict):
+    """One out-of-fold prediction on the log target, keyed by frame position."""
+
+    fold: int
+    idx: int
+    pred: float
+
+
+class CrossValidationResults(_Strict):
+    """What ``TimeSeriesCrossValidator.cross_validate`` returns and ``cv_results.json`` holds."""
+
+    mean_cv_mae: float
+    std_cv_mae: float
+    mean_cv_rmsle: float
+    std_cv_rmsle: float
+    cv_scores: list[float]
+    cv_rmsle_scores: list[float]
+    mean_best_iteration: float
+    oof_predictions: dict[str, float]
+    oof_records: list[OofRecord]
+    feature_importances: list[float] | None
+    feature_names: list[str]
+    fold_results: list[FoldResult]
+
+
+class OofEvaluation(_Strict):
+    """Pooled out-of-fold metrics; ``oof_r2`` is the promotion-gate number."""
+
+    oof_r2: float
+    oof_mae: float
+    oof_rmsle: float
+    num_oof_samples: int
 
 
 class TrainingMetrics(BaseModel):
@@ -47,8 +85,8 @@ class TrainingMetrics(BaseModel):
     oof_rmsle: float | None = None
     oof_num_samples: int | None = None
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
-    cv_results: CvResultsMetrics | None = None
-    oof_results: OofResultsMetrics | None = None
+    cv_results: CrossValidationResults | None = None
+    oof_results: OofEvaluation | None = None
     training_time: float | None = None
     estimated_cost: float | None = None
 

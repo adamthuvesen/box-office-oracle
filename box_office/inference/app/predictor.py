@@ -21,7 +21,9 @@ from pydantic import (
     field_validator,
 )
 
+from box_office.ml.data_fingerprint import DataFingerprint
 from box_office.ml.feature_schema import FeatureContractMismatch
+from box_office.ml.target import from_log_target
 from box_office.ml.text_utils import MAX_LITERAL_EVAL_BYTES, LiteralEvalTooLarge
 
 logger = logging.getLogger(__name__)
@@ -36,9 +38,7 @@ def _parse_json_or_python_repr_str_list(raw: str) -> list[str]:
     # can be driven to exhaust CPU/memory by a deeply-nested attacker payload.
     # LiteralEvalTooLarge is a ValueError, so it surfaces as a 400 via pydantic.
     if len(s.encode("utf-8")) > MAX_LITERAL_EVAL_BYTES:
-        raise LiteralEvalTooLarge(
-            f"Input exceeds MAX_LITERAL_EVAL_BYTES={MAX_LITERAL_EVAL_BYTES}"
-        )
+        raise LiteralEvalTooLarge(f"Input exceeds MAX_LITERAL_EVAL_BYTES={MAX_LITERAL_EVAL_BYTES}")
     for parser in (json.loads, ast.literal_eval):
         try:
             parsed = parser(s)
@@ -79,12 +79,8 @@ class PredictionRequest(BaseModel):
     # Categorical features
     mpaa: str | None = Field(default="Not Rated", description="MPAA rating")
     director: str | None = Field(default="Unknown", description="Director name")
-    actors: str | list[str] | None = Field(
-        default=[], description="List of main actors"
-    )
-    production_company: str | None = Field(
-        default="Unknown", description="Production company"
-    )
+    actors: str | list[str] | None = Field(default=[], description="List of main actors")
+    production_company: str | None = Field(default="Unknown", description="Production company")
 
     # Pre-release IP/franchise strength (defaults describe an original movie
     # with no pre-sold IP and no earlier films in its collection).
@@ -108,22 +104,17 @@ class PredictionRequest(BaseModel):
     )
 
     # Additional options
-    return_confidence: bool | None = Field(
-        default=True, description="Return confidence interval"
-    )
-    model_version: str | None = Field(
-        default=None, description="Specific model version to use"
-    )
+    return_confidence: bool | None = Field(default=True, description="Return confidence interval")
 
     @field_validator("genre")
     @classmethod
-    def validate_genre(cls, v):
+    def validate_genre(cls, v: object) -> list[str]:
         """Convert genre to list format."""
         return _normalize_str_list(v)
 
     @field_validator("actors")
     @classmethod
-    def validate_actors(cls, v):
+    def validate_actors(cls, v: object) -> list[str]:
         """Convert actors to list format."""
         return _normalize_str_list(v)
 
@@ -143,9 +134,7 @@ class PredictionResponse(BaseModel):
         ),
     )
     timestamp: str = Field(..., description="Prediction timestamp")
-    processing_time_ms: float = Field(
-        ..., description="Processing time in milliseconds"
-    )
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
 
     @field_serializer("prediction", "processing_time_ms")
     def _serialize_floats(self, value: float) -> float:
@@ -159,16 +148,22 @@ class PredictionResponse(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    model_config = {"protected_namespaces": ()}
+    """The serving model's identity and registry metrics."""
+
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
+
     model_id: str
     version: int
-    status: str
-    created_at: str
-    metrics: dict[str, float]
+    status: str = "unknown"
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    metrics: dict[str, float] = Field(default_factory=dict)
     framework: str = "scikit-learn"
+    data_fingerprint: DataFingerprint | None = None
 
     @classmethod
-    def from_registry_package(cls, package: dict[str, Any]) -> Self:
+    def from_registry_package(
+        cls, package: dict[str, Any], data_fingerprint: DataFingerprint | None = None
+    ) -> Self:
         """Normalize a SageMaker model package summary for API and runtime use."""
         created_at = package.get("CreationTime")
         return cls(
@@ -177,20 +172,22 @@ class ModelInfo(BaseModel):
             status=package.get("ModelApprovalStatus", "unknown"),
             created_at=(
                 created_at.isoformat()
-                if hasattr(created_at, "isoformat")
+                if isinstance(created_at, datetime)
                 else str(created_at or "unknown")
             ),
             metrics=package.get("metrics", {}),
             framework=package.get("framework", "unknown"),
+            data_fingerprint=data_fingerprint,
         )
 
 
 class PredictionEngine:
     def __init__(self):
-        self.model = None
-        self.preprocessor = None
-        self.scaler = None
-        self.model_info = None
+        # Unpickled artifacts: joblib returns Any.
+        self.model: Any = None
+        self.preprocessor: Any = None
+        self.scaler: Any = None
+        self.model_info: ModelInfo | None = None
         self._is_loaded = False
 
     def load_model_artifacts(
@@ -198,7 +195,7 @@ class PredictionEngine:
         model_path: str,
         preprocessor_path: str,
         scaler_path: str,
-        model_metadata: dict[str, Any],
+        model_info: ModelInfo,
     ):
         try:
             logger.info(f"Loading model artifacts from {model_path}")
@@ -212,16 +209,7 @@ class PredictionEngine:
             self.scaler = joblib.load(scaler_path)
             logger.info("Feature scaler loaded successfully")
 
-            self.model_info = ModelInfo(
-                model_id=model_metadata.get("model_id", "unknown"),
-                version=model_metadata.get("version", 1),
-                status=model_metadata.get("status", "unknown"),
-                created_at=model_metadata.get(
-                    "created_at", datetime.now(UTC).isoformat()
-                ),
-                metrics=model_metadata.get("metrics", {}),
-                framework=model_metadata.get("framework", "scikit-learn"),
-            )
+            self.model_info = model_info
 
             self._is_loaded = True
             logger.info(
@@ -229,14 +217,13 @@ class PredictionEngine:
             )
 
         except Exception as e:
-            logger.error(f"Failed to load model artifacts: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Model loading failed: {str(e)}") from e
+            # Unpickling an artifact can raise any exception type.
+            logger.error(f"Failed to load model artifacts: {e!s}", exc_info=True)
+            raise RuntimeError(f"Model loading failed: {e!s}") from e
 
     def is_loaded(self) -> bool:
         """Check if model is loaded and ready for predictions."""
-        return (
-            self._is_loaded and self.model is not None and self.preprocessor is not None
-        )
+        return self._is_loaded and self.model is not None and self.preprocessor is not None
 
     def get_model_info(self) -> ModelInfo | None:
         """Get current model information."""
@@ -246,7 +233,7 @@ class PredictionEngine:
         try:
             return PredictionRequest(**request_data)
         except ValidationError as e:
-            logger.warning(f"Input validation failed: {str(e)}")
+            logger.warning(f"Input validation failed: {e!s}")
             raise
 
     def _prepare_dataframe(self, request: PredictionRequest) -> pd.DataFrame:
@@ -295,11 +282,7 @@ class PredictionEngine:
                 divergence = "<length>"
             else:
                 divergence = next(
-                    (
-                        f"{a!r}!={e!r}"
-                        for a, e in zip(actual, expected, strict=True)
-                        if a != e
-                    ),
+                    (f"{a!r}!={e!r}" for a, e in zip(actual, expected, strict=True) if a != e),
                     "<length>",
                 )
             raise FeatureContractMismatch(
@@ -315,13 +298,24 @@ class PredictionEngine:
             )
 
     def preprocess_features(self, request: PredictionRequest) -> np.ndarray:
-        """Preprocess features for prediction."""
+        """Preprocess one request's features for prediction."""
+        return self._preprocess_frame(self._prepare_dataframe(request))
+
+    def predict_frame(self, frame: pd.DataFrame) -> np.ndarray:
+        """Predict worldwide gross in USD for each row of a preprocessor-input frame.
+
+        This is the serving path: transform, scale, predict, and invert the log
+        target. Batch scoring calls it so its numbers match ``/predict``.
+        """
+        if not self.is_loaded():
+            raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
+        return from_log_target(self.model.predict(self._preprocess_frame(frame)))
+
+    def _preprocess_frame(self, df: pd.DataFrame) -> np.ndarray:
         if not self.is_loaded():
             raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
 
         try:
-            df = self._prepare_dataframe(request)
-
             logger.debug("Applying feature preprocessing")
             features_processed = self.preprocessor.transform(df)
             self._assert_feature_contract(features_processed)
@@ -335,21 +329,23 @@ class PredictionEngine:
         except FeatureContractMismatch:
             raise
         except Exception as e:
-            logger.error(f"Feature preprocessing failed: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Feature preprocessing failed: {str(e)}") from e
+            # Request boundary: the unpickled preprocessor can raise any type on
+            # user input; the API turns RuntimeError into its 500 contract.
+            logger.error(f"Feature preprocessing failed: {e!s}", exc_info=True)
+            raise RuntimeError(f"Feature preprocessing failed: {e!s}") from e
 
     def predict(self, request: PredictionRequest) -> PredictionResponse:
         if not self.is_loaded():
             raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
 
+        model_info = self.model_info
+        if model_info is None:
+            raise RuntimeError("Model not loaded. Call load_model_artifacts first.")
+
         start_time = datetime.now(UTC)
 
         try:
-            features = self.preprocess_features(request)
-
-            logger.debug("Making model prediction")
-            prediction = self.model.predict(features)[0]
-            prediction_value = np.expm1(prediction)  # Inverse of log1p
+            prediction_value = self.predict_frame(self._prepare_dataframe(request))[0]
 
             prediction_interval_heuristic = None
             if request.return_confidence:
@@ -361,8 +357,8 @@ class PredictionEngine:
 
             response = PredictionResponse(
                 prediction=float(prediction_value),
-                model_id=self.model_info.model_id,
-                model_version=self.model_info.version,
+                model_id=model_info.model_id,
+                model_version=model_info.version,
                 prediction_interval_heuristic=prediction_interval_heuristic,
                 timestamp=datetime.now(UTC).isoformat() + "Z",
                 processing_time_ms=processing_time,
@@ -374,8 +370,9 @@ class PredictionEngine:
             return response
 
         except Exception as e:
-            logger.error(f"Prediction failed: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Prediction failed: {str(e)}") from e
+            # Request boundary, as in _preprocess_frame.
+            logger.error(f"Prediction failed: {e!s}", exc_info=True)
+            raise RuntimeError(f"Prediction failed: {e!s}") from e
 
     @staticmethod
     def _prediction_interval_heuristic(prediction_value: float) -> list[float]:

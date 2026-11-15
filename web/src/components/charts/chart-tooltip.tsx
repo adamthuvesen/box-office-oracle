@@ -9,13 +9,7 @@ export interface TooltipRow {
   color?: string;
 }
 
-export function ChartTooltip({
-  label,
-  rows,
-}: {
-  label?: string;
-  rows: TooltipRow[];
-}) {
+export function ChartTooltip({ label, rows }: { label?: string; rows: TooltipRow[] }) {
   return (
     <div className="rounded border border-hairline bg-surface-2 px-3 py-2 text-xs shadow-lg">
       {label && <p className="mb-1.5 font-medium text-ink">{label}</p>}
@@ -23,10 +17,7 @@ export function ChartTooltip({
         {rows.map((row) => (
           <div key={row.name} className="flex justify-between gap-6">
             <dt className="text-dim">{row.name}</dt>
-            <dd
-              className="font-mono tabular"
-              style={{ color: row.color ?? "var(--color-ink)" }}
-            >
+            <dd className="font-mono tabular" style={{ color: row.color ?? "var(--color-ink)" }}>
               {row.value}
             </dd>
           </div>
@@ -62,20 +53,11 @@ export function ChartLegend({
       {items.map((item) => (
         <span key={item.label} className="inline-flex items-center gap-1.5">
           {item.shape === "line" ? (
-            <span
-              className="h-0.5 w-4 rounded-full"
-              style={{ backgroundColor: item.color }}
-            />
+            <span className="h-0.5 w-4 rounded-full" style={{ backgroundColor: item.color }} />
           ) : item.shape === "dot" ? (
-            <span
-              className="size-2 rounded-full"
-              style={{ backgroundColor: item.color }}
-            />
+            <span className="size-2 rounded-full" style={{ backgroundColor: item.color }} />
           ) : (
-            <span
-              className="size-2.5 rounded-[2px]"
-              style={{ backgroundColor: item.color }}
-            />
+            <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: item.color }} />
           )}
           {item.label}
         </span>

@@ -19,10 +19,7 @@ export async function POST(request: Request) {
     const message = parsed.error.issues
       .map((issue) => `${issue.path.join(".") || "body"}: ${issue.message}`)
       .join("; ");
-    return Response.json(
-      { error: "VALIDATION_ERROR", message },
-      { status: 400 },
-    );
+    return Response.json({ error: "VALIDATION_ERROR", message }, { status: 400 });
   }
 
   const apiUrl = process.env.INFERENCE_API_URL;
@@ -67,14 +64,11 @@ async function proxyPredict(
   }
 
   if (!upstream.ok) {
-    const detail = (
-      payload as { detail?: { error?: string; message?: string } } | null
-    )?.detail;
+    const detail = (payload as { detail?: { error?: string; message?: string } } | null)?.detail;
     return Response.json(
       {
         error: detail?.error ?? "UPSTREAM_ERROR",
-        message:
-          detail?.message ?? `The model API answered ${upstream.status}.`,
+        message: detail?.message ?? `The model API answered ${upstream.status}.`,
       },
       { status: upstream.status },
     );
@@ -106,18 +100,15 @@ function mockPredict(input: PredictRequest): PredictionResult {
     ].join("|"),
   );
   const genreMultiplier =
-    genres.reduce((sum, g) => sum + (GENRE_MULTIPLIER[g] ?? 1), 0) /
-    genres.length;
+    genres.reduce((sum, g) => sum + (GENRE_MULTIPLIER[g] ?? 1), 0) / genres.length;
   // Invented, not learned: tier 5 (no IP) = 1x, tier 1 (top IP) = 1.8x, plus
   // a small bump for franchise follow-ups with real prior gross.
   const ipMultiplier =
-    1 + 0.2 * (5 - input.ip_tier) +
+    1 +
+    0.2 * (5 - input.ip_tier) +
     (input.is_franchise_followup && input.prior_franchise_gross > 0 ? 0.15 : 0);
   const base = input.budget * (1.1 + 0.3 * Math.sin(seed));
-  const prediction = Math.max(
-    base * genreMultiplier * ipMultiplier,
-    1e6,
-  );
+  const prediction = Math.max(base * genreMultiplier * ipMultiplier, 1e6);
   return {
     prediction,
     model_id: "mock-oracle",

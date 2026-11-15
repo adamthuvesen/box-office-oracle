@@ -5,13 +5,15 @@ train-years rows only for every fold, and omitting the kwarg must leave the
 existing (pre-engineered X) behavior untouched.
 """
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
 from box_office.ml.cv import TimeSeriesCrossValidator
 from box_office.ml.model import BoxOfficeXGBoostModel
 
-FAST_MODEL_KWARGS = {"n_estimators": 10, "max_depth": 2}
+FAST_MODEL_KWARGS: dict[str, Any] = {"n_estimators": 10, "max_depth": 2}
 
 UNSEEN_DEFAULT_FREQ = -123.0
 
@@ -33,7 +35,7 @@ class _RecordingFrequencyPreprocessor:
 
     def __init__(self, calls: list[tuple[str, pd.DataFrame, pd.DataFrame]]):
         self._calls = calls
-        self._freq: dict[str, int] = {}
+        self._freq: dict[Any, int] = {}
 
     def fit_transform(self, X: pd.DataFrame) -> pd.DataFrame:
         self._freq = X["DIRECTOR"].value_counts().to_dict()
@@ -70,9 +72,12 @@ def test_omitted_factory_matches_identity_factory():
     """The kwarg is a pure opt-in: no factory and an identity factory must
     produce identical results on an already-engineered matrix."""
     X, y, dates = _engineered_frame()
-    cv_kwargs = dict(
-        cv_folds=2, start_eval_year=2020, end_year=2021, early_stopping_rounds=5
-    )
+    cv_kwargs: dict[str, Any] = {
+        "cv_folds": 2,
+        "start_eval_year": 2020,
+        "end_year": 2021,
+        "early_stopping_rounds": 5,
+    }
 
     without = TimeSeriesCrossValidator(**cv_kwargs).cross_validate(
         BoxOfficeXGBoostModel, X, y, dates, **FAST_MODEL_KWARGS
@@ -86,12 +91,12 @@ def test_omitted_factory_matches_identity_factory():
         **FAST_MODEL_KWARGS,
     )
 
-    assert without["cv_scores"] == with_identity["cv_scores"]
-    assert without["oof_records"] == with_identity["oof_records"]
-    assert without["feature_names"] == with_identity["feature_names"]
-    assert without["mean_cv_mae"] == with_identity["mean_cv_mae"]
-    assert [f["mae_score"] for f in without["fold_results"]] == [
-        f["mae_score"] for f in with_identity["fold_results"]
+    assert without.cv_scores == with_identity.cv_scores
+    assert without.oof_records == with_identity.oof_records
+    assert without.feature_names == with_identity.feature_names
+    assert without.mean_cv_mae == with_identity.mean_cv_mae
+    assert [f.mae_score for f in without.fold_results] == [
+        f.mae_score for f in with_identity.fold_results
     ]
 
 
@@ -190,6 +195,6 @@ def test_factory_composes_with_real_feature_preprocessor():
         **FAST_MODEL_KWARGS,
     )
 
-    assert [f["error"] for f in results["fold_results"]] == [None, None]
-    assert results["feature_names"] == list(SELECTED_FEATURES)
-    assert len(results["oof_records"]) == int((years >= 2020).sum())
+    assert len(results.fold_results) == 2
+    assert results.feature_names == list(SELECTED_FEATURES)
+    assert len(results.oof_records) == int((years >= 2020).sum())

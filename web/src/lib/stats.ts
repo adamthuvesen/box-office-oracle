@@ -32,13 +32,33 @@ export function yearlyGross(movies: Movie[]): YearlyGross[] {
 }
 
 export const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ] as const;
 
 export const MONTH_ABBREV = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ] as const;
 
 export interface Seasonality {
@@ -111,8 +131,7 @@ export function genreEconomics(movies: Movie[], minCount = 30): GenreEconomics[]
       genre,
       count: b.grosses.length,
       medianGross: median(b.grosses.sort((x, y) => x - y)),
-      medianBudget:
-        b.budgets.length > 0 ? median(b.budgets.sort((x, y) => x - y)) : null,
+      medianBudget: b.budgets.length > 0 ? median(b.budgets.sort((x, y) => x - y)) : null,
     }))
     .sort((a, b) => b.medianGross - a.medianGross);
 }

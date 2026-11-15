@@ -10,13 +10,13 @@ on:
 permissions: {}
 
 env:
-  PYTHON_VERSION: "3.12"
+  PYTHON_VERSION: "3.14"
   AWS_REGION: "eu-north-1"
 
 jobs:
-  test:
+  check:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    name: Run Tests
+    name: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -34,7 +34,7 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
       with:
-        version: "0.5.13"
+        version: "0.13.5"
 
     - name: Cache uv dependencies
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
@@ -44,14 +44,106 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-uv-
 
-    - name: Install dependencies
-      run: |
-        uv sync --extra test --extra inference --frozen
+    - name: Set up pnpm
+      uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+      with:
+        version: "11.5.3"
 
-    - name: Check Python lint and formatting
-      run: |
-        uv run ruff check box_office tests scripts
-        uv run ruff format --check box_office tests scripts
+    - name: Set up Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+      with:
+        node-version: "24.22.3"
+        cache: pnpm
+        cache-dependency-path: web/pnpm-lock.yaml
+
+    - name: Install web dependencies
+      run: make web-install
+
+    - name: Run check
+      run: make check
+
+  infra-lint:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    name: Workflow and Terraform lint
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+      with:
+        version: "0.13.5"
+
+    - name: Run actionlint and the checkov policies
+      run: scripts/lint_infra.sh
+
+  inference-lean:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    name: Inference on serving dependencies only
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+      with:
+        version: "0.13.5"
+
+    - name: Run inference tests without the train extra
+      run: make test-inference-lean
+
+  coverage:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    name: Coverage
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+      with:
+        version: "0.13.5"
+
+    - name: Cache uv dependencies
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+      with:
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-uv-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
 
     - name: Setup Snowflake Private Key for Tests
       # Materialize via printf %s to ${RUNNER_TEMP}: keeps the key out of the
@@ -86,13 +178,9 @@ jobs:
         SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
         SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW }}
         SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING }}
-        SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING }}
-        SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE }}
         # SNOWFLAKE_PRIVATE_KEY_PATH is exported by the previous step via $GITHUB_ENV.
         SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
-      run: |
-        # Full hermetic suite (match pyproject testpaths; exclude integration/slow)
-        uv run pytest tests/ -m "not integration and not slow" --cov=box_office --cov-report=xml --cov-report=term-missing
+      run: make test-coverage
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354  # v6
@@ -103,6 +191,7 @@ jobs:
   dbt-test:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     name: dbt Validation
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -115,8 +204,6 @@ jobs:
       SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE || 'BOX_OFFICE' }}
       SNOWFLAKE_SCHEMA_RAW: ${{ secrets.SNOWFLAKE_SCHEMA_RAW || 'RAW' }}
       SNOWFLAKE_SCHEMA_STAGING: ${{ secrets.SNOWFLAKE_SCHEMA_STAGING || 'STAGING' }}
-      SNOWFLAKE_SCHEMA_ML_TRAINING: ${{ secrets.SNOWFLAKE_SCHEMA_ML_TRAINING || 'ML_TRAINING' }}
-      SNOWFLAKE_SCHEMA_FEATURE_STORE: ${{ secrets.SNOWFLAKE_SCHEMA_FEATURE_STORE || 'FEATURE_STORE' }}
       SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
 
     steps:
@@ -131,7 +218,7 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
       with:
-        version: "0.5.13"
+        version: "0.13.5"
 
     - name: Cache uv dependencies
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
@@ -144,7 +231,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --frozen
+        uv sync --extra train --frozen
 
     - name: Configure Snowflake key path for dbt
       id: creds
@@ -179,9 +266,10 @@ jobs:
         cd transformations
         uv run dbt compile --profiles-dir=.
 
-  web-quality:
+  web-build:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    name: Web Lint and Build
+    name: Web build
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -199,15 +287,12 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
       with:
-        node-version: "22"
+        node-version: "24.22.3"
         cache: pnpm
         cache-dependency-path: web/pnpm-lock.yaml
 
     - name: Install web dependencies
-      run: pnpm --dir web install --frozen-lockfile
-
-    - name: Run web lint
-      run: pnpm --dir web lint
+      run: make web-install
 
     - name: Build web app
-      run: pnpm --dir web build
+      run: make web-build

@@ -5,12 +5,22 @@ import re
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
+from box_office.utils.approval import require_approval
 from box_office.utils.aws_helpers import compute_sha256_stream, parse_s3_uri
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+    from mypy_boto3_sagemaker.literals import ModelApprovalStatusType
+    from mypy_boto3_sagemaker.type_defs import (
+        CreateModelPackageInputTypeDef,
+        InferenceSpecificationTypeDef,
+        UpdateModelPackageInputTypeDef,
+    )
 
 # Validation constants
 VALID_APPROVAL_STATUSES = {"Approved", "Rejected", "PendingManualApproval"}
@@ -31,9 +41,7 @@ def _is_resource_not_found(exc: ClientError) -> bool:
     if code in _NOT_FOUND_CODES:
         return True
     # SageMaker often returns ValidationException for not-found; check message.
-    if code == _VALIDATION_CODE and "does not exist" in err.get("Message", "").lower():
-        return True
-    return False
+    return bool(code == _VALIDATION_CODE and "does not exist" in err.get("Message", "").lower())
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +51,7 @@ class ModelRegistryRegistrationError(RuntimeError):
     """Creating or registering a SageMaker model package or group failed."""
 
 
-def _compute_sha256_of_s3_object(s3_client, model_data_url: str) -> tuple[str, int]:
+def _compute_sha256_of_s3_object(s3_client: S3Client, model_data_url: str) -> tuple[str, int]:
     """Download the object at ``model_data_url`` to a temp file and stream-hash it."""
     bucket, key = parse_s3_uri(model_data_url)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
@@ -61,7 +69,7 @@ def _compute_sha256_of_s3_object(s3_client, model_data_url: str) -> tuple[str, i
 class AWSModelRegistry:
     """AWS SageMaker Model Registry client for managing model packages."""
 
-    def __init__(self, region_name: str | None = None):
+    def __init__(self, region_name: str | None = None) -> None:
         self.region_name = region_name
         self.sagemaker_client = boto3.client("sagemaker", region_name=region_name)
         self.s3_client = boto3.client("s3", region_name=region_name)
@@ -82,7 +90,7 @@ class AWSModelRegistry:
         return _group_name(project_name=project_name, environment=environment)
 
     def create_model_package_group(
-        self, group_name: str, description: str | None = None
+        self, group_name: str, description: str | None = None, approved: bool = False
     ) -> dict[str, Any]:
         """Create the package group, or return ``status="exists"`` if it already does.
 
@@ -90,6 +98,7 @@ class AWSModelRegistry:
         but any non-not-found ClientError (AccessDenied, throttling) propagates
         instead of being downgraded to a status dict.
         """
+        require_approval("creating a model package group", approved)
         # ResourceNotFound is the legitimate "create it" path; any other
         # ClientError (auth, throttling) means infra is broken and propagates.
         try:
@@ -108,8 +117,7 @@ class AWSModelRegistry:
 
         create_response = self.sagemaker_client.create_model_package_group(
             ModelPackageGroupName=group_name,
-            ModelPackageGroupDescription=description
-            or f"Model package group for {group_name}",
+            ModelPackageGroupDescription=description or f"Model package group for {group_name}",
         )
 
         logger.info(f"Created model package group '{group_name}'")
@@ -127,9 +135,10 @@ class AWSModelRegistry:
         framework_version: str = "1.7-1",
         model_approval_status: str = "PendingManualApproval",
         inference_specification: dict[str, Any] | None = None,
-        metrics: dict[str, float] | None = None,
+        metrics: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         training_job_name: str | None = None,
+        approved: bool = False,
     ) -> dict[str, Any]:
         """
         Register a model package in the AWS Model Registry.
@@ -147,10 +156,9 @@ class AWSModelRegistry:
         Returns:
             Dictionary with registration result
         """
+        require_approval("registering a model package", approved)
         if inference_specification is None:
-            inference_specification = self._get_default_inference_spec(
-                framework, framework_version
-            )
+            inference_specification = self._get_default_inference_spec(framework, framework_version)
 
         if (
             "Containers" in inference_specification
@@ -158,12 +166,7 @@ class AWSModelRegistry:
         ):
             inference_specification["Containers"][0]["ModelDataUrl"] = model_data_url
 
-        model_package_request = {
-            "ModelPackageGroupName": model_package_group_name,
-            "ModelApprovalStatus": model_approval_status,
-            "InferenceSpecification": inference_specification,
-            "ModelPackageDescription": f"Box office prediction model - {datetime.now(UTC).isoformat()}",
-        }
+        customer_metadata: dict[str, str] = {}
 
         # Optionally link back to the training job so the Studio UI shows the connection.
         # The describe-job lookup is best-effort: a missing job is benign (we still
@@ -175,11 +178,7 @@ class AWSModelRegistry:
                 )
                 training_job_arn = tj_resp.get("TrainingJobArn")
                 if training_job_arn:
-                    if "CustomerMetadataProperties" not in model_package_request:
-                        model_package_request["CustomerMetadataProperties"] = {}
-                    model_package_request["CustomerMetadataProperties"][
-                        "training_job_arn"
-                    ] = training_job_arn
+                    customer_metadata["training_job_arn"] = training_job_arn
             except ClientError as e:
                 if _is_resource_not_found(e):
                     logger.warning(
@@ -193,14 +192,9 @@ class AWSModelRegistry:
         # (metrics + free-form metadata) goes into CustomerMetadataProperties,
         # which only accepts string values up to 256 chars per field.
         if metadata:
-            model_package_request["CustomerMetadataProperties"] = {
-                key: str(value) for key, value in metadata.items()
-            }
+            customer_metadata.update({key: str(value) for key, value in metadata.items()})
 
         if metrics:
-            if "CustomerMetadataProperties" not in model_package_request:
-                model_package_request["CustomerMetadataProperties"] = {}
-
             # Allowlist essential metrics; long URIs and hyperparameters would
             # exceed the 256-char-per-field cap.
             essential_metrics = [
@@ -217,56 +211,48 @@ class AWSModelRegistry:
             ]
 
             for metric_name, metric_value in metrics.items():
-                if metric_name in essential_metrics and isinstance(
-                    metric_value, (int, float)
-                ):
+                if metric_name in essential_metrics and isinstance(metric_value, (int, float)):
                     short_value = (
                         f"{metric_value:.6f}"
                         if isinstance(metric_value, float)
                         else str(metric_value)
                     )
                     if len(short_value) <= 250:
-                        model_package_request["CustomerMetadataProperties"][
-                            metric_name
-                        ] = short_value
+                        customer_metadata[metric_name] = short_value
 
             framework_info = f"{framework}_{framework_version}"
             if len(framework_info) <= 250:
-                model_package_request["CustomerMetadataProperties"]["framework"] = (
-                    framework_info
-                )
+                customer_metadata["framework"] = framework_info
 
         # Compute SHA256 + size_bytes of the uploaded model artifact and store
         # them in CustomerMetadataProperties. The inference loader verifies
         # these BEFORE unpickling — closes the bucket-write -> RCE surface.
-        sha256, size_bytes = _compute_sha256_of_s3_object(
-            self.s3_client, model_data_url
-        )
+        sha256, size_bytes = _compute_sha256_of_s3_object(self.s3_client, model_data_url)
         from box_office.ml.feature_schema import (
             CURRENT_FEATURE_SCHEMA_VERSION,
             SCHEMA_VERSION_METADATA_KEY,
         )
 
-        model_package_request.setdefault("CustomerMetadataProperties", {})
-        model_package_request["CustomerMetadataProperties"]["sha256"] = sha256
-        model_package_request["CustomerMetadataProperties"]["size_bytes"] = str(
-            size_bytes
-        )
-        model_package_request["CustomerMetadataProperties"][
-            SCHEMA_VERSION_METADATA_KEY
-        ] = CURRENT_FEATURE_SCHEMA_VERSION
-        logger.info(
-            "Model artifact manifest: sha256=%s size_bytes=%d", sha256[:16], size_bytes
-        )
+        customer_metadata["sha256"] = sha256
+        customer_metadata["size_bytes"] = str(size_bytes)
+        customer_metadata[SCHEMA_VERSION_METADATA_KEY] = CURRENT_FEATURE_SCHEMA_VERSION
+        model_package_request: CreateModelPackageInputTypeDef = {
+            "ModelPackageGroupName": model_package_group_name,
+            "ModelApprovalStatus": cast("ModelApprovalStatusType", model_approval_status),
+            "InferenceSpecification": cast(
+                "InferenceSpecificationTypeDef", inference_specification
+            ),
+            "ModelPackageDescription": f"Box office prediction model - {datetime.now(UTC).isoformat()}",
+            "CustomerMetadataProperties": customer_metadata,
+        }
+        logger.info("Model artifact manifest: sha256=%s size_bytes=%d", sha256[:16], size_bytes)
 
         # Create the model package. Hard failures (auth, throttling, validation
         # other than already-exists) MUST raise — callers used to read
         # `result['model_package_arn']` and KeyError with no context when this
         # silently returned `{'status': 'error'}`.
         try:
-            response = self.sagemaker_client.create_model_package(
-                **model_package_request
-            )
+            response = self.sagemaker_client.create_model_package(**model_package_request)
         except ClientError as e:
             logger.error(f"Failed to register model package: {e}", exc_info=True)
             raise
@@ -286,6 +272,7 @@ class AWSModelRegistry:
         model_package_arn: str,
         approval_status: str,
         approval_description: str | None = None,
+        approved: bool = False,
     ) -> dict[str, Any]:
         """
         Update the approval status of a model package.
@@ -301,6 +288,7 @@ class AWSModelRegistry:
         Raises:
             ValueError: If ARN format is invalid or approval_status is not valid
         """
+        require_approval("changing a model package approval status", approved)
         # Validate ARN format
         if not ARN_PATTERN.match(model_package_arn):
             raise ValueError(
@@ -316,9 +304,9 @@ class AWSModelRegistry:
             )
 
         try:
-            update_request = {
+            update_request: UpdateModelPackageInputTypeDef = {
                 "ModelPackageArn": model_package_arn,
-                "ModelApprovalStatus": approval_status,
+                "ModelApprovalStatus": cast("ModelApprovalStatusType", approval_status),
             }
 
             if approval_description:
@@ -333,56 +321,14 @@ class AWSModelRegistry:
                 "approval_status": approval_status,
             }
 
-        except Exception as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error(f"Failed to update model approval status: {e}", exc_info=True)
             return {
                 "status": "error",
                 "error": str(e),
             }
 
-    def list_model_packages(
-        self,
-        model_package_group_name: str | None = None,
-        approval_status: str | None = None,
-        max_results: int = 10,
-    ) -> list[dict[str, Any]]:
-
-        try:
-            list_request = {
-                "MaxResults": max_results,
-                "SortBy": "CreationTime",
-                "SortOrder": "Descending",
-            }
-
-            if model_package_group_name:
-                list_request["ModelPackageGroupName"] = model_package_group_name
-
-            if approval_status:
-                list_request["ModelApprovalStatus"] = approval_status
-
-            response = self.sagemaker_client.list_model_packages(**list_request)
-
-            return response.get("ModelPackageSummaryList", [])
-
-        except Exception as e:
-            logger.error(f"Failed to list model packages: {e}", exc_info=True)
-            return []
-
-    def get_latest_approved_model(
-        self, model_package_group_name: str
-    ) -> dict[str, Any] | None:
-
-        approved_models = self.list_model_packages(
-            model_package_group_name=model_package_group_name,
-            approval_status="Approved",
-            max_results=1,
-        )
-
-        return approved_models[0] if approved_models else None
-
-    def _get_default_inference_spec(
-        self, framework: str, framework_version: str
-    ) -> dict[str, Any]:
+    def _get_default_inference_spec(self, framework: str, framework_version: str) -> dict[str, Any]:
         """Build a default inference spec via SageMaker SDK image-URI lookup, with an ECR-URL fallback."""
         try:
             from sagemaker import image_uris
@@ -395,18 +341,14 @@ class AWSModelRegistry:
                 region=self.region_name,
                 version=framework_version,
             )
-        except Exception as e:
-            logger.warning(
-                f"Could not retrieve image URI dynamically: {e}. Using fallback."
-            )
+        except (ValueError, ClientError, BotoCoreError) as e:
+            logger.warning(f"Could not retrieve image URI dynamically: {e}. Using fallback.")
             account_id = self._get_account_id()
             framework_images = {
                 "XGBOOST": f"{account_id}.dkr.ecr.{self.region_name}.amazonaws.com/sagemaker-xgboost:{framework_version}",
                 "SKLEARN": f"{account_id}.dkr.ecr.{self.region_name}.amazonaws.com/sagemaker-scikit-learn:{framework_version}",
             }
-            image_uri = framework_images.get(
-                framework.upper(), framework_images["XGBOOST"]
-            )
+            image_uri = framework_images.get(framework.upper(), framework_images["XGBOOST"])
 
         return {
             "Containers": [

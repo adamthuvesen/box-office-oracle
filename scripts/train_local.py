@@ -2,7 +2,7 @@
 
 Runs offline CV with the production ``TimeSeriesCrossValidator`` +
 ``BoxOfficeXGBoostModel``, then a final fit on all data at the CV-mean best
-iteration (as in ``box_office.ml.model_training.train_final_model``). Runs
+iteration (``box_office.ml.model.fit_final_model``, shared with SageMaker). Runs
 entirely locally: no Snowflake, no SageMaker, no AWS.
 
 Steps:
@@ -35,7 +35,6 @@ Run:  uv run python scripts/train_local.py
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -44,14 +43,16 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
+from box_office.eval_windows import CONFIRMATION_END_YEAR, ITERATION_END_YEAR, START_EVAL_YEAR
 from box_office.inference.app.integrity import compute_sha256
-from box_office.inference.app.predictor import PredictionEngine, PredictionRequest
+from box_office.inference.app.predictor import ModelInfo, PredictionEngine, PredictionRequest
 from box_office.ml.artifacts import (
     FEATURE_PREPROCESSOR_PKL,
     FEATURE_SCALER_PKL,
     MODEL_PKL,
 )
 from box_office.ml.cv import TimeSeriesCrossValidator
+from box_office.ml.data_fingerprint import DataFingerprint, fingerprint_training_frame
 from box_office.ml.feature_pipeline.constants import SELECTED_FEATURES
 from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
 from box_office.ml.feature_schema import (
@@ -59,29 +60,14 @@ from box_office.ml.feature_schema import (
     SCHEMA_VERSION_METADATA_KEY,
     FeatureSchemaVersionMismatch,
 )
-from box_office.ml.model import BoxOfficeXGBoostModel
+from box_office.ml.metrics_models import CrossValidationResults
+from box_office.ml.model import BoxOfficeXGBoostModel, fit_final_model
+from box_office.ml.model_metadata import LocalModelMetadata
+from box_office.ml.target import to_log_target
+from box_office.training_frame import PREPROCESSOR_INPUT_COLUMNS
 
 FRAME_PATH = Path("data/generated/training/train_frame_1980_2026.parquet")
 ARTIFACT_DIR = Path("artifacts/local")
-
-PREPROCESSOR_INPUT_COLUMNS: tuple[str, ...] = (
-    "RELEASE_YEAR",
-    "RELEASE_DATE",
-    "PRODUCTION_BUDGET",
-    "RUNTIME",
-    "MPAA",
-    "GENRES",
-    "DIRECTOR",
-    "PRODUCTION_COMPANY",
-    "ACTORS",
-    "IP_TIER",
-    "PRIOR_FRANCHISE_GROSS_LOG",
-    "IS_FRANCHISE_FOLLOWUP",
-)
-
-START_EVAL_YEAR = 2015
-ITERATION_END_YEAR = 2023  # iterate against <= 2023 only
-HOLDOUT_END_YEAR = 2025  # 2024-2025: spent confirmation set; 2026 not final
 
 EVAL_DISCIPLINE_NOTE = (
     "v9 adopted on 2015-2023 iteration evidence; 2024-2025 are a spent "
@@ -106,25 +92,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def json_default(obj: object) -> object:
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    raise TypeError(f"not JSON serializable: {type(obj).__name__}")
-
-
 def run_cross_validation(
-    X_input: pd.DataFrame, y_log: pd.Series, dates: pd.Series, end_eval_year: int
-) -> dict:
+    X_input: pd.DataFrame,
+    y_log: pd.Series,
+    dates: pd.Series,
+    end_eval_year: int,
+    *,
+    burn_holdout: bool = False,
+) -> CrossValidationResults:
     """Leakage-free CV: each fold fits a fresh preprocessor on train years
     only, so frequency features cannot see the eval year."""
     cv = TimeSeriesCrossValidator(
         cv_folds=end_eval_year - START_EVAL_YEAR + 1,
         start_eval_year=START_EVAL_YEAR,
         end_year=end_eval_year,
+        allow_confirmation_years=burn_holdout,
     )
     return cv.cross_validate(
         BoxOfficeXGBoostModel,
@@ -135,22 +117,12 @@ def run_cross_validation(
     )
 
 
-def train_final_model(
-    X_scaled: pd.DataFrame, y_log: pd.Series, cv_results: dict
-) -> BoxOfficeXGBoostModel:
-    """Final fit on all data at the CV-mean best iteration (production convention)."""
-    best_iteration = int(cv_results["mean_best_iteration"])
-    model = BoxOfficeXGBoostModel(n_estimators=best_iteration, random_state=42)
-    model.fit(X_scaled, y_log)
-    return model
-
-
 def save_artifact(
     model: BoxOfficeXGBoostModel,
     preprocessor: FeaturePreprocessorHigh,
     scaler: StandardScaler,
-    cv_results: dict,
-    n_rows: int,
+    cv_results: CrossValidationResults,
+    data_fingerprint: DataFingerprint,
     end_eval_year: int,
 ) -> dict[str, Path]:
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -163,22 +135,21 @@ def save_artifact(
     joblib.dump(preprocessor, paths["preprocessor"])
     joblib.dump(scaler, paths["scaler"])
 
-    (ARTIFACT_DIR / "cv_results.json").write_text(
-        json.dumps(cv_results, indent=2, default=json_default) + "\n"
-    )
+    (ARTIFACT_DIR / "cv_results.json").write_text(cv_results.model_dump_json(indent=2) + "\n")
 
-    metadata = {
-        SCHEMA_VERSION_METADATA_KEY: CURRENT_FEATURE_SCHEMA_VERSION,
-        "selected_features": list(SELECTED_FEATURES),
-        "training_rows": n_rows,
-        "cv_mean_mae_log": float(cv_results["mean_cv_mae"]),
-        "cv_mean_rmsle": float(cv_results["mean_cv_rmsle"]),
-        "mean_best_iteration": float(cv_results["mean_best_iteration"]),
-        "eval_years": f"{START_EVAL_YEAR}-{end_eval_year}",
-        "eval_discipline": EVAL_DISCIPLINE_NOTE,
-        "sha256": {name: compute_sha256(path) for name, path in paths.items()},
-    }
-    (ARTIFACT_DIR / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    metadata = LocalModelMetadata(
+        feature_schema_version=CURRENT_FEATURE_SCHEMA_VERSION,
+        selected_features=list(SELECTED_FEATURES),
+        training_rows=data_fingerprint.rows,
+        cv_mean_mae_log=cv_results.mean_cv_mae,
+        cv_mean_rmsle=cv_results.mean_cv_rmsle,
+        mean_best_iteration=cv_results.mean_best_iteration,
+        eval_years=f"{START_EVAL_YEAR}-{end_eval_year}",
+        eval_discipline=EVAL_DISCIPLINE_NOTE,
+        sha256={name: compute_sha256(path) for name, path in paths.items()},
+        data_fingerprint=data_fingerprint,
+    )
+    (ARTIFACT_DIR / "metadata.json").write_text(metadata.model_dump_json(indent=2) + "\n")
     return paths
 
 
@@ -190,8 +161,8 @@ def smoke_check_inference_path(paths: dict[str, Path]) -> float:
     SageMaker registry, so the metadata check + ``PredictionEngine`` joblib
     load is the full locally-exercisable inference path).
     """
-    metadata = json.loads((ARTIFACT_DIR / "metadata.json").read_text())
-    artifact_version = metadata.get(SCHEMA_VERSION_METADATA_KEY)
+    metadata = LocalModelMetadata.model_validate_json((ARTIFACT_DIR / "metadata.json").read_text())
+    artifact_version = metadata.feature_schema_version
     if artifact_version != CURRENT_FEATURE_SCHEMA_VERSION:
         raise FeatureSchemaVersionMismatch(
             f"artifact has {SCHEMA_VERSION_METADATA_KEY}={artifact_version!r}; "
@@ -203,7 +174,7 @@ def smoke_check_inference_path(paths: dict[str, Path]) -> float:
         model_path=str(paths["model"]),
         preprocessor_path=str(paths["preprocessor"]),
         scaler_path=str(paths["scaler"]),
-        model_metadata={"model_id": "local-tmdb-1980-2026", "version": 1},
+        model_info=ModelInfo(model_id="local-tmdb-1980-2026", version=1),
     )
     response = engine.predict(
         PredictionRequest(
@@ -220,15 +191,13 @@ def smoke_check_inference_path(paths: dict[str, Path]) -> float:
     )
     prediction = float(response.prediction)
     if not (np.isfinite(prediction) and prediction > 0):
-        raise AssertionError(
-            f"smoke prediction is not a finite dollar value: {prediction}"
-        )
+        raise AssertionError(f"smoke prediction is not a finite dollar value: {prediction}")
     return prediction
 
 
 def main() -> None:
     args = parse_args()
-    end_eval_year = HOLDOUT_END_YEAR if args.burn_holdout else ITERATION_END_YEAR
+    end_eval_year = CONFIRMATION_END_YEAR if args.burn_holdout else ITERATION_END_YEAR
     if args.burn_holdout:
         print(
             "WARNING: evaluating the spent 2024-2025 confirmation set "
@@ -243,12 +212,12 @@ def main() -> None:
 
     frame = pd.read_parquet(FRAME_PATH)
     X_input = frame[list(PREPROCESSOR_INPUT_COLUMNS)]
-    y_log = pd.Series(
-        np.log1p(frame["WORLDWIDE_GROSS"].astype(float)), name="GROSS_LOG"
-    )
+    y_log = pd.Series(to_log_target(frame["WORLDWIDE_GROSS"].astype(float)), name="GROSS_LOG")
     dates = frame["RELEASE_YEAR"].astype(int)
 
-    cv_results = run_cross_validation(X_input, y_log, dates, end_eval_year)
+    cv_results = run_cross_validation(
+        X_input, y_log, dates, end_eval_year, burn_holdout=args.burn_holdout
+    )
 
     # Deployment artifact: one preprocessor fit on ALL data (correct for
     # serving — at prediction time every training row is legitimately past).
@@ -259,14 +228,16 @@ def main() -> None:
     # StandardScaler is NaN-aware (nanmean/nanvar); missing budgets stay NaN.
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns, index=X.index)
-    model = train_final_model(X_scaled, y_log, cv_results)
+    model = fit_final_model(X_scaled, y_log, cv_results.mean_best_iteration)
 
     paths = save_artifact(
         model,
         preprocessor,
         scaler,
         cv_results,
-        n_rows=len(frame),
+        data_fingerprint=fingerprint_training_frame(
+            frame[[*PREPROCESSOR_INPUT_COLUMNS, "WORLDWIDE_GROSS"]]
+        ),
         end_eval_year=end_eval_year,
     )
     prediction = smoke_check_inference_path(paths)
@@ -275,14 +246,13 @@ def main() -> None:
     print(EVAL_DISCIPLINE_NOTE)
     print(
         f"CV ({START_EVAL_YEAR}-{end_eval_year}): mean MAE (log) = "
-        f"{cv_results['mean_cv_mae']:.4f}, mean RMSLE = "
-        f"{cv_results['mean_cv_rmsle']:.4f}, mean best iteration = "
-        f"{cv_results['mean_best_iteration']:.0f}"
+        f"{cv_results.mean_cv_mae:.4f}, mean RMSLE = "
+        f"{cv_results.mean_cv_rmsle:.4f}, mean best iteration = "
+        f"{cv_results.mean_best_iteration:.0f}"
     )
     print(f"artifact saved under {ARTIFACT_DIR}/")
     print(
-        "inference smoke check passed: loaded via PredictionEngine, "
-        f"predicted ${prediction:,.0f}",
+        f"inference smoke check passed: loaded via PredictionEngine, predicted ${prediction:,.0f}",
         file=sys.stderr,
     )
 

@@ -4,7 +4,7 @@ Entry points invoked as `uv run python scripts/<name>.py`. They stay flat becaus
 
 ## Dataset pipeline (local canonical dataset → training frame)
 
-Roughly in dependency order:
+Roughly in dependency order. Commands that spend money or write to production refuse without the approval flag; see [docs/development.md](../docs/development.md).
 
 | Script                        | Purpose                                                          |
 | ----------------------------- | ---------------------------------------------------------------- |
@@ -39,9 +39,14 @@ Roughly in dependency order:
 
 Both run via `make web-data`.
 
-## Experiments and tooling
+## Contract and tooling
 
-| Script                      | Purpose                                                      |
-| --------------------------- | ------------------------------------------------------------ |
-| `experiment_ip_features.py` | Read-only experiment harness: do IP features help the model? |
-| `no_emoji_in_logs.py`       | Pre-commit hook: reject emoji in `logger.*` / `print()`      |
+| Script                      | Purpose                                                                   |
+| --------------------------- | ------------------------------------------------------------------------- |
+| `generate_web_contract.py`  | Write the web predict contract from the Python models (`make fix` runs it) |
+| `check.sh`                  | The fast gate behind `make check`                                         |
+| `slow.sh`                   | The slow lanes behind `make slow`                                         |
+| `check_boundaries.sh`       | Run the import contracts                                                  |
+| `lint_infra.sh`             | Run the pinned actionlint and checkov policies                            |
+| `build_training_image.sh`   | Build and push the SageMaker training image (refuses without approval; [docs/training-image.md](../docs/training-image.md)) |
+| `no_emoji_in_logs.py`       | Pre-commit hook: reject emoji in `logger.*` / `print()`                   |

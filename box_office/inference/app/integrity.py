@@ -64,7 +64,7 @@ def verify_artifact(path: Path, expected_sha256: str) -> str:
     cached = _verified_paths.get(cache_key)
     if cached == expected:
         logger.debug("artifact integrity: cache hit for %s", path)
-        return cached
+        return expected
 
     actual = compute_sha256(path)
     if actual != expected:

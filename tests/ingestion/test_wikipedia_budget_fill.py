@@ -31,7 +31,7 @@ def test_extract_infobox_budget_missing() -> None:
         ("$25 million", 25_000_000),
         ("US$7.7 million", 7_700_000),
         ("$20,500,000", 20_500_000),
-        ("$6–7 million", 6_500_000),
+        ("$6\u20137 million", 6_500_000),
         ("$60-70 million<ref>Mojo</ref>", 65_000_000),
         ("{{US$|14 million|link=yes}}", 14_000_000),
         ("$1.2 billion", None),  # above sanity bound
@@ -45,12 +45,7 @@ def test_parse_budget_values(raw: str, expected: float | None) -> None:
 
 
 def test_empty_budget_never_bleeds_into_gross_line() -> None:
-    wikitext = (
-        "{{Infobox film\n"
-        "| budget = \n"
-        "| gross          = $34.7 million<ref name=mojo/>\n"
-        "}}"
-    )
+    wikitext = "{{Infobox film\n| budget = \n| gross          = $34.7 million<ref name=mojo/>\n}}"
     assert wiki.extract_infobox_budget(wikitext) is None
 
 
@@ -61,7 +56,7 @@ def test_gross_mention_in_budget_value_is_rejected() -> None:
 
 
 def test_minus_sign_range_and_thousand_scale() -> None:
-    value, _ = wiki.classify_budget_text("$6.5−$8 million")
+    value, _ = wiki.classify_budget_text("$6.5\u2212$8 million")
     assert value == 7_250_000
     value, _ = wiki.classify_budget_text(
         "[[United States dollar|US$]]440{{ndash}}600{{nbsp}}thousand"

@@ -1,14 +1,30 @@
 """Time-series cross-validation and OOF evaluation."""
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import mean_absolute_error, r2_score
 
+from box_office.config import MODEL_HYPERPARAMETERS
+from box_office.eval_windows import (
+    ITERATION_CV_FOLDS,
+    ITERATION_END_YEAR,
+    START_EVAL_YEAR,
+    refuse_confirmation_years,
+)
 from box_office.ml.exceptions import CrossValidationFailed, OOFIndexCollision
+from box_office.ml.metrics_models import (
+    CrossValidationResults,
+    FoldResult,
+    OofEvaluation,
+    OofRecord,
+)
 from box_office.ml.regression_metrics import rmse_on_log_scale, spearman_rank_corr
+from box_office.ml.target import from_log_target
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +33,16 @@ logger = logging.getLogger(__name__)
 class _CrossValidationState:
     oof_preds: np.ndarray
     oof_indices: list[int] = field(default_factory=list)
-    oof_records: list[dict[str, Any]] = field(default_factory=list)
+    oof_records: list[OofRecord] = field(default_factory=list)
     oof_seen_keys: set[tuple[int, int]] = field(default_factory=set)
     cv_scores: list[float] = field(default_factory=list)
     cv_rmsle_scores: list[float] = field(default_factory=list)
     best_iterations: list[int] = field(default_factory=list)
     fold_importances: list[Any] = field(default_factory=list)
-    fold_results: list[dict[str, Any]] = field(default_factory=list)
-    last_fold_exception: BaseException | None = None
+    fold_results: list[FoldResult] = field(default_factory=list)
 
     @classmethod
-    def for_row_count(cls, row_count: int) -> "_CrossValidationState":
+    def for_row_count(cls, row_count: int) -> _CrossValidationState:
         return cls(oof_preds=np.zeros(row_count))
 
     def record_oof_predictions(
@@ -41,44 +56,30 @@ class _CrossValidationState:
             if key in self.oof_seen_keys:
                 raise OOFIndexCollision(f"Duplicate (fold, idx) pair detected: {key}")
             self.oof_seen_keys.add(key)
-            self.oof_records.append(
-                {
-                    "fold": fold_number,
-                    "idx": int(idx),
-                    "pred": float(pred),
-                }
-            )
+            self.oof_records.append(OofRecord(fold=fold_number, idx=int(idx), pred=float(pred)))
 
-    def build_results(
-        self, feature_names: list[str], model_kwargs: dict[str, Any]
-    ) -> dict[str, Any]:
-        return {
-            "mean_cv_mae": np.mean(self.cv_scores),
-            "std_cv_mae": np.std(self.cv_scores),
-            "mean_cv_rmsle": np.mean(self.cv_rmsle_scores),
-            "std_cv_rmsle": np.std(self.cv_rmsle_scores),
-            "cv_scores": self.cv_scores,
-            "cv_rmsle_scores": self.cv_rmsle_scores,
-            "mean_best_iteration": (
-                np.mean(self.best_iterations)
-                if self.best_iterations
-                else model_kwargs.get("n_estimators", 1500)
-            ),
-            "oof_predictions": {
+    def build_results(self, feature_names: list[str]) -> CrossValidationResults:
+        return CrossValidationResults(
+            mean_cv_mae=np.mean(self.cv_scores),
+            std_cv_mae=np.std(self.cv_scores),
+            mean_cv_rmsle=np.mean(self.cv_rmsle_scores),
+            std_cv_rmsle=np.std(self.cv_rmsle_scores),
+            cv_scores=self.cv_scores,
+            cv_rmsle_scores=self.cv_rmsle_scores,
+            mean_best_iteration=np.mean(self.best_iterations),
+            oof_predictions={
                 str(idx): pred
                 for idx, pred in zip(
                     self.oof_indices, self.oof_preds[self.oof_indices], strict=True
                 )
             },
-            "oof_records": self.oof_records,
-            "feature_importances": (
-                np.mean(self.fold_importances, axis=0).tolist()
-                if self.fold_importances
-                else None
+            oof_records=self.oof_records,
+            feature_importances=(
+                np.mean(self.fold_importances, axis=0).tolist() if self.fold_importances else None
             ),
-            "feature_names": feature_names,
-            "fold_results": self.fold_results,
-        }
+            feature_names=feature_names,
+            fold_results=self.fold_results,
+        )
 
 
 class TimeSeriesCrossValidator:
@@ -86,11 +87,14 @@ class TimeSeriesCrossValidator:
 
     def __init__(
         self,
-        cv_folds: int = 10,
-        start_eval_year: int = 2015,
-        end_year: int = 2024,
-        early_stopping_rounds: int = 50,
+        cv_folds: int = ITERATION_CV_FOLDS,
+        start_eval_year: int = START_EVAL_YEAR,
+        end_year: int = ITERATION_END_YEAR,
+        early_stopping_rounds: int = MODEL_HYPERPARAMETERS.early_stopping_rounds,
+        *,
+        allow_confirmation_years: bool = False,
     ):
+        refuse_confirmation_years(end_year, allow_confirmation_years=allow_confirmation_years)
         self.cv_folds = cv_folds
         self.start_eval_year = start_eval_year
         self.end_year = end_year
@@ -98,19 +102,13 @@ class TimeSeriesCrossValidator:
 
     def _log_cv_summary(
         self,
-        fold_results: list[dict],
+        fold_results: list[FoldResult],
         cv_scores: list[float],
         cv_rmsle_scores: list[float],
         best_iterations: list[int],
     ) -> None:
         """Log CV results as single summary instead of per-fold."""
-        successful_folds = [r for r in fold_results if r["error"] is None]
-        failed_folds = [r for r in fold_results if r["error"] is not None]
-
-        logger.info("Cross-validation completed!")
-        logger.info(
-            f"Completed {len(successful_folds)}/{len(fold_results)} folds successfully"
-        )
+        logger.info("Cross-validation completed: %d folds", len(fold_results))
 
         if cv_scores:
             mean_mae = np.mean(cv_scores)
@@ -129,27 +127,17 @@ class TimeSeriesCrossValidator:
         if best_iterations:
             mean_iterations = np.mean(best_iterations)
             std_iterations = np.std(best_iterations)
-            logger.info(
-                f"Best iterations: {mean_iterations:.0f} (+/- {std_iterations:.0f})"
-            )
-
-        # Log individual fold failures with details
-        if failed_folds:
-            logger.error(f"Failed folds ({len(failed_folds)}):")
-            for fold in failed_folds:
-                logger.error(
-                    f"  Fold {fold['fold_number']} (year {fold['eval_year']}): {fold['error']}"
-                )
+            logger.info(f"Best iterations: {mean_iterations:.0f} (+/- {std_iterations:.0f})")
 
     def cross_validate(
         self,
-        model_class,
-        X_train,
-        y_train_log,
-        dates,
-        preprocessor_factory=None,
-        **model_kwargs,
-    ) -> dict[str, Any]:
+        model_class: Callable[..., Any],
+        X_train: pd.DataFrame,
+        y_train_log: pd.Series,
+        dates: pd.Series,
+        preprocessor_factory: Callable[[], Any] | None = None,
+        **model_kwargs: Any,
+    ) -> CrossValidationResults:
         """Perform time series cross-validation with forward chaining.
 
         When ``preprocessor_factory`` is given (a callable returning a fresh,
@@ -182,16 +170,12 @@ class TimeSeriesCrossValidator:
             f"Available years in dataset: {unique_years[:5]}...{unique_years[-5:]} (showing first/last 5)"
         )
         eval_years = [
-            year
-            for year in range(self.start_eval_year, self.end_year + 1)
-            if year in unique_years
+            year for year in range(self.start_eval_year, self.end_year + 1) if year in unique_years
         ]
         actual_folds = min(self.cv_folds, len(eval_years))
 
         logger.info(f"CV evaluation years: {eval_years}")
-        logger.info(
-            f"Performing CV on {actual_folds} folds from years {eval_years[:actual_folds]}"
-        )
+        logger.info(f"Performing CV on {actual_folds} folds from years {eval_years[:actual_folds]}")
 
         for i, eval_year in enumerate(eval_years[:actual_folds]):
             train_mask = dates_sorted < eval_year
@@ -224,32 +208,13 @@ class TimeSeriesCrossValidator:
                         state=state,
                     )
                 )
-
             except Exception as e:
-                # Capture the original exception chain so we can re-raise from
-                # the last failure if every fold blows up. ``exc_info=True``
-                # ensures the per-fold traceback ends up in CloudWatch even
-                # though we deliberately keep going.
-                state.last_fold_exception = e
-                logger.error(
-                    "CV fold %d (eval_year=%s) failed: %s",
-                    i + 1,
-                    eval_year,
-                    e,
-                    exc_info=True,
-                )
-                state.fold_results.append(
-                    {
-                        "fold_number": i + 1,
-                        "eval_year": eval_year,
-                        "mae_score": None,
-                        "rmsle_score": None,
-                        "best_iteration": None,
-                        "train_samples": len(X_fold_train),
-                        "val_samples": len(X_fold_val),
-                        "error": str(e),
-                    }
-                )
+                # A partial CV would score a different window than the one
+                # asked for, so any fold failure fails the run. Only the fold
+                # context is added here.
+                raise CrossValidationFailed(
+                    f"CV fold {i + 1} (eval_year={eval_year}) failed: {e}"
+                ) from e
 
         self._log_cv_summary(
             state.fold_results,
@@ -258,22 +223,11 @@ class TimeSeriesCrossValidator:
             state.best_iterations,
         )
 
-        if state.cv_scores:
-            return state.build_results(feature_names, model_kwargs)
-
-        attempted = len(state.fold_results)
-        failed = sum(1 for r in state.fold_results if r["error"] is not None)
-        message = (
-            f"All {attempted} CV folds failed (errors={failed}); see per-fold "
-            "tracebacks logged above."
-        )
-        if state.last_fold_exception is not None:
-            raise CrossValidationFailed(message) from state.last_fold_exception
-        # No folds were even attempted — the caller passed years that didn't
-        # intersect the dataset. Surface that clearly without a misleading chain.
-        raise CrossValidationFailed(
-            "No CV folds were attempted; check eval-year range vs. dataset years."
-        )
+        if not state.fold_results:
+            raise CrossValidationFailed(
+                "No CV folds were attempted; check eval-year range vs. dataset years."
+            )
+        return state.build_results(feature_names)
 
     def _run_fold(
         self,
@@ -286,7 +240,7 @@ class TimeSeriesCrossValidator:
         y_fold_val: Any,
         model_kwargs: dict[str, Any],
         state: _CrossValidationState,
-    ) -> dict[str, Any]:
+    ) -> FoldResult:
         model_kwargs_with_early_stopping = {
             **model_kwargs,
             "early_stopping_rounds": self.early_stopping_rounds,
@@ -321,45 +275,37 @@ class TimeSeriesCrossValidator:
         fold_best_iteration = (
             fold_model.best_iteration
             if hasattr(fold_model, "best_iteration")
-            else model_kwargs.get("n_estimators", 1500)
+            else model_kwargs.get("n_estimators", MODEL_HYPERPARAMETERS.n_estimators)
         )
         state.best_iterations.append(fold_best_iteration)
         state.fold_importances.append(fold_model.feature_importances_)
 
-        return {
-            "fold_number": fold_number,
-            "eval_year": eval_year,
-            "mae_score": fold_mae,
-            "rmsle_score": fold_rmsle,
-            "model_r2_log": fold_model_r2_log,
-            "model_spearman": fold_model_spearman,
-            "model_r2_dollars": fold_model_r2_dollars,
-            "model_median_ape": fold_model_median_ape,
-            "best_iteration": fold_best_iteration,
-            "train_samples": len(X_fold_train),
-            "val_samples": len(X_fold_val),
-            "error": None,
-        }
+        return FoldResult(
+            fold_number=fold_number,
+            eval_year=eval_year,
+            mae_score=fold_mae,
+            rmsle_score=fold_rmsle,
+            model_r2_log=fold_model_r2_log,
+            model_spearman=fold_model_spearman,
+            model_r2_dollars=fold_model_r2_dollars,
+            model_median_ape=fold_model_median_ape,
+            best_iteration=fold_best_iteration,
+            train_samples=len(X_fold_train),
+            val_samples=len(X_fold_val),
+        )
 
     @staticmethod
-    def _dollar_scale_metrics(
-        y_fold_val: Any, y_pred: np.ndarray
-    ) -> tuple[float, float]:
+    def _dollar_scale_metrics(y_fold_val: Any, y_pred: np.ndarray) -> tuple[float, float]:
         # Inputs above log(~1e308) overflow expm1; emit NaN rather than break CV.
         with np.errstate(over="ignore", invalid="ignore"):
-            y_true_dollars = np.expm1(y_fold_val.to_numpy())
-            y_pred_dollars = np.expm1(y_pred)
-        if not (
-            np.all(np.isfinite(y_true_dollars)) and np.all(np.isfinite(y_pred_dollars))
-        ):
+            y_true_dollars = from_log_target(y_fold_val.to_numpy())
+            y_pred_dollars = from_log_target(y_pred)
+        if not (np.all(np.isfinite(y_true_dollars)) and np.all(np.isfinite(y_pred_dollars))):
             return float("nan"), float("nan")
 
         r2_dollars = float(r2_score(y_true_dollars, y_pred_dollars))
         median_ape = float(
-            np.median(
-                np.abs(y_pred_dollars - y_true_dollars)
-                / np.maximum(y_true_dollars, 1.0)
-            )
+            np.median(np.abs(y_pred_dollars - y_true_dollars) / np.maximum(y_true_dollars, 1.0))
         )
         return r2_dollars, median_ape
 
@@ -367,26 +313,24 @@ class TimeSeriesCrossValidator:
 class ModelEvaluator:
     @staticmethod
     def evaluate_oof_performance(
-        cv_results: dict[str, Any], y_train_log
-    ) -> dict[str, float]:
+        cv_results: CrossValidationResults, y_train_log: pd.Series
+    ) -> OofEvaluation:
         """Evaluate out-of-fold predictions."""
         logger.info("Evaluating out-of-fold performance...")
 
-        oof_preds_dict = cv_results["oof_predictions"]
+        oof_preds_dict = cv_results.oof_predictions
         if not oof_preds_dict:
-            logger.warning("No OOF predictions available")
-            return {}
+            raise ValueError("CV results carry no out-of-fold predictions")
 
-        indices = [int(idx) for idx in oof_preds_dict.keys()]
+        indices = [int(idx) for idx in oof_preds_dict]
         oof_preds_log = np.array([oof_preds_dict[str(idx)] for idx in indices])
 
         # Reset index to ensure positional alignment with CV results
         y_train_log = y_train_log.reset_index(drop=True)
-        y_true_log = y_train_log.iloc[indices].values
+        y_true_log = y_train_log.to_numpy()[indices]
 
-        # expm1 inverts log1p applied to the target during training.
-        oof_preds = np.expm1(oof_preds_log)
-        y_true = np.expm1(y_true_log)
+        oof_preds = from_log_target(oof_preds_log)
+        y_true = from_log_target(y_true_log)
 
         oof_r2 = r2_score(y_true, oof_preds)
         oof_mae = mean_absolute_error(y_true, oof_preds)
@@ -401,9 +345,9 @@ class ModelEvaluator:
         logger.info(f"OOF MAE: {oof_mae:.2f}")
         logger.info(f"OOF RMSLE: {oof_rmsle:.4f}")
 
-        return {
-            "oof_r2": oof_r2,
-            "oof_mae": oof_mae,
-            "oof_rmsle": oof_rmsle,
-            "num_oof_samples": len(indices),
-        }
+        return OofEvaluation(
+            oof_r2=oof_r2,
+            oof_mae=oof_mae,
+            oof_rmsle=oof_rmsle,
+            num_oof_samples=len(indices),
+        )

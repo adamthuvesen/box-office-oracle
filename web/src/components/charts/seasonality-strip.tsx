@@ -31,17 +31,10 @@ export function SeasonalityStrip({ data }: { data: Seasonality }) {
           ))}
         </div>
         <SprocketRow columns={columns} count={years.length} />
-        <div
-          aria-hidden
-          className="grid gap-[2px]"
-          style={{ gridTemplateColumns: columns }}
-        >
+        <div aria-hidden className="grid gap-[2px]" style={{ gridTemplateColumns: columns }}>
           <div />
           {years.map((year) => (
-            <div
-              key={year}
-              className="pt-1 text-center font-mono text-[10px] text-dim"
-            >
+            <div key={year} className="pt-1 text-center font-mono text-[10px] text-dim">
               {year % 5 === 0 ? `’${String(year).slice(2)}` : ""}
             </div>
           ))}
@@ -71,9 +64,7 @@ function MonthRow({
         <div
           key={years[yearIdx]}
           title={`${MONTH_NAMES[monthIdx]} ${years[yearIdx]} · ${dollarsCompact(total)}`}
-          className={`aspect-square rounded-[2px] ${
-            total === 0 ? "border border-hairline" : ""
-          }`}
+          className={`aspect-square rounded-[2px] ${total === 0 ? "border border-hairline" : ""}`}
           style={total > 0 ? { backgroundColor: cellColor(total, maxCell) } : undefined}
         />
       ))}
@@ -94,11 +85,7 @@ function cellColor(total: number, maxCell: number): string {
 /** Decorative film-edge sprocket holes, one per year column. */
 function SprocketRow({ columns, count }: { columns: string; count: number }) {
   return (
-    <div
-      aria-hidden
-      className="grid gap-[2px] py-1.5"
-      style={{ gridTemplateColumns: columns }}
-    >
+    <div aria-hidden className="grid gap-[2px] py-1.5" style={{ gridTemplateColumns: columns }}>
       <div />
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="flex items-center justify-center">

@@ -19,7 +19,7 @@ class TestCrossValidationIndexHandling:
 
         np.random.seed(42)
 
-        # 20 rows per year × 5 years = 100 rows. Each year is guaranteed to be
+        # 20 rows per year x 5 years = 100 rows. Each year is guaranteed to be
         # present in the right quantity, so the splitter cannot produce an
         # empty validation fold.
         years = [2018, 2019, 2020, 2021, 2022]
@@ -56,9 +56,7 @@ class TestCrossValidationIndexHandling:
         )
 
         # Verify results are valid
-        assert "mean_cv_mae" in cv_results
-        assert "oof_predictions" in cv_results
-        assert cv_results["mean_cv_mae"] > 0
+        assert cv_results.mean_cv_mae > 0
 
     def test_oof_predictions_align_with_source_rows(self):
         """OOF predictions preserve their source-row alignment."""
@@ -104,7 +102,7 @@ class TestCrossValidationIndexHandling:
         # underlying date should yield a year >= start_eval_year — i.e. it
         # was ACTUALLY a validation row, not training data leaking through.
         dates_reset = dates.reset_index(drop=True)
-        for idx_str in cv_results["oof_predictions"]:
+        for idx_str in cv_results.oof_predictions:
             pos = int(idx_str)
             assert dates_reset.iloc[pos] >= 2020, (
                 f"OOF prediction at positional idx {pos} maps to date "
@@ -117,8 +115,8 @@ class TestFeatureAccumulationDuplicateColumns:
     """Test that duplicate columns don't corrupt feature values."""
 
     def test_get_column_takes_last_engineered(self):
-        """``_column`` returns the LAST (engineered) column, not the FIRST (raw)."""
-        from box_office.ml.feature_pipeline import _column
+        """``last_column`` returns the LAST (engineered) column, not the FIRST (raw)."""
+        from box_office.ml.feature_pipeline import last_column
 
         df_with_duplicates = pd.DataFrame()
         # raw
@@ -136,7 +134,7 @@ class TestFeatureAccumulationDuplicateColumns:
             axis=1,
         )
 
-        result = _column(df_with_duplicates, "LOG_PRODUCTION_BUDGET")
+        result = last_column(df_with_duplicates, "LOG_PRODUCTION_BUDGET")
         assert result.dtype in [np.float64, np.int64]
         assert result.iloc[0] == 1000000.0
 
@@ -331,10 +329,10 @@ class TestSharedUtilities:
         assert process_text_list("Action") == ["action"]
 
     def test_column_extractor_handles_single_column(self):
-        from box_office.ml.feature_pipeline import _column
+        from box_office.ml.feature_pipeline import last_column
 
         df = pd.DataFrame({"col": [1, 2, 3]})
-        result = _column(df, "col")
+        result = last_column(df, "col")
 
         assert isinstance(result, pd.Series)
         assert list(result) == [1, 2, 3]

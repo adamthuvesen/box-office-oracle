@@ -7,9 +7,9 @@ from box_office.ml.feature_pipeline.transformers.financial import FinancialTrans
 from box_office.ml.feature_pipeline.transformers.genre import GenreTransformer
 from box_office.ml.feature_pipeline.transformers.industry import IndustryTransformer
 from box_office.ml.feature_pipeline.transformers.select import (
+    DropPreEngineered,
     FeatureSelector,
-    _DropPreEngineered,
-    _SelectEngineered,
+    SelectEngineered,
 )
 from box_office.ml.feature_pipeline.transformers.temporal import TemporalTransformer
 
@@ -23,13 +23,13 @@ def build_feature_pipeline() -> Pipeline:
     """
     return Pipeline(
         steps=[
-            ("drop_pre_engineered", _DropPreEngineered()),
+            ("drop_pre_engineered", DropPreEngineered()),
             ("core", CoreNumericalTransformer()),
             ("temporal", TemporalTransformer()),
             ("genre", GenreTransformer()),
             ("industry", IndustryTransformer()),
             ("financial", FinancialTransformer()),
-            ("select", _SelectEngineered()),
+            ("select", SelectEngineered()),
             ("feature_selector", FeatureSelector()),
         ]
     )

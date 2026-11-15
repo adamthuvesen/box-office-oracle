@@ -197,13 +197,9 @@ def check_frame_against_preprocessor(frame: pd.DataFrame) -> None:
     from box_office.ml.feature_preprocessor import FeaturePreprocessorHigh
     from box_office.ml.text_utils import process_text_list
 
-    features = FeaturePreprocessorHigh().fit_transform(
-        frame[list(PREPROCESSOR_INPUT_COLUMNS)]
-    )
+    features = FeaturePreprocessorHigh().fit_transform(frame[list(PREPROCESSOR_INPUT_COLUMNS)])
     if list(features.columns) != list(SELECTED_FEATURES):
-        raise AssertionError(
-            f"preprocessor output {list(features.columns)} != SELECTED_FEATURES"
-        )
+        raise AssertionError(f"preprocessor output {list(features.columns)} != SELECTED_FEATURES")
     if len(features) != len(frame):
         raise AssertionError("preprocessor changed the row count")
 
@@ -294,24 +290,16 @@ def _classify_ip_tiers(
     from box_office.ip_classification import classify_movies, load_rules
 
     present = [c for c in _STAGING_TO_MOVIE_COLUMNS if c in staging.columns]
-    movies = staging[present].rename(
-        columns={c: _STAGING_TO_MOVIE_COLUMNS[c] for c in present}
-    )
+    movies = staging[present].rename(columns={c: _STAGING_TO_MOVIE_COLUMNS[c] for c in present})
     raw_metadata = pd.DataFrame(
         {
             "tmdb_id": staging["TMDB_ID"].astype(int),
-            "collection_id": staging["TMDB_ID"].map(
-                {t: cid for t, (cid, _) in links.items()}
-            ),
-            "collection_name": staging["TMDB_ID"].map(
-                {t: name for t, (_, name) in links.items()}
-            ),
+            "collection_id": staging["TMDB_ID"].map({t: cid for t, (cid, _) in links.items()}),
+            "collection_name": staging["TMDB_ID"].map({t: name for t, (_, name) in links.items()}),
             "wikidata_id": None,
         }
     )
-    classification, _audit = classify_movies(
-        movies, raw_metadata, load_rules(rules_path)
-    )
+    classification, _audit = classify_movies(movies, raw_metadata, load_rules(rules_path))
     tier = classification.drop_duplicates("tmdb_id").set_index("tmdb_id")["ip_tier"]
     return staging["TMDB_ID"].map(tier).fillna(NO_IP_TIER).astype(float)
 
@@ -346,8 +334,6 @@ def build_production_training_frame(
     frame = add_franchise_features(frame, collection_map, eligible_as_prior=gate_pass)
 
     kept, dropped = apply_quality_gate(frame)
-    keep_cols = list(
-        dict.fromkeys(["TMDB_ID", *PREPROCESSOR_INPUT_COLUMNS, "WORLDWIDE_GROSS"])
-    )
+    keep_cols = list(dict.fromkeys(["TMDB_ID", *PREPROCESSOR_INPUT_COLUMNS, "WORLDWIDE_GROSS"]))
     kept = kept[[c for c in keep_cols if c in kept.columns]].copy()
     return kept, dropped
