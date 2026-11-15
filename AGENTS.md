@@ -1,6 +1,6 @@
 # AGENTS.md
 
-**box-office-oracle** predicts movie box-office revenue: Snowflake and dbt data, an XGBoost model on the v9 feature contract, SageMaker Model Registry, Lambda serving, Terraform infra, and a Next.js app. Python 3.14 via **uv**; Node 24 for `web/`. Human overview: [README.md](README.md). Terms: [GLOSSARY.md](GLOSSARY.md). Decisions: [docs/adr/](docs/adr/).
+**box-office-oracle** predicts movie box-office revenue: Snowflake and dbt data, an XGBoost model on the v9 feature contract, SageMaker Model Registry, Lambda serving, Terraform infra, and a Next.js app. Python 3.14 via **uv**; Node 24 for `web/`. Human overview: [README.md](README.md). Domain terms are in `GLOSSARY.md` and decisions in `docs/adr/`. A change that adds, renames, or redefines a term, or reverses a decision, updates them in the same commit.
 
 ## Commands
 
